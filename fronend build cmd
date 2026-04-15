@@ -1,0 +1,5 @@
+cd CPS.Frontend
+npm run build
+xcopy /E /I /Y build "..\CPS.API\wwwroot"
+cd ..
+dotnet run --project CPS.API/CPS.API.csproj --urls "http://localhost:5000"

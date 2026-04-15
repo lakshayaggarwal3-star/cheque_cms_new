@@ -1,0 +1,106 @@
+// =============================================================================
+// File        : masterUploadService.ts
+// Project     : CPS — Cheque Processing System
+// Module      : Masters
+// Description : API calls for masters grid, preview, upload, and bulk apply.
+// Created     : 2026-04-14
+// =============================================================================
+
+import apiClient, { extractData } from './api';
+import type { LocationDto, PagedResult } from '../types';
+
+export interface UploadErrorDto {
+  rowNumber: number;
+  field: string;
+  message: string;
+  rowData?: string;
+}
+
+export interface UploadResultDto {
+  totalRows: number;
+  successRows: number;
+  errorRows: number;
+  status: string;
+  errors: UploadErrorDto[];
+}
+
+export interface MasterDataRowDto {
+  values: Record<string, string | null>;
+}
+
+export interface MasterPreviewDto {
+  masterType: string;
+  totalRows: number;
+  validRows: number;
+  errorRows: number;
+  errors: UploadErrorDto[];
+  rows: MasterDataRowDto[];
+}
+
+export interface ClientMasterDto {
+  clientID: number;
+  cityCode: string;
+  clientName: string;
+  address1?: string;
+  address2?: string;
+  pickupPointCode?: string;
+  pickupPointDesc?: string;
+  rcmsCode?: string;
+  status?: string;
+}
+
+export interface MasterUploadLogDto {
+  uploadID: number;
+  masterType: string;
+  fileName?: string;
+  uploadedBy: string;
+  uploadDate: string;
+  status: string;
+  totalRows: number;
+  successRows: number;
+  errorRows: number;
+}
+
+export type MasterType = 'location' | 'client';
+
+export async function uploadMaster(type: MasterType, file: File): Promise<UploadResultDto> {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await apiClient.post(`/masters/${type}`, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return extractData<UploadResultDto>(res);
+}
+
+export async function previewMaster(type: MasterType, file: File): Promise<MasterPreviewDto> {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await apiClient.post(`/masters/preview/${type}`, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return extractData<MasterPreviewDto>(res);
+}
+
+export async function applyMasterRows(type: MasterType, rows: MasterDataRowDto[]): Promise<UploadResultDto> {
+  const res = await apiClient.post(`/masters/apply/${type}`, { rows });
+  return extractData<UploadResultDto>(res);
+}
+
+export function getTemplateUrl(type: MasterType): string {
+  return `/api/masters/template/${type}`;
+}
+
+export async function getUploadHistory(page = 1, pageSize = 20): Promise<PagedResult<MasterUploadLogDto>> {
+  const res = await apiClient.get('/masters/history', { params: { page, pageSize } });
+  return extractData<PagedResult<MasterUploadLogDto>>(res);
+}
+
+export async function getLocationMasterData(): Promise<LocationDto[]> {
+  const res = await apiClient.get('/locations');
+  return extractData<LocationDto[]>(res);
+}
+
+export async function getClientMasterData(): Promise<ClientMasterDto[]> {
+  const res = await apiClient.get('/clients/all');
+  return extractData<ClientMasterDto[]>(res);
+}

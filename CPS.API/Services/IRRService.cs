@@ -1,0 +1,19 @@
+// =============================================================================
+// File        : IRRService.cs
+// Project     : CPS — Cheque Processing System
+// Module      : RR (Reject Repair)
+// Description : Service interface for RR item retrieval, corrections, and batch RR completion.
+// Created     : 2026-04-14
+// =============================================================================
+
+using CPS.API.DTOs;
+
+namespace CPS.API.Services;
+
+public interface IRRService
+{
+    Task<List<RRItemDto>> GetRRItemsAsync(long batchId);
+    Task<RRItemDto> GetRRItemAsync(long scanId);
+    Task<RRItemDto> SaveCorrectionAsync(long scanId, SaveRRCorrectionRequest request, int userId);
+    Task CompleteRRAsync(long batchId, int userId);
+}
