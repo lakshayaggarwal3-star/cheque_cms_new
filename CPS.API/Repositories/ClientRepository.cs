@@ -45,13 +45,15 @@ public class ClientRepository : IClientRepository
 
     public async Task UpsertAsync(ClientMaster client)
     {
-        var existing = await _db.Clients.FirstOrDefaultAsync(c => c.CityCode == client.CityCode && !c.IsDeleted);
+        // RCMSCode is the unique identifier for a client
+        var existing = await _db.Clients.FirstOrDefaultAsync(c => c.RCMSCode == client.RCMSCode && !c.IsDeleted);
         if (existing == null)
         {
             _db.Clients.Add(client);
         }
         else
         {
+            existing.CityCode = client.CityCode;
             existing.ClientName = client.ClientName;
             existing.Address1 = client.Address1;
             existing.Address2 = client.Address2;
@@ -60,7 +62,6 @@ public class ClientRepository : IClientRepository
             existing.Address5 = client.Address5;
             existing.PickupPointCode = client.PickupPointCode;
             existing.PickupPointDesc = client.PickupPointDesc;
-            existing.RCMSCode = client.RCMSCode;
             existing.Status = client.Status;
             existing.StatusDate = client.StatusDate;
             existing.UpdatedBy = client.UpdatedBy;

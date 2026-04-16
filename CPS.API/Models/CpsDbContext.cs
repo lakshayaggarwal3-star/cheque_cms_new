@@ -51,11 +51,11 @@ public class CpsDbContext : DbContext
         modelBuilder.Entity<UserLocationHistory>()
             .HasIndex(h => new { h.UserID, h.AssignedDate });
 
-        // ClientMaster
+        // ClientMaster: unique by RCMSCode (client code), and index on CityCode for location filtering
+        modelBuilder.Entity<ClientMaster>()
+            .HasIndex(c => c.RCMSCode).IsUnique();
         modelBuilder.Entity<ClientMaster>()
             .HasIndex(c => c.CityCode);
-        modelBuilder.Entity<ClientMaster>()
-            .HasIndex(c => c.RCMSCode);
 
         // BatchSequence: unique per date+location+scanner
         modelBuilder.Entity<BatchSequence>()
