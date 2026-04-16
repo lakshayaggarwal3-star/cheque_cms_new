@@ -446,7 +446,7 @@ export function MastersPage() {
               )}
             </button>
 
-            {preview && preview.errorRows === 0 && (
+            {preview && preview.validRows > 0 && (
               <button
                 type="button"
                 onClick={handleApplyPreview}

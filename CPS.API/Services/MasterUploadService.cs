@@ -216,14 +216,24 @@ public class MasterUploadService
         var result = new MasterPreviewDto { MasterType = "location", TotalRows = rows.Count };
         foreach (var (row, idx) in rows.Select((r, i) => (r, i + 2)))
         {
+            var locationCode = row.Cell(5).GetString().Trim();
+            var locationName = row.Cell(4).GetString().Trim();
+
+            // Skip completely empty rows
+            if (string.IsNullOrWhiteSpace(locationCode) && string.IsNullOrWhiteSpace(locationName))
+            {
+                result.TotalRows--; // Don't count empty rows
+                continue;
+            }
+
             var item = new MasterDataRowDto
             {
                 Values = new Dictionary<string, string?>
                 {
                     ["Grid"] = row.Cell(1).GetString().Trim(),
                     ["State"] = row.Cell(2).GetString().Trim(),
-                    ["LocationName"] = row.Cell(4).GetString().Trim(),
-                    ["LocationCode"] = row.Cell(5).GetString().Trim(),
+                    ["LocationName"] = locationName,
+                    ["LocationCode"] = locationCode,
                     ["ClusterCode"] = row.Cell(6).GetString().Trim(),
                     ["Zone"] = row.Cell(7).GetString().Trim(),
                     ["ScannerID"] = row.Cell(8).GetString().Trim(),
@@ -237,12 +247,13 @@ public class MasterUploadService
             };
             result.Rows.Add(item);
 
+            // Only error if both are required but empty
             if (string.IsNullOrWhiteSpace(item.Values["LocationCode"]) || string.IsNullOrWhiteSpace(item.Values["LocationName"]))
                 result.Errors.Add(new UploadErrorDto { RowNumber = idx, Field = "LocationCode/LocationName", Message = "Location code and name are required." });
         }
 
         result.ErrorRows = result.Errors.Count;
-        result.ValidRows = Math.Max(0, result.TotalRows - result.ErrorRows);
+        result.ValidRows = Math.Max(0, result.Rows.Count - result.ErrorRows);
         return result;
     }
 
@@ -257,12 +268,23 @@ public class MasterUploadService
         var result = new MasterPreviewDto { MasterType = "client", TotalRows = rows.Count };
         foreach (var (row, idx) in rows.Select((r, i) => (r, i + 2)))
         {
+            var cityCode = row.Cell(1).GetString().Trim();
+            var clientName = row.Cell(2).GetString().Trim();
+            var rcmsCode = row.Cell(10).GetString().Trim();
+
+            // Skip completely empty rows
+            if (string.IsNullOrWhiteSpace(cityCode) && string.IsNullOrWhiteSpace(clientName) && string.IsNullOrWhiteSpace(rcmsCode))
+            {
+                result.TotalRows--; // Don't count empty rows
+                continue;
+            }
+
             var item = new MasterDataRowDto
             {
                 Values = new Dictionary<string, string?>
                 {
-                    ["CityCode"] = row.Cell(1).GetString().Trim(),
-                    ["ClientName"] = row.Cell(2).GetString().Trim(),
+                    ["CityCode"] = cityCode,
+                    ["ClientName"] = clientName,
                     ["Address1"] = row.Cell(3).GetString().Trim(),
                     ["Address2"] = row.Cell(4).GetString().Trim(),
                     ["Address3"] = row.Cell(5).GetString().Trim(),
@@ -270,21 +292,21 @@ public class MasterUploadService
                     ["Address5"] = row.Cell(7).GetString().Trim(),
                     ["PickupPointCode"] = row.Cell(8).GetString().Trim(),
                     ["PickupPointDesc"] = row.Cell(9).GetString().Trim(),
-                    ["RCMSCode"] = row.Cell(10).GetString().Trim(),
+                    ["RCMSCode"] = rcmsCode,
                     ["Status"] = row.Cell(11).GetString().Trim().ToUpperInvariant(),
                     ["StatusDate"] = row.Cell(12).GetString().Trim()
                 }
             };
             result.Rows.Add(item);
 
-            if (string.IsNullOrWhiteSpace(item.Values["CityCode"]) || string.IsNullOrWhiteSpace(item.Values["ClientName"]))
-                result.Errors.Add(new UploadErrorDto { RowNumber = idx, Field = "CityCode/ClientName", Message = "City code and client name are required." });
-            if (item.Values["Status"] != "A" && item.Values["Status"] != "X")
+            if (string.IsNullOrWhiteSpace(item.Values["CityCode"]) || string.IsNullOrWhiteSpace(item.Values["ClientName"]) || string.IsNullOrWhiteSpace(item.Values["RCMSCode"]))
+                result.Errors.Add(new UploadErrorDto { RowNumber = idx, Field = "CityCode/ClientName/RCMSCode", Message = "City code, client name, and RCMS code are required." });
+            if (!string.IsNullOrWhiteSpace(item.Values["Status"]) && item.Values["Status"] != "A" && item.Values["Status"] != "X")
                 result.Errors.Add(new UploadErrorDto { RowNumber = idx, Field = "Status", Message = "Status must be A or X." });
         }
 
         result.ErrorRows = result.Errors.Count;
-        result.ValidRows = Math.Max(0, result.TotalRows - result.ErrorRows);
+        result.ValidRows = Math.Max(0, result.Rows.Count - result.ErrorRows);
         return result;
     }
 

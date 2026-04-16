@@ -10,12 +10,24 @@ namespace CPS.API.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            // Drop the old non-unique index on CityCode
-            migrationBuilder.DropIndex(
-                name: "IX_Clients_CityCode",
-                table: "Clients");
+            // Drop existing non-unique index on CityCode
+            migrationBuilder.Sql("IF EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Clients_CityCode' AND object_id = OBJECT_ID('[dbo].[Clients]')) DROP INDEX [IX_Clients_CityCode] ON [Clients];");
 
-            // Add unique index on RCMSCode
+            // Drop existing non-unique index on RCMSCode if it exists
+            migrationBuilder.Sql("IF EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Clients_RCMSCode' AND object_id = OBJECT_ID('[dbo].[Clients]')) DROP INDEX [IX_Clients_RCMSCode] ON [Clients];");
+
+            // Remove duplicates: keep only the most recent record per RCMSCode
+            migrationBuilder.Sql(@"
+DELETE FROM [Clients]
+WHERE [ClientID] NOT IN (
+    SELECT MAX([ClientID])
+    FROM [Clients]
+    WHERE [RCMSCode] IS NOT NULL AND [RCMSCode] != ''
+    GROUP BY [RCMSCode]
+) AND [RCMSCode] IS NOT NULL AND [RCMSCode] != '';
+");
+
+            // Create unique index on RCMSCode
             migrationBuilder.CreateIndex(
                 name: "IX_Clients_RCMSCode",
                 table: "Clients",
@@ -32,15 +44,11 @@ namespace CPS.API.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            // Drop the unique constraint on RCMSCode
-            migrationBuilder.DropIndex(
-                name: "IX_Clients_RCMSCode",
-                table: "Clients");
+            // Drop the unique index on RCMSCode
+            migrationBuilder.Sql("IF EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Clients_RCMSCode' AND object_id = OBJECT_ID('[dbo].[Clients]')) DROP INDEX [IX_Clients_RCMSCode] ON [Clients];");
 
             // Drop the non-unique index on CityCode
-            migrationBuilder.DropIndex(
-                name: "IX_Clients_CityCode",
-                table: "Clients");
+            migrationBuilder.Sql("IF EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Clients_CityCode' AND object_id = OBJECT_ID('[dbo].[Clients]')) DROP INDEX [IX_Clients_CityCode] ON [Clients];");
 
             // Recreate the original non-unique index on CityCode
             migrationBuilder.CreateIndex(
