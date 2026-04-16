@@ -145,12 +145,11 @@ public class MasterUploadService
             {
                 var cityCode = row.Cell(1).GetString().Trim();
                 var name = row.Cell(2).GetString().Trim();
-                var rcmsCode = row.Cell(10).GetString().Trim();
                 var status = row.Cell(11).GetString().Trim().ToUpperInvariant();
 
-                if (string.IsNullOrEmpty(cityCode) || string.IsNullOrEmpty(name) || string.IsNullOrEmpty(rcmsCode))
+                if (string.IsNullOrEmpty(cityCode) || string.IsNullOrEmpty(name))
                 {
-                    errors.Add(new() { RowNumber = idx, Field = "CITY_CODE/NAME/RCMS_CODE", Message = "City code, client name, and RCMS code are required." });
+                    errors.Add(new() { RowNumber = idx, Field = "CITY_CODE/NAME", Message = "City code and name are required." });
                     result.ErrorRows++;
                     continue;
                 }
@@ -270,10 +269,9 @@ public class MasterUploadService
         {
             var cityCode = row.Cell(1).GetString().Trim();
             var clientName = row.Cell(2).GetString().Trim();
-            var rcmsCode = row.Cell(10).GetString().Trim();
 
             // Skip completely empty rows
-            if (string.IsNullOrWhiteSpace(cityCode) && string.IsNullOrWhiteSpace(clientName) && string.IsNullOrWhiteSpace(rcmsCode))
+            if (string.IsNullOrWhiteSpace(cityCode) && string.IsNullOrWhiteSpace(clientName))
             {
                 result.TotalRows--; // Don't count empty rows
                 continue;
@@ -292,15 +290,16 @@ public class MasterUploadService
                     ["Address5"] = row.Cell(7).GetString().Trim(),
                     ["PickupPointCode"] = row.Cell(8).GetString().Trim(),
                     ["PickupPointDesc"] = row.Cell(9).GetString().Trim(),
-                    ["RCMSCode"] = rcmsCode,
+                    ["RCMSCode"] = row.Cell(10).GetString().Trim(),
                     ["Status"] = row.Cell(11).GetString().Trim().ToUpperInvariant(),
                     ["StatusDate"] = row.Cell(12).GetString().Trim()
                 }
             };
             result.Rows.Add(item);
 
-            if (string.IsNullOrWhiteSpace(item.Values["CityCode"]) || string.IsNullOrWhiteSpace(item.Values["ClientName"]) || string.IsNullOrWhiteSpace(item.Values["RCMSCode"]))
-                result.Errors.Add(new UploadErrorDto { RowNumber = idx, Field = "CityCode/ClientName/RCMSCode", Message = "City code, client name, and RCMS code are required." });
+            // Only error on required fields
+            if (string.IsNullOrWhiteSpace(item.Values["CityCode"]) || string.IsNullOrWhiteSpace(item.Values["ClientName"]))
+                result.Errors.Add(new UploadErrorDto { RowNumber = idx, Field = "CityCode/ClientName", Message = "City code and client name are required." });
             if (!string.IsNullOrWhiteSpace(item.Values["Status"]) && item.Values["Status"] != "A" && item.Values["Status"] != "X")
                 result.Errors.Add(new UploadErrorDto { RowNumber = idx, Field = "Status", Message = "Status must be A or X." });
         }
@@ -442,13 +441,13 @@ public class MasterUploadService
                 var rcmsCode = Get(values, "RCMSCode");
                 var status = Get(values, "Status").ToUpperInvariant();
 
-                if (string.IsNullOrWhiteSpace(cityCode) || string.IsNullOrWhiteSpace(clientName) || string.IsNullOrWhiteSpace(rcmsCode))
+                if (string.IsNullOrWhiteSpace(cityCode) || string.IsNullOrWhiteSpace(clientName))
                 {
-                    errors.Add(new UploadErrorDto { RowNumber = rowNum, Field = "CityCode/ClientName/RCMSCode", Message = "City code, client name, and RCMS code are required." });
+                    errors.Add(new UploadErrorDto { RowNumber = rowNum, Field = "CityCode/ClientName", Message = "City code and client name are required." });
                     result.ErrorRows++;
                     continue;
                 }
-                if (status != "A" && status != "X")
+                if (!string.IsNullOrWhiteSpace(status) && status != "A" && status != "X")
                 {
                     errors.Add(new UploadErrorDto { RowNumber = rowNum, Field = "Status", Message = "Status must be A or X." });
                     result.ErrorRows++;
@@ -459,46 +458,26 @@ public class MasterUploadService
                 if (DateOnly.TryParse(Get(values, "StatusDate"), out var sd))
                     statusDate = sd;
 
-                // RCMSCode is the unique identifier for a client
-                var existing = await _db.Clients.FirstOrDefaultAsync(c => c.RCMSCode == rcmsCode && !c.IsDeleted);
-                if (existing == null)
+                // Always insert new record — multiple clients with same code/city are allowed
+                _db.Clients.Add(new ClientMaster
                 {
-                    _db.Clients.Add(new ClientMaster
-                    {
-                        CityCode = cityCode,
-                        ClientName = clientName,
-                        Address1 = Get(values, "Address1"),
-                        Address2 = Get(values, "Address2"),
-                        Address3 = Get(values, "Address3"),
-                        Address4 = Get(values, "Address4"),
-                        Address5 = Get(values, "Address5"),
-                        PickupPointCode = Get(values, "PickupPointCode"),
-                        PickupPointDesc = Get(values, "PickupPointDesc"),
-                        RCMSCode = rcmsCode,
-                        Status = status,
-                        StatusDate = statusDate,
-                        CreatedBy = userId,
-                        CreatedAt = DateTime.UtcNow,
-                        UpdatedBy = userId,
-                        UpdatedAt = DateTime.UtcNow
-                    });
-                }
-                else
-                {
-                    existing.CityCode = cityCode;
-                    existing.ClientName = clientName;
-                    existing.Address1 = Get(values, "Address1");
-                    existing.Address2 = Get(values, "Address2");
-                    existing.Address3 = Get(values, "Address3");
-                    existing.Address4 = Get(values, "Address4");
-                    existing.Address5 = Get(values, "Address5");
-                    existing.PickupPointCode = Get(values, "PickupPointCode");
-                    existing.PickupPointDesc = Get(values, "PickupPointDesc");
-                    existing.Status = status;
-                    existing.StatusDate = statusDate;
-                    existing.UpdatedBy = userId;
-                    existing.UpdatedAt = DateTime.UtcNow;
-                }
+                    CityCode = cityCode,
+                    ClientName = clientName,
+                    Address1 = Get(values, "Address1"),
+                    Address2 = Get(values, "Address2"),
+                    Address3 = Get(values, "Address3"),
+                    Address4 = Get(values, "Address4"),
+                    Address5 = Get(values, "Address5"),
+                    PickupPointCode = Get(values, "PickupPointCode"),
+                    PickupPointDesc = Get(values, "PickupPointDesc"),
+                    RCMSCode = rcmsCode,
+                    Status = !string.IsNullOrWhiteSpace(status) ? status : "A",
+                    StatusDate = statusDate,
+                    CreatedBy = userId,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedBy = userId,
+                    UpdatedAt = DateTime.UtcNow
+                });
 
                 result.SuccessRows++;
             }
