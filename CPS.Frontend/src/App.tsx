@@ -57,6 +57,7 @@ function AppRoutes() {
           {/* Scanner / Admin / Developer */}
           <Route element={<ProtectedRoute roles={['Scanner', 'MobileScanner', 'Admin', 'Developer']} />}>
             <Route path="/batch/create" element={<BatchCreatePage />} />
+            <Route path="/batch/:batchId/details" element={<BatchCreatePage />} />
             <Route path="/scan/:batchId" element={<ScanRouterPage />} />
           </Route>
 

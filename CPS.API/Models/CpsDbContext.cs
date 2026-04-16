@@ -21,6 +21,7 @@ public class CpsDbContext : DbContext
     public DbSet<LocationFinance> LocationFinances { get; set; }
     public DbSet<ClientMaster> Clients { get; set; }
     public DbSet<BatchSequence> BatchSequences { get; set; }
+    public DbSet<SlipSequence> SlipSequences { get; set; }
     public DbSet<Batch> Batches { get; set; }
     public DbSet<Slip> Slips { get; set; }
     public DbSet<ScanItem> ScanItems { get; set; }
@@ -56,9 +57,17 @@ public class CpsDbContext : DbContext
         modelBuilder.Entity<ClientMaster>()
             .HasIndex(c => c.RCMSCode);
 
-        // BatchSequence: unique per date+location
+        // BatchSequence: unique per date+location+scanner
         modelBuilder.Entity<BatchSequence>()
-            .HasIndex(s => new { s.BatchDate, s.LocationID }).IsUnique();
+            .HasIndex(s => new { s.BatchDate, s.LocationID, s.ScannerMappingID })
+            .IsUnique()
+            .HasFilter("[ScannerMappingID] IS NOT NULL");
+
+        // SlipSequence: unique per date+location+scanner
+        modelBuilder.Entity<SlipSequence>()
+            .HasIndex(s => new { s.SlipDate, s.LocationID, s.ScannerMappingID })
+            .IsUnique()
+            .HasFilter("[ScannerMappingID] IS NOT NULL");
 
         // Batch
         modelBuilder.Entity<Batch>()

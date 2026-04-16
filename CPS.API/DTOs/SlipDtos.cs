@@ -11,7 +11,7 @@ namespace CPS.API.DTOs;
 public class CreateSlipRequest
 {
     public long BatchID { get; set; }
-    public string SlipNo { get; set; } = string.Empty;
+    public string? SlipNo { get; set; } // Auto-generated if not provided (format: {ScannerID}{2-digit-seq})
     public string? ClientCode { get; set; }
     public string? ClientName { get; set; }
     public string? DepositSlipNo { get; set; }

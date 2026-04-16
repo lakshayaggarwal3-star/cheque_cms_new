@@ -17,4 +17,6 @@ public interface ISlipRepository
     Task<bool> SlipNoExistsAsync(long batchId, string slipNo, int? excludeSlipId = null);
     Task<Slip> CreateAsync(Slip slip);
     Task UpdateAsync(Slip slip);
+    /// <summary>Generate next Slip No: {ScannerID}{2-digit-seq} (e.g., 38501, 38502)</summary>
+    Task<string> GenerateNextSlipNoAsync(int locationId, int? scannerMappingId);
 }

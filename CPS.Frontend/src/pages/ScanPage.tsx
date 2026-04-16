@@ -28,6 +28,7 @@ export function ScanPage() {
   const { user } = useAuthStore();
   const { mockScanEnabled } = useSettingsStore();
   const [session, setSession] = useState<ScanSessionDto | null>(null);
+  const [batchDetails, setBatchDetails] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [showStartModal, setShowStartModal] = useState(false);
   const [startStep, setStartStep] = useState<'scanType' | 'slipMode'>('scanType');
@@ -97,7 +98,14 @@ export function ScanPage() {
   const loadSession = useCallback(async () => {
     try {
       const [s, batch] = await Promise.all([getScanSession(id), getBatch(id)]);
+      console.log('ScanPage loadSession:', { 
+        scanType: s.scanType, 
+        withSlip: s.withSlip, 
+        batchStatus: s.batchStatus,
+        needsConfig: !s.scanType || s.withSlip === null || s.withSlip === undefined
+      });
       setSession(s);
+      setBatchDetails(batch);
       setPickupPointCode(batch.pickupPointCode ?? '');
       if (s.withSlip && s.items.some(i => i.isSlip)) setSlipCreated(true);
       if (s.withSlip) {
@@ -111,11 +119,43 @@ export function ScanPage() {
           /* keep activeSlipId */
         }
       }
-      if (s.batchStatus === BatchStatus.Created || s.batchStatus === BatchStatus.ScanningPending) {
+      // Only show start modal if batch status is Created/ScanningPending AND scanType/withSlip are not set
+      const needsScanConfig = !s.scanType || s.withSlip === null || s.withSlip === undefined;
+      if ((s.batchStatus === BatchStatus.Created || s.batchStatus === BatchStatus.ScanningPending) && needsScanConfig) {
+        console.log('Showing start modal - needs config');
         setShowStartModal(true);
         setStartStep('scanType');
+      } else if ((s.batchStatus === BatchStatus.Created || s.batchStatus === BatchStatus.ScanningPending) && !needsScanConfig) {
+        console.log('Skipping modal - config exists, auto-starting scan session');
+        // If scan config is already set but batch is not locked, auto-start the scan session
+        try {
+          await startScan(id, s.withSlip!, s.scanType);
+          console.log('Auto-start successful, reloading session');
+          // Reload session to get updated status
+          const updatedSession = await getScanSession(id);
+          setSession(updatedSession);
+          
+          // Initialize the scanning UI
+          setSelectedScanType((updatedSession.scanType as 'Scan' | 'Rescan') || 'Scan');
+          if (updatedSession.withSlip) {
+            setSlipCreated(false);
+            setActiveSlipId(null);
+            setScanTarget('Slip');
+          } else {
+            setSlipCreated(true);
+            setScanTarget('Cheque');
+            setScannerChoice('Ranger');
+          }
+        } catch (err: any) {
+          console.error('Auto-start failed:', err);
+          // If auto-start fails (e.g., locked by another user), show the modal
+          toast.error(err?.response?.data?.message ?? 'Failed to auto-start scan session');
+          setShowStartModal(true);
+          setStartStep('scanType');
+        }
       }
-    } catch {
+    } catch (err) {
+      console.error('loadSession error:', err);
       toast.error('Failed to load scan session');
     } finally {
       setLoading(false);
@@ -292,28 +332,78 @@ export function ScanPage() {
 
   return (
     <div className="flex flex-col min-h-[calc(100dvh-5rem)]">
-      <div className="mb-4 flex flex-col sm:flex-row sm:items-center gap-2">
-        <div>
-          <h1 className="text-lg font-bold text-gray-900">Scanning — {session.batchNo}</h1>
-          <p className="text-sm text-gray-500">
-            Mode: {session.scanType || 'Scan'} / {session.withSlip ? 'With Slip' : 'Without Slip'} |
-            Scanned: {session.totalScanned} cheques | {session.totalSlips} slips
-          </p>
-          {user?.isDeveloper && (
-            <p className="text-xs text-orange-600 mt-1">Developer mock scanner mode available (visual mock images).</p>
-          )}
+      {/* Batch Details Header */}
+      <div className="mb-4 bg-white rounded-lg shadow-sm p-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-3">
+          <div>
+            <h1 className="text-lg font-bold text-gray-900">Scanning — {session.batchNo}</h1>
+            <p className="text-sm text-gray-500">
+              Mode: {session.scanType || 'Scan'} / {session.withSlip ? 'With Slip' : 'Without Slip'} |
+              Scanned: {session.totalScanned} cheques | {session.totalSlips} slips
+            </p>
+          </div>
+          <div className="ml-auto flex gap-2 mt-2 sm:mt-0">
+            {(!scanRoundActive) && (
+              <button
+                onClick={handleCompleteScan}
+                disabled={completing}
+                className="bg-green-700 text-white text-sm px-4 py-2 rounded-lg hover:bg-green-800 disabled:opacity-50"
+              >
+                {completing ? 'Completing...' : '✓ Complete Batch'}
+              </button>
+            )}
+          </div>
         </div>
-        <div className="ml-auto flex gap-2">
-          {(!scanRoundActive) && (
-            <button
-              onClick={handleCompleteScan}
-              disabled={completing}
-              className="bg-green-700 text-white text-sm px-4 py-2 rounded-lg hover:bg-green-800 disabled:opacity-50"
-            >
-              {completing ? 'Completing...' : '✓ Complete Batch'}
-            </button>
-          )}
-        </div>
+
+        {/* Detailed Batch Info */}
+        {batchDetails && (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 pt-3 border-t border-gray-200">
+            <div>
+              <div className="text-[10px] font-semibold text-gray-500 uppercase">Location</div>
+              <div className="text-xs font-medium text-gray-900">{batchDetails.locationName}</div>
+              <div className="text-[10px] text-gray-500">{batchDetails.locationCode}</div>
+            </div>
+            <div>
+              <div className="text-[10px] font-semibold text-gray-500 uppercase">Pickup Point Location</div>
+              <div className="text-xs font-medium text-gray-900">{batchDetails.pickupPointCode || '—'}</div>
+            </div>
+            <div>
+              <div className="text-[10px] font-semibold text-gray-500 uppercase">Scanner</div>
+              <div className="text-xs font-medium text-gray-900">{batchDetails.scannerID || '—'}</div>
+            </div>
+            <div>
+              <div className="text-[10px] font-semibold text-gray-500 uppercase">Batch Date</div>
+              <div className="text-xs font-medium text-gray-900">{batchDetails.batchDate}</div>
+            </div>
+            <div>
+              <div className="text-[10px] font-semibold text-gray-500 uppercase">Clearing Type</div>
+              <div className="text-xs font-medium text-gray-900">{batchDetails.clearingType === '01' ? 'CTS (01)' : 'Non-CTS (11)'}</div>
+            </div>
+            <div>
+              <div className="text-[10px] font-semibold text-gray-500 uppercase">Total Slips</div>
+              <div className="text-xs font-medium text-gray-900">{batchDetails.totalSlips}</div>
+            </div>
+            <div>
+              <div className="text-[10px] font-semibold text-gray-500 uppercase">Total Amount</div>
+              <div className="text-xs font-medium text-gray-900">₹{batchDetails.totalAmount.toLocaleString()}</div>
+            </div>
+            <div>
+              <div className="text-[10px] font-semibold text-gray-500 uppercase">PDC</div>
+              <div className="text-xs font-medium text-gray-900">{batchDetails.isPDC ? 'Yes' : 'No'}</div>
+              {batchDetails.isPDC && batchDetails.pdcDate && (
+                <div className="text-[10px] text-gray-500">{batchDetails.pdcDate}</div>
+              )}
+            </div>
+            <div>
+              <div className="text-[10px] font-semibold text-gray-500 uppercase">Created</div>
+              <div className="text-xs font-medium text-gray-900">{batchDetails.createdAt}</div>
+            </div>
+          </div>
+        )}
+
+        {user?.isDeveloper && (
+          <p className="text-xs text-orange-600 mt-3">Developer mock scanner mode available (visual mock images).</p>
+        )}
       </div>
 
       {/* Main scan layout */}

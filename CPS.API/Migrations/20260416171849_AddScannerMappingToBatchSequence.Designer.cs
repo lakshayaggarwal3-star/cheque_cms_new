@@ -4,6 +4,7 @@ using CPS.API.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace CPS.API.Migrations
 {
     [DbContext(typeof(CpsDbContext))]
-    partial class CpsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260416171849_AddScannerMappingToBatchSequence")]
+    partial class AddScannerMappingToBatchSequence
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -739,39 +742,6 @@ namespace CPS.API.Migrations
                     b.ToTable("Slips");
                 });
 
-            modelBuilder.Entity("CPS.API.Models.SlipSequence", b =>
-                {
-                    b.Property<int>("SeqID")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("SeqID"));
-
-                    b.Property<int>("LastSeqNo")
-                        .HasColumnType("int");
-
-                    b.Property<int>("LocationID")
-                        .HasColumnType("int");
-
-                    b.Property<int?>("ScannerMappingID")
-                        .HasColumnType("int");
-
-                    b.Property<DateOnly>("SlipDate")
-                        .HasColumnType("date");
-
-                    b.HasKey("SeqID");
-
-                    b.HasIndex("LocationID");
-
-                    b.HasIndex("ScannerMappingID");
-
-                    b.HasIndex("SlipDate", "LocationID", "ScannerMappingID")
-                        .IsUnique()
-                        .HasFilter("[ScannerMappingID] IS NOT NULL");
-
-                    b.ToTable("SlipSequences");
-                });
-
             modelBuilder.Entity("CPS.API.Models.UserLocationHistory", b =>
                 {
                     b.Property<int>("HistoryID")
@@ -986,23 +956,6 @@ namespace CPS.API.Migrations
                         .IsRequired();
 
                     b.Navigation("Batch");
-                });
-
-            modelBuilder.Entity("CPS.API.Models.SlipSequence", b =>
-                {
-                    b.HasOne("CPS.API.Models.Location", "Location")
-                        .WithMany()
-                        .HasForeignKey("LocationID")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("CPS.API.Models.LocationScanner", "Scanner")
-                        .WithMany()
-                        .HasForeignKey("ScannerMappingID");
-
-                    b.Navigation("Location");
-
-                    b.Navigation("Scanner");
                 });
 
             modelBuilder.Entity("CPS.API.Models.UserLocationHistory", b =>

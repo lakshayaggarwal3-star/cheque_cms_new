@@ -13,6 +13,7 @@ namespace CPS.API.Services;
 public interface IBatchService
 {
     Task<BatchDto> CreateBatchAsync(CreateBatchRequest request, int userId);
+    Task<BatchDto> UpdateBatchAsync(long batchId, UpdateBatchRequest request, int userId);
     Task<PagedResult<BatchDto>> GetBatchListAsync(int? locationId, DateOnly? date, int? status, int page, int pageSize);
     Task<BatchDto> GetBatchAsync(long batchId);
     Task<DashboardSummary> GetDashboardAsync(int locationId, DateOnly date);

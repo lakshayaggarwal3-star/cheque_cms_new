@@ -14,9 +14,20 @@ export async function getSlipsByBatch(batchId: number): Promise<SlipDto[]> {
   return extractData<SlipDto[]>(res);
 }
 
+export async function getClientsByLocation(): Promise<ClientAutoFillDto[]> {
+  const res = await apiClient.get('/slip/clients-by-location');
+  return extractData<ClientAutoFillDto[]>(res);
+}
+
+export async function generateNextSlipNo(batchId: number): Promise<string> {
+  const res = await apiClient.post(`/slip/generate-slip-no/${batchId}`, {});
+  const data = extractData<{ slipNo: string }>(res);
+  return data.slipNo;
+}
+
 export async function createSlip(data: {
   batchID: number;
-  slipNo: string;
+  slipNo?: string;
   clientCode?: string;
   clientName?: string;
   depositSlipNo?: string;
@@ -33,7 +44,8 @@ export async function getClientAutoFill(clientCode: string): Promise<ClientAutoF
   try {
     const res = await apiClient.get(`/slip/autofill/${clientCode}`);
     return extractData<ClientAutoFillDto>(res);
-  } catch {
+  } catch (err: any) {
+    // Return null if not found or not applicable to location
     return null;
   }
 }

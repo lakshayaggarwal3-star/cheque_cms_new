@@ -18,7 +18,7 @@ public interface IBatchRepository
     Task<int> GetTotalCountAsync(int? locationId, DateOnly? date, int? status);
     Task<Batch> CreateAsync(Batch batch);
     Task UpdateAsync(Batch batch);
-    Task<int> GetNextSequenceAsync(DateOnly date, int locationId);
+    Task<int> GetNextSequenceAsync(DateOnly date, int locationId, int? scannerMappingId = null);
     Task<DashboardCounts> GetDashboardCountsAsync(int locationId, DateOnly date);
 }
 

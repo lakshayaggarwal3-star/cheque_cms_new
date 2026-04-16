@@ -54,9 +54,9 @@ export function DashboardPage() {
 
   const getAction = (b: BatchDto) => {
     switch (b.batchStatus) {
-      case BatchStatus.Created: return { label: 'Start Scanning', path: `/scan/${b.batchID}` };
+      case BatchStatus.Created: return { label: 'Start Scanning', path: `/batch/${b.batchID}/details` };
       case BatchStatus.ScanningInProgress:
-      case BatchStatus.ScanningPending: return { label: 'Continue Scanning', path: `/scan/${b.batchID}` };
+      case BatchStatus.ScanningPending: return { label: 'Continue Scanning', path: `/batch/${b.batchID}/details` };
       case BatchStatus.RRPending: return { label: 'Continue RR', path: `/rr/${b.batchID}` };
       default: return null;
     }
@@ -80,7 +80,7 @@ export function DashboardPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-sm text-gray-500">{user?.locationName} — EOD: {user?.eodDate}</p>
+          <p className="text-sm text-gray-500">{user?.locationName}</p>
         </div>
         {(user?.roles.includes('Scanner') || user?.roles.includes('MobileScanner') || user?.roles.includes('Admin') || user?.roles.includes('Developer')) && (
           <button

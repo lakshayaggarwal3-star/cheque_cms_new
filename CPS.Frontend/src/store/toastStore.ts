@@ -29,12 +29,11 @@ export const useToastStore = create<ToastStore>((set) => ({
     set((state) => ({
       toasts: [...state.toasts.slice(-2), { id, type, message }], // max 3
     }));
-    // Auto-dismiss success/warning
-    if (type !== 'error') {
-      setTimeout(() => {
-        set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) }));
-      }, type === 'success' ? 3000 : 5000);
-    }
+    // Auto-dismiss all toasts
+    const duration = type === 'success' ? 3000 : type === 'error' ? 4000 : 5000;
+    setTimeout(() => {
+      set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) }));
+    }, duration);
   },
   removeToast: (id) => set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) })),
 }));

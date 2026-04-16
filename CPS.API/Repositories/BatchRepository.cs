@@ -72,25 +72,26 @@ public class BatchRepository : IBatchRepository
     }
 
     /// <summary>
-    /// Atomically increments or inserts the daily sequence for location+date.
+    /// Atomically increments or inserts the daily sequence for location+scanner+date.
     /// Uses raw SQL with UPDLOCK to prevent duplicate batch numbers.
     /// </summary>
-    public async Task<int> GetNextSequenceAsync(DateOnly date, int locationId)
+    public async Task<int> GetNextSequenceAsync(DateOnly date, int locationId, int? scannerMappingId = null)
     {
         await using var tx = await _db.Database.BeginTransactionAsync();
         try
         {
+            // Update or insert sequence for this specific scanner at this location
             var updated = await _db.Database.ExecuteSqlInterpolatedAsync(
-                $"UPDATE BatchSequences WITH (UPDLOCK) SET LastSeqNo = LastSeqNo + 1 WHERE BatchDate = {date} AND LocationID = {locationId}");
+                $"UPDATE BatchSequences WITH (UPDLOCK) SET LastSeqNo = LastSeqNo + 1 WHERE BatchDate = {date} AND LocationID = {locationId} AND ScannerMappingID = {scannerMappingId}");
 
             if (updated == 0)
             {
                 await _db.Database.ExecuteSqlInterpolatedAsync(
-                    $"INSERT INTO BatchSequences (BatchDate, LocationID, LastSeqNo) VALUES ({date}, {locationId}, 1)");
+                    $"INSERT INTO BatchSequences (BatchDate, LocationID, ScannerMappingID, LastSeqNo) VALUES ({date}, {locationId}, {scannerMappingId}, 1)");
             }
 
             var seq = await _db.BatchSequences
-                .Where(s => s.BatchDate == date && s.LocationID == locationId)
+                .Where(s => s.BatchDate == date && s.LocationID == locationId && s.ScannerMappingID == scannerMappingId)
                 .Select(s => s.LastSeqNo)
                 .FirstAsync();
 

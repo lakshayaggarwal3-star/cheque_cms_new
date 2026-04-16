@@ -51,9 +51,26 @@ public class SlipController : ControllerBase
     [HttpGet("autofill/{clientCode}")]
     public async Task<IActionResult> AutoFill(string clientCode)
     {
-        var result = await _slipService.GetClientAutoFillAsync(clientCode);
+        var locationId = int.Parse(User.FindFirstValue("locationId") ?? "0");
+        var result = await _slipService.GetClientAutoFillAsync(clientCode, locationId);
         if (result == null)
-            return NotFound(ApiResponse<object>.Fail("NOT_FOUND", "Client not found or inactive."));
+            return NotFound(ApiResponse<object>.Fail("NOT_FOUND", "Client not found or not applicable to your location."));
         return Ok(ApiResponse<ClientAutoFillDto>.Ok(result));
+    }
+
+    [HttpGet("clients-by-location")]
+    public async Task<IActionResult> GetClientsByLocation()
+    {
+        var locationId = int.Parse(User.FindFirstValue("locationId") ?? "0");
+        var result = await _slipService.GetClientsByLocationAsync(locationId);
+        return Ok(ApiResponse<List<ClientAutoFillDto>>.Ok(result));
+    }
+
+    [HttpPost("generate-slip-no/{batchId:long}")]
+    [Authorize(Roles = "Scanner,MobileScanner,Admin,Developer")]
+    public async Task<IActionResult> GenerateSlipNo(long batchId)
+    {
+        var result = await _slipService.GenerateNextSlipNoAsync(batchId);
+        return Ok(ApiResponse<object>.Ok(new { slipNo = result }));
     }
 }

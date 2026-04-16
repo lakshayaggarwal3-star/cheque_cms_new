@@ -19,7 +19,7 @@ public class ClientRepository : IClientRepository
 
     public async Task<ClientMaster?> GetByCodeAsync(string code) =>
         await _db.Clients.FirstOrDefaultAsync(c =>
-            (c.CityCode == code || c.RCMSCode == code) && !c.IsDeleted);
+            (c.CityCode.ToUpper() == code.ToUpper() || c.RCMSCode.ToUpper() == code.ToUpper()) && !c.IsDeleted);
 
     public async Task<List<ClientMaster>> GetAllAsync() =>
         await _db.Clients
@@ -31,7 +31,7 @@ public class ClientRepository : IClientRepository
     {
         var q = _db.Clients.Where(c => !c.IsDeleted);
         if (!string.IsNullOrWhiteSpace(query))
-            q = q.Where(c => c.CityCode.Contains(query) || c.ClientName.Contains(query));
+            q = q.Where(c => c.CityCode.ToUpper().Contains(query.ToUpper()) || c.ClientName.ToUpper().Contains(query.ToUpper()));
         return await q.OrderBy(c => c.CityCode).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
     }
 
@@ -39,7 +39,7 @@ public class ClientRepository : IClientRepository
     {
         var q = _db.Clients.Where(c => !c.IsDeleted);
         if (!string.IsNullOrWhiteSpace(query))
-            q = q.Where(c => c.CityCode.Contains(query) || c.ClientName.Contains(query));
+            q = q.Where(c => c.CityCode.ToUpper().Contains(query.ToUpper()) || c.ClientName.ToUpper().Contains(query.ToUpper()));
         return await q.CountAsync();
     }
 

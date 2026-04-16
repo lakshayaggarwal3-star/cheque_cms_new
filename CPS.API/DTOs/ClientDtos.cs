@@ -28,4 +28,5 @@ public class ClientAutoFillDto
     public string? PickupPointCode { get; set; }
     public string? PickupPointDesc { get; set; }
     public string? RCMSCode { get; set; }
+    public string? Status { get; set; }
 }

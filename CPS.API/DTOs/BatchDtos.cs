@@ -23,6 +23,21 @@ public class CreateBatchRequest
     // Operator types these from the physical PIF paper form — must be identical
     public string? SummRefNo { get; set; }
     public string? PIF { get; set; }
+
+    // Entry mode: "scanner" (auto-generate) or "mobile" (manual entry)
+    public string? EntryMode { get; set; }
+}
+
+public class UpdateBatchRequest
+{
+    public int TotalSlips { get; set; }
+    public decimal TotalAmount { get; set; }
+    public bool IsPDC { get; set; }
+    public DateOnly? PDCDate { get; set; }
+    public string? SummRefNo { get; set; }
+    public string? PIF { get; set; }
+    public string? ScanType { get; set; }
+    public bool? WithSlip { get; set; }
 }
 
 public class BatchDto

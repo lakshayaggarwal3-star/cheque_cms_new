@@ -55,7 +55,6 @@ export function Layout() {
         <div className="p-3 border-b border-blue-800 text-xs text-blue-300">
           <div className="font-medium text-white">{user?.username}</div>
           <div>{user?.locationName}</div>
-          <div>EOD: {user?.eodDate}</div>
         </div>
 
         <nav className="flex-1 p-2 space-y-1">

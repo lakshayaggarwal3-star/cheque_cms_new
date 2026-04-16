@@ -12,7 +12,6 @@ public class LoginRequest
 {
     public string LoginId { get; set; } = string.Empty;   // EmployeeID or Username
     public string Password { get; set; } = string.Empty;
-    public DateOnly EodDate { get; set; }
     public bool ForceLogin { get; set; } = false;
 }
 

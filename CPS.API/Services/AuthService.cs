@@ -73,7 +73,7 @@ public class AuthService : IAuthService
         var location = await _users.GetCurrentLocationAsync(user.UserID, today);
 
         var roles = BuildRolesList(user);
-        var token = GenerateJwt(user, roles, location?.LocationID ?? 0, request.EodDate.ToString("yyyy-MM-dd"));
+        var token = GenerateJwt(user, roles, location?.LocationID ?? 0, today.ToString("yyyy-MM-dd"));
 
         _logger.LogInformation("Login success: UserID={UserId} EmployeeID={EmployeeID}", user.UserID, user.EmployeeID);
 
@@ -85,7 +85,7 @@ public class AuthService : IAuthService
             Roles = roles,
             LocationId = location?.LocationID ?? 0,
             LocationName = location?.LocationName ?? string.Empty,
-            EodDate = request.EodDate.ToString("yyyy-MM-dd"),
+            EodDate = today.ToString("yyyy-MM-dd"),
             IsDeveloper = user.IsDeveloper
         };
     }

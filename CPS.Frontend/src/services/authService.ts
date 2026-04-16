@@ -9,8 +9,8 @@
 import apiClient, { extractData } from './api';
 import type { UserSession } from '../types';
 
-export async function login(loginId: string, password: string, eodDate: string, forceLogin = false): Promise<UserSession> {
-  const res = await apiClient.post('/auth/login', { loginId, password, eodDate, forceLogin });
+export async function login(loginId: string, password: string, forceLogin = false): Promise<UserSession> {
+  const res = await apiClient.post('/auth/login', { loginId, password, forceLogin });
   return extractData<UserSession>(res);
 }
 

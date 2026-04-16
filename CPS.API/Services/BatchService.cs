@@ -43,8 +43,9 @@ public class BatchService : IBatchService
         if (request.IsPDC && request.PDCDate <= request.BatchDate)
             throw new ValidationException("PDC date must be after batch date.");
 
-        // PIF and Summary Ref No are always system-generated using the same pattern.
-        // Pattern: {PIFPrefix-or-LocationCode}{ddMMyyyy}{seq:D2}
+        // Determine entry mode (default to "scanner" for backward compatibility)
+        var entryMode = request.EntryMode ?? "scanner";
+        var isMobileMode = entryMode.Equals("mobile", StringComparison.OrdinalIgnoreCase);
 
         // BatchNo format requested:
         // {ScannerID}{ddMMyyyy}{seq:D5}
@@ -56,13 +57,24 @@ public class BatchService : IBatchService
         if (scanner == null || string.IsNullOrWhiteSpace(scanner.ScannerID))
             throw new ValidationException("Active ScannerID not found for selected location.");
 
-        var seqNo = await _batchRepo.GetNextSequenceAsync(request.BatchDate, request.LocationID);
+        var scannerMappingId = request.ScannerMappingID > 0 ? request.ScannerMappingID : (int?)scanner.ScannerMappingID;
+        var seqNo = await _batchRepo.GetNextSequenceAsync(request.BatchDate, request.LocationID, scannerMappingId);
         var datePart = request.BatchDate.ToString("ddMMyyyy");
         var batchNo = $"{scanner.ScannerID.Trim()}{datePart}{seqNo:D5}";
-        var pifPrefix = (location.PIFPrefix ?? location.LocationCode).Trim();
-        var generatedRefNo = $"{pifPrefix}{datePart}{seqNo:D2}";
-        var summRefNo = generatedRefNo;
-        var pif = generatedRefNo;
+        
+        string? summRefNo = null;
+        string? pif = null;
+
+        if (!isMobileMode)
+        {
+            // Scanner Mode: Auto-generate SummRefNo and PIF during batch creation
+            // Pattern: {PIFPrefix-or-LocationCode}{ddMMyyyy}{seq:D2}
+            var pifPrefix = (location.PIFPrefix ?? location.LocationCode).Trim();
+            var generatedRefNo = $"{pifPrefix}{datePart}{seqNo:D2}";
+            summRefNo = generatedRefNo;
+            pif = generatedRefNo;
+        }
+        // Mobile Mode: SummRefNo and PIF will be provided later via UpdateBatchAsync
 
         var batch = new Batch
         {
@@ -88,6 +100,68 @@ public class BatchService : IBatchService
 
         _logger.LogInformation("Batch created: {BatchNo} by UserID={UserId}", batchNo, userId);
         await _audit.LogAsync("Batch", batch.BatchID.ToString(), "INSERT", null, new { batchNo, userId }, userId);
+
+        return await MapToBatchDto(batch);
+    }
+
+    public async Task<BatchDto> UpdateBatchAsync(long batchId, UpdateBatchRequest request, int userId)
+    {
+        var batch = await _batchRepo.GetByIdAsync(batchId)
+            ?? throw new NotFoundException($"Batch {batchId} not found.");
+
+        if (request.IsPDC && request.PDCDate == null)
+            throw new ValidationException("PDC date is required when PDC is enabled.");
+
+        if (request.IsPDC && request.PDCDate <= batch.BatchDate)
+            throw new ValidationException("PDC date must be after batch date.");
+
+        // Total Slips and Amount validation:
+        // - If provided (> 0), accept it
+        // - If 0 or not provided, it's optional (scanner mode may fill later)
+        // - Only reject if negative
+        if (request.TotalSlips < 0)
+            throw new ValidationException("Total slips cannot be negative.");
+
+        if (request.TotalAmount < 0)
+            throw new ValidationException("Total amount cannot be negative.");
+
+        // Validate SummRefNo and PIF are provided (required for all batches before scanning)
+        if (string.IsNullOrWhiteSpace(request.SummRefNo))
+            throw new ValidationException("Summary Ref No is required before starting scanning.");
+        if (string.IsNullOrWhiteSpace(request.PIF))
+            throw new ValidationException("PIF No is required before starting scanning.");
+
+        var old = new { batch.TotalSlips, batch.TotalAmount, batch.SummRefNo, batch.PIF, batch.IsPDC, batch.PDCDate, batch.ScanType, batch.WithSlip };
+
+        batch.TotalSlips = request.TotalSlips;
+        batch.TotalAmount = request.TotalAmount;
+        batch.SummRefNo = request.SummRefNo?.Trim();
+        batch.PIF = request.PIF?.Trim();
+        batch.IsPDC = request.IsPDC;
+        batch.PDCDate = request.PDCDate;
+        
+        // Update scan type and slip mode if provided
+        if (!string.IsNullOrWhiteSpace(request.ScanType))
+        {
+            if (!string.Equals(request.ScanType, "Scan", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(request.ScanType, "Rescan", StringComparison.OrdinalIgnoreCase))
+                throw new ValidationException("ScanType must be either 'Scan' or 'Rescan'.");
+            batch.ScanType = request.ScanType;
+        }
+        
+        if (request.WithSlip.HasValue)
+        {
+            batch.WithSlip = request.WithSlip;
+        }
+        
+        batch.UpdatedBy = userId;
+        batch.UpdatedAt = DateTime.UtcNow;
+
+        await _batchRepo.UpdateAsync(batch);
+
+        _logger.LogInformation("Batch updated: BatchID={BatchId} by UserID={UserId}", batchId, userId);
+        await _audit.LogAsync("Batch", batchId.ToString(), "UPDATE", old,
+            new { request.TotalSlips, request.TotalAmount, request.SummRefNo, request.PIF, request.ScanType, request.WithSlip }, userId);
 
         return await MapToBatchDto(batch);
     }

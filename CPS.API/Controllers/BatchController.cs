@@ -55,6 +55,15 @@ public class BatchController : ControllerBase
         return StatusCode(201, ApiResponse<BatchDto>.Ok(result, "Batch created successfully"));
     }
 
+    [HttpPut("{id:long}")]
+    [Authorize(Roles = "Scanner,MobileScanner,Admin,Developer")]
+    public async Task<IActionResult> Update(long id, [FromBody] UpdateBatchRequest request)
+    {
+        var userId = int.Parse(User.FindFirstValue("userId")!);
+        var result = await _batchService.UpdateBatchAsync(id, request, userId);
+        return Ok(ApiResponse<BatchDto>.Ok(result, "Batch updated successfully"));
+    }
+
     [HttpPut("{id:long}/status")]
     [Authorize(Roles = "Admin,Developer")]
     public async Task<IActionResult> UpdateStatus(long id, [FromBody] UpdateBatchStatusRequest request)

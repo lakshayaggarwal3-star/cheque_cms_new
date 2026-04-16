@@ -19,14 +19,16 @@ public class SlipService : ISlipService
     private readonly ISlipRepository _slipRepo;
     private readonly IClientRepository _clientRepo;
     private readonly IBatchRepository _batchRepo;
+    private readonly ILocationRepository _locationRepo;
     private readonly IAuditService _audit;
 
     public SlipService(ISlipRepository slipRepo, IClientRepository clientRepo,
-        IBatchRepository batchRepo, IAuditService audit)
+        IBatchRepository batchRepo, ILocationRepository locationRepo, IAuditService audit)
     {
         _slipRepo = slipRepo;
         _clientRepo = clientRepo;
         _batchRepo = batchRepo;
+        _locationRepo = locationRepo;
         _audit = audit;
     }
 
@@ -41,8 +43,18 @@ public class SlipService : ISlipService
         var batch = await _batchRepo.GetByIdAsync(request.BatchID)
             ?? throw new NotFoundException($"Batch {request.BatchID} not found.");
 
-        if (await _slipRepo.SlipNoExistsAsync(request.BatchID, request.SlipNo))
-            throw new ConflictException($"Slip No '{request.SlipNo}' already exists in this batch.");
+        // Auto-generate Slip No if not provided (format: {ScannerID}{2-digit-seq})
+        string slipNo;
+        if (string.IsNullOrWhiteSpace(request.SlipNo))
+        {
+            slipNo = await _slipRepo.GenerateNextSlipNoAsync(batch.LocationID, batch.ScannerMappingID);
+        }
+        else
+        {
+            slipNo = request.SlipNo.Trim();
+            if (await _slipRepo.SlipNoExistsAsync(request.BatchID, slipNo))
+                throw new ConflictException($"Slip No '{slipNo}' already exists in this batch.");
+        }
 
         if (!string.IsNullOrWhiteSpace(request.ClientCode))
         {
@@ -60,7 +72,7 @@ public class SlipService : ISlipService
         var slip = new Slip
         {
             BatchID = request.BatchID,
-            SlipNo = request.SlipNo.Trim(),
+            SlipNo = slipNo,
             ClientCode = request.ClientCode?.Trim(),
             ClientName = request.ClientName?.Trim(),
             DepositSlipNo = request.DepositSlipNo?.Trim(),
@@ -115,18 +127,42 @@ public class SlipService : ISlipService
         return MapToDto(slip);
     }
 
-    public async Task<ClientAutoFillDto?> GetClientAutoFillAsync(string clientCode)
+    public async Task<ClientAutoFillDto?> GetClientAutoFillAsync(string clientCode, int userLocationId)
     {
         var client = await _clientRepo.GetByCodeAsync(clientCode.Trim());
-        if (client == null || !IsClientActive(client.Status)) return null;
+        if (client == null) return null;
 
+        // Get user's location to validate client's CityCode matches location's fields
+        var userLocation = await _locationRepo.GetByIdAsync(userLocationId);
+        if (userLocation == null) return null;
+
+        // Check if client's CityCode matches ANY of user's Location's three fields:
+        // - LocationName, LocationCode, or ClusterCode
+        // If any match, consider it applicable to this location
+        var cityCode = client.CityCode?.Trim().ToUpperInvariant() ?? "";
+        var locationName = userLocation.LocationName?.Trim().ToUpperInvariant() ?? "";
+        var locationCode = userLocation.LocationCode?.Trim().ToUpperInvariant() ?? "";
+        var clusterCode = userLocation.ClusterCode?.Trim().ToUpperInvariant() ?? "";
+
+        var isApplicable =
+            !string.IsNullOrEmpty(cityCode) && (
+                cityCode.Equals(locationName) ||
+                cityCode.Equals(locationCode) ||
+                cityCode.Equals(clusterCode)
+            );
+
+        if (!isApplicable)
+            return null;
+
+        // Return client data (frontend will show status warning if inactive)
         return new ClientAutoFillDto
         {
             CityCode = client.CityCode,
             ClientName = client.ClientName,
             PickupPointCode = client.PickupPointCode,
             PickupPointDesc = client.PickupPointDesc,
-            RCMSCode = client.RCMSCode
+            RCMSCode = client.RCMSCode,
+            Status = client.Status
         };
     }
 
@@ -135,6 +171,53 @@ public class SlipService : ISlipService
         if (string.IsNullOrWhiteSpace(status)) return false;
         var normalized = status.Trim().ToUpperInvariant();
         return normalized is "A" or "ACTIVE" or "Y" or "1";
+    }
+
+    public async Task<List<ClientAutoFillDto>> GetClientsByLocationAsync(int userLocationId)
+    {
+        // Get user's location
+        var userLocation = await _locationRepo.GetByIdAsync(userLocationId)
+            ?? throw new NotFoundException($"Location {userLocationId} not found.");
+
+        // Get all clients
+        var allClients = await _clientRepo.GetAllAsync();
+
+        // Filter clients that match ANY of the location's three fields
+        var locationName = userLocation.LocationName?.Trim().ToUpperInvariant() ?? "";
+        var locationCode = userLocation.LocationCode?.Trim().ToUpperInvariant() ?? "";
+        var clusterCode = userLocation.ClusterCode?.Trim().ToUpperInvariant() ?? "";
+
+        var matchingClients = new List<ClientAutoFillDto>();
+        foreach (var client in allClients)
+        {
+            var cityCode = client.CityCode?.Trim().ToUpperInvariant() ?? "";
+
+            if (!string.IsNullOrEmpty(cityCode) && (
+                cityCode.Equals(locationName) ||
+                cityCode.Equals(locationCode) ||
+                cityCode.Equals(clusterCode)))
+            {
+                matchingClients.Add(new ClientAutoFillDto
+                {
+                    CityCode = client.CityCode,
+                    ClientName = client.ClientName,
+                    PickupPointCode = client.PickupPointCode,
+                    PickupPointDesc = client.PickupPointDesc,
+                    RCMSCode = client.RCMSCode,
+                    Status = client.Status
+                });
+            }
+        }
+
+        return matchingClients;
+    }
+
+    public async Task<string> GenerateNextSlipNoAsync(long batchId)
+    {
+        var batch = await _batchRepo.GetByIdAsync(batchId)
+            ?? throw new NotFoundException($"Batch {batchId} not found.");
+
+        return await _slipRepo.GenerateNextSlipNoAsync(batch.LocationID, batch.ScannerMappingID);
     }
 
     private static SlipDto MapToDto(Slip s) => new()

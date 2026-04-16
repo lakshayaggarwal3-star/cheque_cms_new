@@ -227,4 +227,5 @@ export interface ClientAutoFillDto {
   pickupPointCode?: string;
   pickupPointDesc?: string;
   rcmsCode?: string;
+  status?: string; // 'A' = Active, 'X' = Inactive
 }

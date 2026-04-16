@@ -37,8 +37,23 @@ export async function createBatch(data: {
   totalAmount: number;
   summRefNo?: string;
   pif?: string;
+  entryMode?: string;
 }): Promise<BatchDto> {
   const res = await apiClient.post('/batch', data);
+  return extractData<BatchDto>(res);
+}
+
+export async function updateBatch(batchId: number, data: {
+  totalSlips: number;
+  totalAmount: number;
+  isPDC: boolean;
+  pdcDate?: string;
+  summRefNo?: string;
+  pif?: string;
+  scanType?: string;
+  withSlip?: boolean;
+}): Promise<BatchDto> {
+  const res = await apiClient.put(`/batch/${batchId}`, data);
   return extractData<BatchDto>(res);
 }
 
