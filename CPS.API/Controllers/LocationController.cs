@@ -23,9 +23,14 @@ public class LocationController : ControllerBase
     public LocationController(ILocationRepository locationRepo) => _locationRepo = locationRepo;
 
     [HttpGet]
-    public async Task<IActionResult> GetAll()
+    public async Task<IActionResult> GetAll(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20)
     {
-        var locs = await _locationRepo.GetAllAsync();
+        pageSize = Math.Min(pageSize, 100);
+        var locs = await _locationRepo.GetPagedAsync(page, pageSize);
+        var total = await _locationRepo.GetCountAsync();
+        
         var dtos = locs.Select(l => new LocationDto
         {
             LocationID = l.LocationID,
@@ -55,7 +60,13 @@ public class LocationController : ControllerBase
             }
         }).ToList();
 
-        return Ok(ApiResponse<List<LocationDto>>.Ok(dtos));
+        return Ok(ApiResponse<PagedResult<LocationDto>>.Ok(new PagedResult<LocationDto>
+        {
+            Items = dtos,
+            TotalCount = total,
+            Page = page,
+            PageSize = pageSize
+        }));
     }
 
     [HttpGet("{id:int}")]

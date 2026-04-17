@@ -38,6 +38,8 @@ export function SlipFormModal({ batchId, defaultPickupPoint, onClose, onSaved }:
   const [clientStatusWarning, setClientStatusWarning] = useState<string | null>(null);
   const [locationWarning, setLocationWarning] = useState<string | null>(null);
   const [availableClients, setAvailableClients] = useState<ClientAutoFillDto[]>([]);
+  const [showClientDropdown, setShowClientDropdown] = useState(false);
+  const [clientSearchTerm, setClientSearchTerm] = useState('');
 
   const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<SlipForm>();
 
@@ -50,7 +52,15 @@ export function SlipFormModal({ batchId, defaultPickupPoint, onClose, onSaved }:
       try {
         setLoadingClients(true);
         const clients = await getClientsByLocation();
-        setAvailableClients(clients);
+        // Sort: Active first, then Inactive, then alphabetically by client name
+        const sorted = clients.sort((a, b) => {
+          const aActive = a.status !== 'X';
+          const bActive = b.status !== 'X';
+          if (aActive && !bActive) return -1;
+          if (!aActive && bActive) return 1;
+          return a.clientName.localeCompare(b.clientName);
+        });
+        setAvailableClients(sorted);
       } catch (err: any) {
         toast.warning('Could not load available clients');
         setAvailableClients([]);
@@ -68,6 +78,43 @@ export function SlipFormModal({ batchId, defaultPickupPoint, onClose, onSaved }:
     // Set placeholder for slip number - will be generated on submit
     setValue('slipNo', '(Auto-generated on save)');
   }, [batchId, defaultPickupPoint, setValue]);
+
+  // Filter clients based on search term
+  const filteredClients = availableClients.filter(client => {
+    if (!clientSearchTerm) return true;
+    const term = clientSearchTerm.toLowerCase();
+    const nameMatch = client.clientName.toLowerCase().includes(term);
+    const codeMatch = client.rcmsCode?.toLowerCase().includes(term);
+    const pickupMatch = client.pickupPointCode?.toLowerCase().includes(term);
+    return nameMatch || codeMatch || pickupMatch;
+  }).sort((a, b) => {
+    // Prioritize clients that START WITH the search term
+    const term = clientSearchTerm.toLowerCase();
+    const aStartsWith = a.clientName.toLowerCase().startsWith(term) || 
+                        a.rcmsCode?.toLowerCase().startsWith(term);
+    const bStartsWith = b.clientName.toLowerCase().startsWith(term) || 
+                        b.rcmsCode?.toLowerCase().startsWith(term);
+    
+    if (aStartsWith && !bStartsWith) return -1;
+    if (!aStartsWith && bStartsWith) return 1;
+    return 0; // Keep original order (active first, then alphabetical)
+  });
+
+  const handleClientSelect = (client: ClientAutoFillDto) => {
+    setValue('clientCode', client.rcmsCode || '');
+    setValue('clientName', client.clientName);
+    // Format: CityCode (PickupCode - Description)
+    const pickupDisplay = client.pickupPointCode
+      ? `${client.cityCode} (${client.pickupPointCode} - ${client.pickupPointDesc || ''})`
+      : client.cityCode || '';
+    setValue('pickupPoint', pickupDisplay);
+    setClientSearchTerm(`${client.clientName} (${client.rcmsCode})`);
+    setShowClientDropdown(false);
+    setClientStatusWarning(null);
+    if (client.status === 'X') {
+      setClientStatusWarning(`⚠️ Client status is INACTIVE (X)`);
+    }
+  };
 
   const handleClientCodeBlur = async (e: React.FocusEvent<HTMLInputElement>) => {
     const code = e.target.value.trim().toUpperCase();
@@ -176,47 +223,68 @@ export function SlipFormModal({ batchId, defaultPickupPoint, onClose, onSaved }:
                 {errors.depositSlipNo && <p className="text-red-500 text-xs mt-1">{errors.depositSlipNo.message}</p>}
               </div>
 
-              <div className="col-span-2 sm:col-span-1">
+              <div className="col-span-2 sm:col-span-1 relative">
                 <label className="block text-xs font-medium text-gray-700 mb-1">
                   Client Code (RCMS Code) {loadingClients && <span className="text-blue-500">(loading...)</span>}
                 </label>
-                <select
-                  {...register('clientCode')}
+                <input
+                  type="text"
+                  value={clientSearchTerm}
                   onChange={(e) => {
-                    const code = e.target.value;
-                    setValue('clientCode', code);
-                    if (code) {
-                      // Find and populate client details
-                      const client = availableClients.find(c => c.rcmsCode === code);
-                      if (client) {
-                        setValue('clientName', client.clientName);
-                        // Format: CityCode (PickupCode - Description)
-                        const pickupDisplay = client.pickupPointCode
-                          ? `${client.cityCode} (${client.pickupPointCode} - ${client.pickupPointDesc || ''})`
-                          : client.cityCode || '';
-                        setValue('pickupPoint', pickupDisplay);
-                        setClientStatusWarning(null);
-                        if (client.status === 'X') {
-                          setClientStatusWarning(`⚠️ Client status is INACTIVE (X)`);
-                        }
-                      }
-                    } else {
-                      setValue('clientName', '');
-                      setValue('pickupPoint', '');
-                      setClientStatusWarning(null);
-                    }
+                    const value = e.target.value;
+                    setClientSearchTerm(value);
+                    setShowClientDropdown(true);
+                    // Clear selection when typing
+                    setValue('clientCode', '');
+                    setValue('clientName', '');
+                    setValue('pickupPoint', '');
+                    setClientStatusWarning(null);
                   }}
+                  onFocus={() => setShowClientDropdown(true)}
+                  onBlur={() => {
+                    // Delay to allow click events on dropdown
+                    setTimeout(() => setShowClientDropdown(false), 200);
+                  }}
+                  placeholder="Type to search clients..."
                   className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                >
-                  <option value="">-- Select Client --</option>
-                  {availableClients.map((client) => (
-                    <option key={client.rcmsCode} value={client.rcmsCode}>
-                      {client.clientName} ({client.rcmsCode})
-                    </option>
-                  ))}
-                </select>
+                />
                 {clientStatusWarning && (
                   <p className="text-orange-600 text-xs mt-1">{clientStatusWarning}</p>
+                )}
+                
+                {/* Dropdown */}
+                {showClientDropdown && filteredClients.length > 0 && (
+                  <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                    {filteredClients.map((client) => (
+                      <div
+                        key={client.rcmsCode}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          handleClientSelect(client);
+                        }}
+                        className="px-3 py-2 cursor-pointer hover:bg-blue-50 flex items-center gap-2 border-b border-gray-100 last:border-b-0"
+                      >
+                        {/* Status indicator */}
+                        <span
+                          className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+                            client.status === 'X' ? 'bg-orange-500' : 'bg-green-500'
+                          }`}
+                          title={client.status === 'X' ? 'Inactive' : 'Active'}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-gray-900 truncate">
+                            {client.clientName}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {client.rcmsCode} {client.pickupPointCode && `• ${client.pickupPointCode}`}
+                          </div>
+                        </div>
+                        {client.status === 'X' && (
+                          <span className="text-xs text-orange-600 font-medium shrink-0">Inactive</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
 

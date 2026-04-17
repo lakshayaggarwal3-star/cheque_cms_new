@@ -25,6 +25,19 @@ public class LocationRepository : ILocationRepository
             .OrderBy(l => l.LocationName)
             .ToListAsync();
 
+    public async Task<List<Location>> GetPagedAsync(int page, int pageSize) =>
+        await _db.Locations
+            .Include(l => l.Scanners.Where(s => s.IsActive))
+            .Include(l => l.Finance)
+            .Where(l => !l.IsDeleted)
+            .OrderBy(l => l.LocationName)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
+
+    public async Task<int> GetCountAsync() =>
+        await _db.Locations.CountAsync(l => !l.IsDeleted);
+
     public async Task<Location?> GetByIdAsync(int locationId) =>
         await _db.Locations
             .Include(l => l.Scanners.Where(s => s.IsActive))

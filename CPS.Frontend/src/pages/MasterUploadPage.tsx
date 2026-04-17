@@ -76,11 +76,16 @@ export function MastersPage() {
   const [applying,     setApplying]     = useState(false);
   const [result,       setResult]       = useState<UploadResultDto | null>(null);
   const [preview,      setPreview]      = useState<MasterPreviewDto | null>(null);
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [locationRows, setLocationRows] = useState<MasterDataRowDto[]>([]);
   const [clientRows,   setClientRows]   = useState<MasterDataRowDto[]>([]);
   const [loadingData,  setLoadingData]  = useState(true);
   const [editRow,      setEditRow]      = useState<{ index: number; values: Record<string, string> } | null>(null);
   const [search,       setSearch]       = useState('');
+  const [page,         setPage]         = useState(1);
+  const [uploadedFilePage, setUploadedFilePage] = useState(1);
+  const [totalDbRows,  setTotalDbRows]  = useState(0);
+  const PAGE_SIZE = 20;
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const activeTab  = MASTER_TABS.find(t => t.key === activeType)!;
@@ -100,12 +105,12 @@ export function MastersPage() {
   const loadMasterData = async () => {
     setLoadingData(true);
     try {
-      const [locations, clients] = await Promise.all([
-        getLocationMasterData(),
-        getClientMasterData(),
+      const [locationsRes, clientsRes] = await Promise.all([
+        getLocationMasterData(page, PAGE_SIZE),
+        getClientMasterData(page, PAGE_SIZE),
       ]);
 
-      setLocationRows(locations.map(l => ({
+      setLocationRows(locationsRes.items.map(l => ({
         values: {
           Grid:           l.grid            ?? '',
           State:          l.state           ?? '',
@@ -123,7 +128,7 @@ export function MastersPage() {
         },
       })));
 
-      setClientRows(clients.map(c => ({
+      setClientRows(clientsRes.items.map(c => ({
         values: {
           CityCode:        c.cityCode        ?? '',
           ClientName:      c.clientName      ?? '',
@@ -139,6 +144,8 @@ export function MastersPage() {
           StatusDate:      '',
         },
       })));
+      // Use the larger total count from either response
+      setTotalDbRows(Math.max(locationsRes.totalCount, clientsRes.totalCount));
     } catch {
       toast.error('Failed to load master data');
     } finally {
@@ -146,15 +153,18 @@ export function MastersPage() {
     }
   };
 
-  useEffect(() => { loadMasterData(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { loadMasterData(); }, [page]); // Reload when page changes
 
   // ── Tab switch ────────────────────────────────────────────────────────────
   const switchTab = (type: MasterType) => {
     setActiveType(type);
     setResult(null);
     setPreview(null);
+    setUploadedFile(null);
     setSearch('');
     setEditRow(null);
+    setPage(1);
+    setUploadedFilePage(1);
   };
 
   // ── Row edit modal ────────────────────────────────────────────────────────
@@ -200,11 +210,13 @@ export function MastersPage() {
     setUploading(true);
     setResult(null);
     setPreview(null);
+    setUploadedFilePage(1);
     try {
       const res = await previewMaster(activeType, file);
       setPreview(res);
+      setUploadedFile(file);
       if (res.errorRows === 0) toast.success(`Verified — ${res.validRows} row(s) ready to apply`);
-      else toast.error(`${res.errorRows} error(s) found — fix before applying`);
+      else toast.warning(`${res.errorRows} error(s) found — review before applying`);
     } catch (err: any) {
       toast.error(err?.response?.data?.message ?? 'Verification failed');
     } finally {
@@ -222,13 +234,31 @@ export function MastersPage() {
       if (res.errorRows === 0) toast.success(`Applied ${res.successRows} rows successfully`);
       else toast.error(`Applied with ${res.errorRows} error(s)`);
       setPreview(null);
+      setUploadedFile(null);
       await loadMasterData();
+      setPage(1);
     } catch (err: any) {
       toast.error(err?.response?.data?.message ?? 'Bulk apply failed');
     } finally {
       setApplying(false);
     }
   };
+
+  const clearUpload = () => {
+    setPreview(null);
+    setUploadedFile(null);
+    setUploadedFilePage(1);
+  };
+
+  // ── Pagination helpers ────────────────────────────────────────────────────
+  const paginatedRows = filteredRows;
+  const totalDbPages = Math.ceil(totalDbRows / PAGE_SIZE);
+
+  const paginatedPreviewRows = preview ? preview.rows.slice(
+    (uploadedFilePage - 1) * PAGE_SIZE,
+    uploadedFilePage * PAGE_SIZE
+  ) : [];
+  const totalPreviewPages = preview ? Math.ceil(preview.rows.length / PAGE_SIZE) : 0;
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -260,7 +290,7 @@ export function MastersPage() {
         ))}
       </div>
 
-      {/* ── Records table ────────────────────────────────────────────────── */}
+      {/* ── Excel bulk upload (MOVED TO TOP) ─────────────────────────────── */}
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
 
         {/* Card header */}
@@ -268,7 +298,7 @@ export function MastersPage() {
           <div className="flex-1">
             <span className="text-sm font-semibold text-gray-900">{activeTab.label}</span>
             <span className="ml-2 text-xs text-gray-400 font-normal">
-              {loadingData ? 'Loading…' : `${activeRows.length} record${activeRows.length !== 1 ? 's' : ''}`}
+              {loadingData ? 'Loading…' : `${totalDbRows.toLocaleString()} total records`}
             </span>
           </div>
           {/* Search */}
@@ -287,7 +317,7 @@ export function MastersPage() {
           </div>
         </div>
 
-        {/* Table body */}
+        {/* Table body with pagination */}
         {loadingData ? (
           <div className="py-16 text-center">
             <div className="inline-block w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mb-3" />
@@ -303,77 +333,93 @@ export function MastersPage() {
               {search ? 'No records match your search.' : 'No records yet.'}
             </p>
             {!search && (
-              <p className="text-xs text-gray-400 mt-1">Upload an Excel file below to add records.</p>
+              <p className="text-xs text-gray-400 mt-1">Upload an Excel file above to add records.</p>
             )}
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  {tableCols.map(col => (
-                    <th key={col.key}
-                      className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">
-                      {col.label}
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    {tableCols.map(col => (
+                      <th key={col.key}
+                        className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">
+                        {col.label}
+                      </th>
+                    ))}
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                      Action
                     </th>
-                  ))}
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                    Action
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {filteredRows.map((row, i) => {
-                  // find original index in activeRows for edit
-                  const globalIndex = activeRows.indexOf(row);
-                  return (
-                    <tr key={i} className="hover:bg-blue-50/30 transition-colors">
-                      {tableCols.map(col => (
-                        <td key={col.key} className="px-4 py-3 text-gray-700 whitespace-nowrap">
-                          {col.key === 'Status' ? (
-                            <StatusBadge value={row.values[col.key] ?? ''} />
-                          ) : (
-                            <span className={row.values[col.key] ? '' : 'text-gray-300 italic text-xs'}>
-                              {row.values[col.key] || '—'}
-                            </span>
-                          )}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {paginatedRows.map((row, i) => {
+                    // find original index in activeRows for edit
+                    const globalIndex = activeRows.indexOf(row);
+                    return (
+                      <tr key={i} className="hover:bg-blue-50/30 transition-colors">
+                        {tableCols.map(col => (
+                          <td key={col.key} className="px-4 py-3 text-gray-700 whitespace-nowrap">
+                            {col.key === 'Status' ? (
+                              <StatusBadge value={row.values[col.key] ?? ''} />
+                            ) : (
+                              <span className={row.values[col.key] ? '' : 'text-gray-300 italic text-xs'}>
+                                {row.values[col.key] || '—'}
+                              </span>
+                            )}
+                          </td>
+                        ))}
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            type="button"
+                            onClick={() => openEdit(globalIndex)}
+                            className="text-xs font-medium text-blue-700 hover:text-blue-900"
+                          >
+                            Edit
+                          </button>
                         </td>
-                      ))}
-                      <td className="px-4 py-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() => openEdit(globalIndex)}
-                          className="text-xs font-medium text-blue-700 hover:text-blue-900"
-                        >
-                          Edit
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {/* Row count footer */}
-        {!loadingData && filteredRows.length > 0 && (
-          <div className="px-5 py-2.5 border-t border-gray-100 bg-gray-50/50">
-            <p className="text-xs text-gray-400">
-              {search
-                ? `Showing ${filteredRows.length} of ${activeRows.length} records`
-                : `${activeRows.length} total records`}
-            </p>
-          </div>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+        
+            {/* Pagination footer */}
+            {totalDbPages > 1 && (
+              <div className="flex justify-center items-center gap-3 px-4 py-3 border-t border-gray-100 bg-gray-50/50">
+                <button
+                  type="button"
+                  disabled={page === 1}
+                  onClick={() => setPage(p => p - 1)}
+                  className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm text-gray-600
+                    hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  ← Prev
+                </button>
+                <span className="text-sm text-gray-500">Page {page} of {totalDbPages} ({totalDbRows.toLocaleString()} records)</span>
+                <button
+                  type="button"
+                  disabled={page === totalDbPages}
+                  onClick={() => setPage(p => p + 1)}
+                  className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm text-gray-600
+                    hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Next →
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
 
-      {/* ── Excel bulk upload ─────────────────────────────────────────────── */}
+      {/* ── Records table (MOVED BELOW UPLOAD) ───────────────────────────── */}
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-4">
           <div>
             <h2 className="text-sm font-semibold text-gray-900">Bulk Upload via Excel</h2>
-            <p className="text-xs text-gray-500 mt-0.5">{activeTab.subtitle}</p>
+            <p className="text-xs text-gray-500 mt-0.5">Upload, validate, and apply master data in bulk.</p>
           </div>
           <a
             href={getTemplateUrl(activeType)}
@@ -420,6 +466,152 @@ export function MastersPage() {
             ))}
           </div>
 
+          {/* Uploaded file info & validation preview */}
+          {preview && (
+            <div className="space-y-4">
+              {/* File info banner */}
+              <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <svg className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <div>
+                      <p className="text-sm font-semibold text-blue-900">{uploadedFile?.name}</p>
+                      <p className="text-xs text-blue-700 mt-0.5">
+                        {preview.totalRows} rows &nbsp;·&nbsp; {preview.validRows} valid &nbsp;·&nbsp; {preview.errorRows} errors
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={clearUpload}
+                    className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+
+              {/* Validation stats */}
+              <div className={`rounded-lg border p-4 flex items-start gap-3 ${
+                preview.errorRows > 0
+                  ? 'bg-amber-50 border-amber-200'
+                  : 'bg-green-50 border-green-200'
+              }`}>
+                {preview.errorRows > 0 ? (
+                  <svg className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                  </svg>
+                ) : (
+                  <svg className="w-5 h-5 text-green-600 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                )}
+                <div className="flex-1">
+                  <p className={`text-sm font-semibold ${preview.errorRows > 0 ? 'text-amber-800' : 'text-green-800'}`}>
+                    {preview.errorRows > 0
+                      ? 'Validation completed with errors'
+                      : 'File validated successfully'}
+                  </p>
+                  <p className={`text-xs mt-0.5 ${preview.errorRows > 0 ? 'text-amber-700' : 'text-green-700'}`}>
+                    {preview.errorRows > 0
+                      ? 'Review errors below. You can still apply valid rows.'
+                      : 'All rows are valid and ready to be applied to the database.'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Preview data table with pagination */}
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-200">
+                  <p className="text-xs font-semibold text-gray-700">Data Preview</p>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead className="bg-gray-50 border-b border-gray-200">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-semibold text-gray-500">#</th>
+                        {activeTab.cols.filter(c => c.tableVisible).map(col => (
+                          <th key={col.key} className="px-3 py-2 text-left font-semibold text-gray-500 whitespace-nowrap">
+                            {col.label}
+                          </th>
+                        ))}
+                        <th className="px-3 py-2 text-center font-semibold text-gray-500">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {paginatedPreviewRows.map((row, i) => {
+                        const actualIndex = (uploadedFilePage - 1) * PAGE_SIZE + i;
+                        const hasError = preview.errors.some(e => e.rowNumber === actualIndex + 2);
+                        const error = preview.errors.find(e => e.rowNumber === actualIndex + 2);
+                        return (
+                          <tr key={i} className={hasError ? 'bg-red-50/50' : 'hover:bg-gray-50/50'}>
+                            <td className="px-3 py-2 font-mono text-gray-500">{actualIndex + 2}</td>
+                            {activeTab.cols.filter(c => c.tableVisible).map(col => (
+                              <td key={col.key} className="px-3 py-2 text-gray-700">
+                                {row.values[col.key] || <span className="text-gray-300 italic">—</span>}
+                              </td>
+                            ))}
+                            <td className="px-3 py-2 text-center">
+                              {hasError ? (
+                                <span className="inline-flex items-center gap-1 text-red-600" title={error?.message}>
+                                  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                                  </svg>
+                                  <span className="hidden lg:inline text-xs">Error</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-green-600">
+                                  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                                  </svg>
+                                  <span className="hidden lg:inline text-xs">Valid</span>
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                {totalPreviewPages > 1 && (
+                  <div className="flex justify-center items-center gap-3 px-4 py-2.5 border-t border-gray-200 bg-gray-50">
+                    <button
+                      type="button"
+                      disabled={uploadedFilePage === 1}
+                      onClick={() => setUploadedFilePage(p => p - 1)}
+                      className="px-2.5 py-1 rounded border border-gray-200 text-xs text-gray-600
+                        hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      ← Prev
+                    </button>
+                    <span className="text-xs text-gray-500">Page {uploadedFilePage} of {totalPreviewPages}</span>
+                    <button
+                      type="button"
+                      disabled={uploadedFilePage === totalPreviewPages}
+                      onClick={() => setUploadedFilePage(p => p + 1)}
+                      className="px-2.5 py-1 rounded border border-gray-200 text-xs text-gray-600
+                        hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      Next →
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Error details table */}
+              {preview.errorRows > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-700 mb-2">Error Details ({preview.errorRows})</p>
+                  <ErrorTable errors={preview.errors} />
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Action buttons */}
           <div className="flex flex-wrap gap-3">
             <button
@@ -433,7 +625,7 @@ export function MastersPage() {
               {uploading ? (
                 <>
                   <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  Verifying…
+                  Validating…
                 </>
               ) : (
                 <>
@@ -441,7 +633,7 @@ export function MastersPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                       d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1M16 8l-4-4-4 4M12 4v12" />
                   </svg>
-                  Choose File & Verify
+                  {preview ? 'Upload New File' : 'Upload Excel File'}
                 </>
               )}
             </button>
@@ -457,59 +649,21 @@ export function MastersPage() {
                 {applying ? (
                   <>
                     <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Applying…
+                    Applying to Database…
                   </>
                 ) : (
                   <>
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1" />
                     </svg>
-                    Apply {preview.validRows} Row(s)
+                    Apply {preview.validRows} Valid Row(s) to Database
                   </>
                 )}
               </button>
             )}
           </div>
 
-          {/* Verification banner */}
-          {preview && (
-            <div className={`rounded-lg border p-4 flex items-start gap-3 ${
-              preview.errorRows > 0
-                ? 'bg-red-50 border-red-200'
-                : 'bg-green-50 border-green-200'
-            }`}>
-              {preview.errorRows > 0 ? (
-                <svg className="w-5 h-5 text-red-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                    d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-                </svg>
-              ) : (
-                <svg className="w-5 h-5 text-green-600 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              )}
-              <div>
-                <p className={`text-sm font-semibold ${preview.errorRows > 0 ? 'text-red-800' : 'text-green-800'}`}>
-                  {preview.errorRows > 0
-                    ? `${preview.errorRows} error(s) found — fix before applying`
-                    : 'File verified — ready to apply'}
-                </p>
-                <p className={`text-xs mt-0.5 ${preview.errorRows > 0 ? 'text-red-600' : 'text-green-700'}`}>
-                  {preview.totalRows} rows total &nbsp;·&nbsp; {preview.validRows} valid &nbsp;·&nbsp; {preview.errorRows} with errors
-                </p>
-                {preview.errorRows > 0 && (
-                  <p className="text-xs text-red-500 mt-1">
-                    Fix the highlighted errors in the Excel file and re-upload.
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
 
-          {/* Preview error table */}
-          {preview && preview.errorRows > 0 && (
-            <ErrorTable errors={preview.errors} />
-          )}
         </div>
       </div>
 

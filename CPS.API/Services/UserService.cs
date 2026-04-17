@@ -74,11 +74,7 @@ public class UserService : IUserService
             CreatedAt = DateTime.UtcNow
         };
 
-        // Admin = all roles
-        if (request.RoleAdmin)
-        {
-            user.RoleScanner = user.RoleMobileScanner = user.RoleMaker = user.RoleChecker = true;
-        }
+        // Save actual role values as-is (no override)
 
         await _userRepo.CreateAsync(user);
         await _audit.LogAsync("UserMaster", user.UserID.ToString(), "INSERT", null,
@@ -109,8 +105,8 @@ public class UserService : IUserService
         user.UpdatedBy = updatedBy;
         user.UpdatedAt = DateTime.UtcNow;
 
-        if (request.RoleAdmin)
-            user.RoleScanner = user.RoleMobileScanner = user.RoleMaker = user.RoleChecker = true;
+        // Save actual role values as-is (Admin/Developer don't override individual roles in database)
+        // Access control is handled at runtime - Admin/Developer get all permissions regardless of individual role flags
 
         await _userRepo.UpdateAsync(user);
         await _audit.LogAsync("UserMaster", userId.ToString(), "UPDATE", old,

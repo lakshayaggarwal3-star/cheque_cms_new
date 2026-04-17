@@ -95,12 +95,12 @@ export async function getUploadHistory(page = 1, pageSize = 20): Promise<PagedRe
   return extractData<PagedResult<MasterUploadLogDto>>(res);
 }
 
-export async function getLocationMasterData(): Promise<LocationDto[]> {
-  const res = await apiClient.get('/locations');
-  return extractData<LocationDto[]>(res);
+export async function getLocationMasterData(page = 1, pageSize = 20): Promise<PagedResult<LocationDto>> {
+  const res = await apiClient.get('/locations', { params: { page, pageSize } });
+  return extractData<PagedResult<LocationDto>>(res);
 }
 
-export async function getClientMasterData(): Promise<ClientMasterDto[]> {
-  const res = await apiClient.get('/clients/all');
-  return extractData<ClientMasterDto[]>(res);
+export async function getClientMasterData(page = 1, pageSize = 20): Promise<PagedResult<ClientMasterDto>> {
+  const res = await apiClient.get('/clients', { params: { q: '', page, pageSize } });
+  return extractData<PagedResult<ClientMasterDto>>(res);
 }

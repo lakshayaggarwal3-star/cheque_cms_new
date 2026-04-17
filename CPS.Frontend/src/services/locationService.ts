@@ -11,7 +11,8 @@ import type { LocationDto, ScannerDto } from '../types';
 
 export async function getLocations(): Promise<LocationDto[]> {
   const res = await apiClient.get('/locations');
-  return extractData<LocationDto[]>(res);
+  const data = extractData<{ items: LocationDto[] }>(res);
+  return data.items;
 }
 
 export async function getScanners(locationId: number): Promise<ScannerDto[]> {
