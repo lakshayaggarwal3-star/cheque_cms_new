@@ -73,3 +73,6 @@ desktop.ini
 *.tmp
 *.swp
 *~
+
+# ── Large data files (CSV exports) ───────────────────────────────────────────
+output_*.csv
