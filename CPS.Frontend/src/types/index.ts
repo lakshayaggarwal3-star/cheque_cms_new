@@ -128,9 +128,46 @@ export interface ScannerDto {
 }
 
 // ── Slip ──────────────────────────────────────────────────────────────────────
-export interface SlipDto {
-  slipID: number;
-  batchID: number;
+export interface SlipScanDto {
+  slipScanId: number;
+  slipEntryId: number;
+  scanOrder: number;
+  imagePath?: string;
+  scanStatus: string;
+  scanError?: string;
+  retryCount: number;
+}
+
+export interface ChequeItemDto {
+  chequeItemId: number;
+  slipEntryId: number;
+  batchId: number;
+  seqNo: number;
+  chqSeq: number;
+  chqNo?: string;
+  micrRaw?: string;
+  // Scanner MICR — raw from scanner, read-only
+  scanMICR1?: string;
+  scanMICR2?: string;
+  scanMICR3?: string;
+  scanAmount?: number;
+  // RR MICR — set during repair
+  rrmicr1?: string;
+  rrmicr2?: string;
+  rrmicr3?: string;
+  rrAmount?: number;
+  rrNotes?: string;
+  rrState: number;
+  frontImagePath?: string;
+  backImagePath?: string;
+  scanStatus: string;
+  scanError?: string;
+  retryCount: number;
+}
+
+export interface SlipEntryDto {
+  slipEntryId: number;
+  batchId: number;
   slipNo: string;
   clientCode?: string;
   clientName?: string;
@@ -140,60 +177,61 @@ export interface SlipDto {
   slipAmount: number;
   remarks?: string;
   slipStatus: number;
-  linkedCheques: number;
   createdAt: string;
   rowVersion: string;
+  slipScans: SlipScanDto[];
+  cheques: ChequeItemDto[];
+}
+
+// Keep SlipDto as alias for backward compat with any remaining references
+export type SlipDto = SlipEntryDto;
+
+export interface ScanResumeStateDto {
+  activeSlipEntryId?: number;
+  activeSlipNo?: string;
+  // "SlipEntry" | "SlipScan" | "ChequeScan" | null
+  resumeStep?: string | null;
+  nextSlipScanOrder: number;
+  nextChqSeq: number;
 }
 
 // ── Scan ──────────────────────────────────────────────────────────────────────
-export interface ScanItemDto {
-  scanID: number;
-  batchID: number;
-  seqNo: number;
-  isSlip: boolean;
-  slipID?: number;
-  imageFrontPath?: string;
-  imageBackPath?: string;
-  micrRaw?: string;
-  chqNo?: string;
-  micr1?: string;
-  micr2?: string;
-  micr3?: string;
-  scannerType: string;
-  scanStatus: string;
-  scanError?: string;
-  retryCount: number;
-  rrState: number;
-}
-
 export interface ScanSessionDto {
-  batchID: number;
+  batchId: number;
   batchNo: string;
   batchStatus: number;
   withSlip?: boolean;
   scanType: string;
   scanLockedBy?: number;
-  totalScanned: number;
-  totalSlips: number;
-  items: ScanItemDto[];
+  totalCheques: number;
+  totalSlipEntries: number;
+  totalAmount: number;
+  slipGroups: SlipEntryDto[];
+  resumeState: ScanResumeStateDto;
 }
 
 // ── RR ────────────────────────────────────────────────────────────────────────
 export interface RRItemDto {
-  scanID: number;
-  batchID: number;
+  chequeItemId: number;
+  batchId: number;
+  slipEntryId: number;
   seqNo: number;
-  isSlip: boolean;
+  chqSeq: number;
   imageFrontPath?: string;
   imageBackPath?: string;
   micrRaw?: string;
   chqNo?: string;
-  micr1?: string;
-  micr2?: string;
-  micr3?: string;
+  scanMICR1?: string;
+  scanMICR2?: string;
+  scanMICR3?: string;
+  scanAmount?: number;
+  rrmicr1?: string;
+  rrmicr2?: string;
+  rrmicr3?: string;
+  rrAmount?: number;
+  rrNotes?: string;
   rrState: number;
   rrStateLabel?: string;
-  slipID?: number;
   slipNo?: string;
   clientName?: string;
   slipAmount?: number;

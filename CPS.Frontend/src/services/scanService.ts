@@ -2,12 +2,12 @@
 // File        : scanService.ts
 // Project     : CPS — Cheque Processing System
 // Module      : Scanning
-// Description : API calls for scan session management and cheque data saving.
-// Created     : 2026-04-14
+// Description : API calls for scan session, slip scan images, and cheque capture.
+// Created     : 2026-04-17
 // =============================================================================
 
 import apiClient, { extractData } from './api';
-import type { ScanItemDto, ScanSessionDto } from '../types';
+import type { ChequeItemDto, ScanSessionDto, SlipScanDto } from '../types';
 
 export async function getScanSession(batchId: number): Promise<ScanSessionDto> {
   const res = await apiClient.get(`/scan/${batchId}`);
@@ -26,62 +26,103 @@ export async function stopFeed(batchId: number, scannerType: 'Cheque' | 'Slip'):
   await apiClient.post(`/scan/${batchId}/feed/stop`, { scannerType });
 }
 
-export async function captureScan(batchId: number, data: {
-  isSlip: boolean;
-  slipID?: number;
-  scannerType: string;
-}): Promise<ScanItemDto> {
-  const res = await apiClient.post(`/scan/${batchId}/capture`, data);
-  return extractData<ScanItemDto>(res);
+// ── Slip scan images ──────────────────────────────────────────────────────────
+
+export async function captureSlipScan(batchId: number, data: {
+  slipEntryId: number;
+  scanOrder: number;
+  scannerType?: string;
+}): Promise<SlipScanDto> {
+  const res = await apiClient.post(`/scan/${batchId}/slip-scan/capture`, {
+    ...data,
+    scannerType: data.scannerType ?? 'Document',
+  });
+  return extractData<SlipScanDto>(res);
 }
 
-export async function saveCheque(batchId: number, data: {
-  seqNo?: number;
-  isSlip?: boolean;
-  slipID?: number;
-  imageFrontPath?: string;
-  imageBackPath?: string;
+export async function uploadMobileSlipScan(batchId: number, data: {
+  slipEntryId: number;
+  scanOrder: number;
+  image: File;
+}): Promise<SlipScanDto> {
+  const formData = new FormData();
+  formData.append('slipEntryId', String(data.slipEntryId));
+  formData.append('scanOrder', String(data.scanOrder));
+  formData.append('image', data.image);
+
+  const res = await apiClient.post(`/scan/${batchId}/slip-scan/upload-mobile`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return extractData<SlipScanDto>(res);
+}
+
+// ── Cheque capture ────────────────────────────────────────────────────────────
+
+export async function captureCheque(batchId: number, data: {
+  slipEntryId: number;
+  scannerType?: string;
+}): Promise<ChequeItemDto> {
+  const res = await apiClient.post(`/scan/${batchId}/cheque/capture`, {
+    ...data,
+    scannerType: data.scannerType ?? 'Cheque',
+  });
+  return extractData<ChequeItemDto>(res);
+}
+
+export async function saveChequeItem(batchId: number, data: {
+  slipEntryId: number;
+  chqSeq: number;
   micrRaw?: string;
   chqNo?: string;
-  micr1?: string;
-  micr2?: string;
-  micr3?: string;
+  scanMICR1?: string;
+  scanMICR2?: string;
+  scanMICR3?: string;
+  scanAmount?: number;
+  frontImagePath?: string;
+  backImagePath?: string;
   scannerType?: string;
   scanType?: string;
-}): Promise<ScanItemDto> {
-  const res = await apiClient.post(`/scan/${batchId}/save-cheque`, data);
-  return extractData<ScanItemDto>(res);
+}): Promise<ChequeItemDto> {
+  const res = await apiClient.post(`/scan/${batchId}/cheque/save`, {
+    batchId,
+    ...data,
+    scannerType: data.scannerType ?? 'Cheque',
+    scanType: data.scanType ?? 'Scan',
+  });
+  return extractData<ChequeItemDto>(res);
 }
 
-export async function uploadMobileScan(batchId: number, data: {
-  isSlip: boolean;
-  slipID?: number;
-  scannerType?: string;
+export async function uploadMobileCheque(batchId: number, data: {
+  slipEntryId: number;
+  chqSeq: number;
   imageFront?: File;
   imageBack?: File;
   micrRaw?: string;
   chqNo?: string;
-  micr1?: string;
-  micr2?: string;
-  micr3?: string;
-}): Promise<ScanItemDto> {
+  scanMICR1?: string;
+  scanMICR2?: string;
+  scanMICR3?: string;
+  scanAmount?: number;
+}): Promise<ChequeItemDto> {
   const formData = new FormData();
-  formData.append('isSlip', String(data.isSlip));
-  if (data.slipID) formData.append('slipID', String(data.slipID));
-  if (data.scannerType) formData.append('scannerType', data.scannerType);
+  formData.append('slipEntryId', String(data.slipEntryId));
+  formData.append('chqSeq', String(data.chqSeq));
   if (data.imageFront) formData.append('imageFront', data.imageFront);
   if (data.imageBack) formData.append('imageBack', data.imageBack);
   if (data.micrRaw) formData.append('micrRaw', data.micrRaw);
   if (data.chqNo) formData.append('chqNo', data.chqNo);
-  if (data.micr1) formData.append('micr1', data.micr1);
-  if (data.micr2) formData.append('micr2', data.micr2);
-  if (data.micr3) formData.append('micr3', data.micr3);
+  if (data.scanMICR1) formData.append('scanMICR1', data.scanMICR1);
+  if (data.scanMICR2) formData.append('scanMICR2', data.scanMICR2);
+  if (data.scanMICR3) formData.append('scanMICR3', data.scanMICR3);
+  if (data.scanAmount != null) formData.append('scanAmount', String(data.scanAmount));
 
-  const res = await apiClient.post(`/scan/${batchId}/upload-mobile`, formData, {
+  const res = await apiClient.post(`/scan/${batchId}/cheque/upload-mobile`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
-  return extractData<ScanItemDto>(res);
+  return extractData<ChequeItemDto>(res);
 }
+
+// ── Session control ───────────────────────────────────────────────────────────
 
 export async function completeScan(batchId: number): Promise<void> {
   await apiClient.post(`/scan/${batchId}/complete`);
@@ -89,4 +130,8 @@ export async function completeScan(batchId: number): Promise<void> {
 
 export async function releaseScanLock(batchId: number): Promise<void> {
   await apiClient.post(`/scan/${batchId}/release-lock`);
+}
+
+export async function reopenBatch(batchId: number): Promise<void> {
+  await apiClient.post(`/scan/${batchId}/reopen`);
 }

@@ -2,8 +2,8 @@
 // File        : ScanDtos.cs
 // Project     : CPS — Cheque Processing System
 // Module      : Scanning
-// Description : DTOs for scan session management and cheque image/MICR data saving.
-// Created     : 2026-04-14
+// Description : DTOs for scan session management, slip scan, and cheque capture.
+// Created     : 2026-04-17
 // =============================================================================
 
 namespace CPS.API.DTOs;
@@ -20,74 +20,83 @@ public class ScannerFeedRequest
     public string ScannerType { get; set; } = "Cheque";
 }
 
-public class CaptureScanRequest
+// Capture a slip scan image for a specific SlipEntry
+public class CaptureSlipScanRequest
 {
-    public bool IsSlip { get; set; }
-    public int? SlipID { get; set; }
+    public int SlipEntryId { get; set; }
+    public int ScanOrder { get; set; } = 1;
+    public string ScannerType { get; set; } = "Document";
+}
+
+// Capture a cheque for a specific SlipEntry
+public class CaptureChequeRequest
+{
+    public int SlipEntryId { get; set; }
     public string ScannerType { get; set; } = "Cheque";
 }
 
-public class SaveChequeRequest
+public class SaveSlipScanRequest
 {
-    public long BatchID { get; set; }
-    public int SeqNo { get; set; }
-    public bool IsSlip { get; set; } = false;
-    public int? SlipID { get; set; }
-    public string? ImageFrontPath { get; set; }
-    public string? ImageBackPath { get; set; }
+    public long BatchId { get; set; }
+    public int SlipEntryId { get; set; }
+    public int ScanOrder { get; set; } = 1;
+    public string? ImagePath { get; set; }
+    public string ScannerType { get; set; } = "Document";
+}
+
+public class SaveChequeItemRequest
+{
+    public long BatchId { get; set; }
+    public int SlipEntryId { get; set; }
+    public int ChqSeq { get; set; }
     public string? MICRRaw { get; set; }
     public string? ChqNo { get; set; }
-    public string? MICR1 { get; set; }
-    public string? MICR2 { get; set; }
-    public string? MICR3 { get; set; }
+    public string? ScanMICR1 { get; set; }
+    public string? ScanMICR2 { get; set; }
+    public string? ScanMICR3 { get; set; }
+    public decimal? ScanAmount { get; set; }
+    public string? FrontImagePath { get; set; }
+    public string? BackImagePath { get; set; }
     public string ScannerType { get; set; } = "Cheque";
     public string ScanType { get; set; } = "Scan";
 }
 
-public class MobileUploadScanRequest
+public class MobileUploadSlipScanRequest
 {
-    public bool IsSlip { get; set; }
-    public int? SlipID { get; set; }
-    public string ScannerType { get; set; } = "Mobile-Camera";
+    public int SlipEntryId { get; set; }
+    public int ScanOrder { get; set; } = 1;
+    public IFormFile? Image { get; set; }
+}
+
+public class MobileUploadChequeRequest
+{
+    public int SlipEntryId { get; set; }
+    public int ChqSeq { get; set; }
     public IFormFile? ImageFront { get; set; }
     public IFormFile? ImageBack { get; set; }
     public string? MICRRaw { get; set; }
     public string? ChqNo { get; set; }
-    public string? MICR1 { get; set; }
-    public string? MICR2 { get; set; }
-    public string? MICR3 { get; set; }
-}
-
-public class ScanItemDto
-{
-    public long ScanID { get; set; }
-    public long BatchID { get; set; }
-    public int SeqNo { get; set; }
-    public bool IsSlip { get; set; }
-    public int? SlipID { get; set; }
-    public string? ImageFrontPath { get; set; }
-    public string? ImageBackPath { get; set; }
-    public string? MICRRaw { get; set; }
-    public string? ChqNo { get; set; }
-    public string? MICR1 { get; set; }
-    public string? MICR2 { get; set; }
-    public string? MICR3 { get; set; }
-    public string ScannerType { get; set; } = string.Empty;
-    public string ScanStatus { get; set; } = string.Empty;
-    public string? ScanError { get; set; }
-    public int RetryCount { get; set; }
-    public int RRState { get; set; }
+    public string? ScanMICR1 { get; set; }
+    public string? ScanMICR2 { get; set; }
+    public string? ScanMICR3 { get; set; }
+    public decimal? ScanAmount { get; set; }
 }
 
 public class ScanSessionDto
 {
-    public long BatchID { get; set; }
+    public long BatchId { get; set; }
     public string BatchNo { get; set; } = string.Empty;
     public int BatchStatus { get; set; }
     public bool? WithSlip { get; set; }
     public string ScanType { get; set; } = string.Empty;
     public int? ScanLockedBy { get; set; }
-    public int TotalScanned { get; set; }
-    public int TotalSlips { get; set; }
-    public List<ScanItemDto> Items { get; set; } = new();
+    public int TotalCheques { get; set; }
+    public int TotalSlipEntries { get; set; }
+    public decimal TotalAmount { get; set; }
+
+    // All slip entries with their nested scans and cheques (grouped display)
+    public List<SlipEntryDto> SlipGroups { get; set; } = new();
+
+    // Where to resume if session was interrupted
+    public ScanResumeStateDto ResumeState { get; set; } = new();
 }

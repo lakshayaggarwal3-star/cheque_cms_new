@@ -2,8 +2,8 @@
 // File        : IScanService.cs
 // Project     : CPS — Cheque Processing System
 // Module      : Scanning
-// Description : Service interface for scanning session management and cheque data saving.
-// Created     : 2026-04-14
+// Description : Service interface for scanning session, slip scan, and cheque capture.
+// Created     : 2026-04-17
 // =============================================================================
 
 using CPS.API.DTOs;
@@ -16,9 +16,17 @@ public interface IScanService
     Task StartScanAsync(long batchId, StartScanRequest request, int userId);
     Task StartFeedAsync(long batchId, ScannerFeedRequest request, int userId);
     Task StopFeedAsync(long batchId, ScannerFeedRequest request, int userId);
-    Task<ScanItemDto> CaptureAsync(long batchId, CaptureScanRequest request, int userId);
-    Task<ScanItemDto> UploadMobileCaptureAsync(long batchId, MobileUploadScanRequest request, int userId);
-    Task<ScanItemDto> SaveChequeAsync(SaveChequeRequest request, int userId);
+
+    // Slip scan image operations
+    Task<SlipScanDto> CaptureSlipScanAsync(long batchId, CaptureSlipScanRequest request, int userId);
+    Task<SlipScanDto> UploadMobileSlipScanAsync(long batchId, MobileUploadSlipScanRequest request, int userId);
+
+    // Cheque operations
+    Task<ChequeItemDto> CaptureChequeAsync(long batchId, CaptureChequeRequest request, int userId);
+    Task<ChequeItemDto> SaveChequeItemAsync(SaveChequeItemRequest request, int userId);
+    Task<ChequeItemDto> UploadMobileChequeAsync(long batchId, MobileUploadChequeRequest request, int userId);
+
     Task CompleteScanAsync(long batchId, int userId);
     Task ReleaseLockAsync(long batchId, int userId);
+    Task ReopenBatchAsync(long batchId, int userId);
 }

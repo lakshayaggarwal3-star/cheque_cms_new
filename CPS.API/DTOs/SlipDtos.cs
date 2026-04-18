@@ -2,16 +2,15 @@
 // File        : SlipDtos.cs
 // Project     : CPS — Cheque Processing System
 // Module      : Slip Entry
-// Description : DTOs for slip creation, update, and listing.
-// Created     : 2026-04-14
+// Description : DTOs for SlipEntry creation, update, listing, and resume state.
+// Created     : 2026-04-17
 // =============================================================================
 
 namespace CPS.API.DTOs;
 
-public class CreateSlipRequest
+public class CreateSlipEntryRequest
 {
-    public long BatchID { get; set; }
-    public string? SlipNo { get; set; } // Auto-generated if not provided (format: {ScannerID}{2-digit-seq})
+    public long BatchId { get; set; }
     public string? ClientCode { get; set; }
     public string? ClientName { get; set; }
     public string? DepositSlipNo { get; set; }
@@ -21,9 +20,8 @@ public class CreateSlipRequest
     public string? Remarks { get; set; }
 }
 
-public class UpdateSlipRequest
+public class UpdateSlipEntryRequest
 {
-    public string SlipNo { get; set; } = string.Empty;
     public string? ClientCode { get; set; }
     public string? ClientName { get; set; }
     public string? DepositSlipNo { get; set; }
@@ -34,10 +32,10 @@ public class UpdateSlipRequest
     public byte[] RowVersion { get; set; } = null!;
 }
 
-public class SlipDto
+public class SlipEntryDto
 {
-    public int SlipID { get; set; }
-    public long BatchID { get; set; }
+    public int SlipEntryId { get; set; }
+    public long BatchId { get; set; }
     public string SlipNo { get; set; } = string.Empty;
     public string? ClientCode { get; set; }
     public string? ClientName { get; set; }
@@ -47,7 +45,70 @@ public class SlipDto
     public decimal SlipAmount { get; set; }
     public string? Remarks { get; set; }
     public int SlipStatus { get; set; }
-    public int LinkedCheques { get; set; }
     public string CreatedAt { get; set; } = string.Empty;
     public byte[] RowVersion { get; set; } = null!;
+
+    // Nested scan images and cheques for grouped display
+    public List<SlipScanDto> SlipScans { get; set; } = new();
+    public List<ChequeItemDto> Cheques { get; set; } = new();
+}
+
+public class SlipScanDto
+{
+    public long SlipScanId { get; set; }
+    public int SlipEntryId { get; set; }
+    public int ScanOrder { get; set; }
+    public string? ImagePath { get; set; }
+    public string ScanStatus { get; set; } = string.Empty;
+    public string? ScanError { get; set; }
+    public int RetryCount { get; set; }
+}
+
+public class ChequeItemDto
+{
+    public long ChequeItemId { get; set; }
+    public int SlipEntryId { get; set; }
+    public long BatchId { get; set; }
+    public int SeqNo { get; set; }
+    public int ChqSeq { get; set; }
+    public string? ChqNo { get; set; }
+    public string? MICRRaw { get; set; }
+
+    // Scanner MICR (raw from hardware)
+    public string? ScanMICR1 { get; set; }
+    public string? ScanMICR2 { get; set; }
+    public string? ScanMICR3 { get; set; }
+    public decimal? ScanAmount { get; set; }
+
+    // RR MICR (after repair)
+    public string? RRMICR1 { get; set; }
+    public string? RRMICR2 { get; set; }
+    public string? RRMICR3 { get; set; }
+    public decimal? RRAmount { get; set; }
+    public string? RRNotes { get; set; }
+    public int RRState { get; set; }
+
+    public string? FrontImagePath { get; set; }
+    public string? BackImagePath { get; set; }
+    public string ScanStatus { get; set; } = string.Empty;
+    public string? ScanError { get; set; }
+    public int RetryCount { get; set; }
+}
+
+// Resume state — tells frontend exactly where the user left off
+public class ScanResumeStateDto
+{
+    // Which slip entry is currently active (incomplete or just created)
+    public int? ActiveSlipEntryId { get; set; }
+    public string? ActiveSlipNo { get; set; }
+
+    // What step was in progress when the session broke
+    // Values: "SlipEntry" | "SlipScan" | "ChequeScan" | null (fresh start)
+    public string? ResumeStep { get; set; }
+
+    // Next scan order for the active slip's slip images
+    public int NextSlipScanOrder { get; set; } = 1;
+
+    // Next cheque seq within the active slip
+    public int NextChqSeq { get; set; } = 1;
 }

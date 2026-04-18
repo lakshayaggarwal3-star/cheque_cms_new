@@ -2,8 +2,8 @@
 // File        : rrService.ts
 // Project     : CPS — Cheque Processing System
 // Module      : RR (Reject Repair)
-// Description : API calls for RR item retrieval, corrections, and completion.
-// Created     : 2026-04-14
+// Description : API calls for RR cheque item retrieval, corrections, and completion.
+// Created     : 2026-04-17
 // =============================================================================
 
 import apiClient, { extractData } from './api';
@@ -14,20 +14,31 @@ export async function getRRItems(batchId: number): Promise<RRItemDto[]> {
   return extractData<RRItemDto[]>(res);
 }
 
-export async function getRRItem(scanId: number): Promise<RRItemDto> {
-  const res = await apiClient.get(`/rr/item/${scanId}`);
+export async function getRRItem(chequeItemId: number): Promise<RRItemDto> {
+  const res = await apiClient.get(`/rr/item/${chequeItemId}`);
   return extractData<RRItemDto>(res);
 }
 
-export async function saveRRCorrection(scanId: number, data: {
+export async function saveRRCorrection(chequeItemId: number, data: {
   chqNo?: string;
-  micr1?: string;
-  micr2?: string;
-  micr3?: string;
+  rrmicr1?: string;
+  rrmicr2?: string;
+  rrmicr3?: string;
+  rrAmount?: number;
+  rrNotes?: string;
   approve?: boolean;
   rowVersion: string;
 }): Promise<RRItemDto> {
-  const res = await apiClient.put(`/rr/item/${scanId}`, data);
+  const res = await apiClient.put(`/rr/item/${chequeItemId}`, {
+    chqNo: data.chqNo,
+    RRMICR1: data.rrmicr1,
+    RRMICR2: data.rrmicr2,
+    RRMICR3: data.rrmicr3,
+    RRAmount: data.rrAmount,
+    RRNotes: data.rrNotes,
+    Approve: data.approve ?? false,
+    RowVersion: data.rowVersion,
+  });
   return extractData<RRItemDto>(res);
 }
 

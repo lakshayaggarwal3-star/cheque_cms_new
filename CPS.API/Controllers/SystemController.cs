@@ -110,20 +110,25 @@ public class SystemController : ControllerBase
         try
         {
             // Keep users + masters. Reset only operational/runtime data.
-            await _db.ScanItems.ExecuteDeleteAsync();
-            await _db.Slips.ExecuteDeleteAsync();
+            await _db.ChequeItems.ExecuteDeleteAsync();
+            await _db.SlipScans.ExecuteDeleteAsync();
+            await _db.SlipEntries.ExecuteDeleteAsync();
+            await _db.BatchSlipSequences.ExecuteDeleteAsync();
             await _db.Batches.ExecuteDeleteAsync();
             await _db.BatchSequences.ExecuteDeleteAsync();
             await _db.AuditLogs.ExecuteDeleteAsync();
             await _db.MasterUploadLogs.ExecuteDeleteAsync();
 
             // Reset identity/sequence counters so new rows start from 1 again.
-            // DBCC CHECKIDENT with RESEED 0 makes the next insert use 1 on empty tables.
             await _db.Database.ExecuteSqlRawAsync(@"
-IF EXISTS (SELECT 1 FROM sys.identity_columns WHERE object_id = OBJECT_ID(N'dbo.ScanItems'))
-    DBCC CHECKIDENT ('dbo.ScanItems', RESEED, 0);
-IF EXISTS (SELECT 1 FROM sys.identity_columns WHERE object_id = OBJECT_ID(N'dbo.Slips'))
-    DBCC CHECKIDENT ('dbo.Slips', RESEED, 0);
+IF EXISTS (SELECT 1 FROM sys.identity_columns WHERE object_id = OBJECT_ID(N'dbo.ChequeItems'))
+    DBCC CHECKIDENT ('dbo.ChequeItems', RESEED, 0);
+IF EXISTS (SELECT 1 FROM sys.identity_columns WHERE object_id = OBJECT_ID(N'dbo.SlipScans'))
+    DBCC CHECKIDENT ('dbo.SlipScans', RESEED, 0);
+IF EXISTS (SELECT 1 FROM sys.identity_columns WHERE object_id = OBJECT_ID(N'dbo.SlipEntries'))
+    DBCC CHECKIDENT ('dbo.SlipEntries', RESEED, 0);
+IF EXISTS (SELECT 1 FROM sys.identity_columns WHERE object_id = OBJECT_ID(N'dbo.BatchSlipSequences'))
+    DBCC CHECKIDENT ('dbo.BatchSlipSequences', RESEED, 0);
 IF EXISTS (SELECT 1 FROM sys.identity_columns WHERE object_id = OBJECT_ID(N'dbo.Batches'))
     DBCC CHECKIDENT ('dbo.Batches', RESEED, 0);
 IF EXISTS (SELECT 1 FROM sys.identity_columns WHERE object_id = OBJECT_ID(N'dbo.BatchSequences'))

@@ -78,6 +78,6 @@ public class Batch
     [Timestamp]
     public byte[] RowVersion { get; set; } = null!;
 
-    public ICollection<Slip> Slips { get; set; } = new List<Slip>();
-    public ICollection<ScanItem> ScanItems { get; set; } = new List<ScanItem>();
+    public ICollection<SlipEntry> SlipEntries { get; set; } = new List<SlipEntry>();
+    public ICollection<ChequeItem> ChequeItems { get; set; } = new List<ChequeItem>();
 }

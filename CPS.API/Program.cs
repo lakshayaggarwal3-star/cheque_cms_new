@@ -65,8 +65,7 @@ try
     // Repositories
     builder.Services.AddScoped<IUserRepository, UserRepository>();
     builder.Services.AddScoped<IBatchRepository, BatchRepository>();
-    builder.Services.AddScoped<ISlipRepository, SlipRepository>();
-    builder.Services.AddScoped<IScanRepository, ScanRepository>();
+    builder.Services.AddScoped<ISlipEntryRepository, SlipEntryRepository>();
     builder.Services.AddScoped<ILocationRepository, LocationRepository>();
     builder.Services.AddScoped<IClientRepository, ClientRepository>();
 

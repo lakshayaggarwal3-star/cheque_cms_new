@@ -3,7 +3,7 @@
 // Project     : CPS — Cheque Processing System
 // Module      : RR (Reject Repair)
 // Description : API endpoints for listing RR items, saving corrections, and completing RR.
-// Created     : 2026-04-14
+// Created     : 2026-04-17
 // =============================================================================
 
 using System.Security.Claims;
@@ -30,18 +30,18 @@ public class RRController : ControllerBase
         return Ok(ApiResponse<List<RRItemDto>>.Ok(items));
     }
 
-    [HttpGet("item/{scanId:long}")]
-    public async Task<IActionResult> GetItem(long scanId)
+    [HttpGet("item/{chequeItemId:long}")]
+    public async Task<IActionResult> GetItem(long chequeItemId)
     {
-        var item = await _rrService.GetRRItemAsync(scanId);
+        var item = await _rrService.GetRRItemAsync(chequeItemId);
         return Ok(ApiResponse<RRItemDto>.Ok(item));
     }
 
-    [HttpPut("item/{scanId:long}")]
-    public async Task<IActionResult> SaveCorrection(long scanId, [FromBody] SaveRRCorrectionRequest request)
+    [HttpPut("item/{chequeItemId:long}")]
+    public async Task<IActionResult> SaveCorrection(long chequeItemId, [FromBody] SaveRRCorrectionRequest request)
     {
         var userId = int.Parse(User.FindFirstValue("userId")!);
-        var result = await _rrService.SaveCorrectionAsync(scanId, request, userId);
+        var result = await _rrService.SaveCorrectionAsync(chequeItemId, request, userId);
         return Ok(ApiResponse<RRItemDto>.Ok(result));
     }
 

@@ -3,7 +3,7 @@
 // Project     : CPS — Cheque Processing System
 // Module      : RR (Reject Repair)
 // Description : Business logic for MICR error review, repair, approval, and RR completion.
-// Created     : 2026-04-14
+// Created     : 2026-04-17
 // =============================================================================
 
 using CPS.API.DTOs;
@@ -16,15 +16,15 @@ namespace CPS.API.Services;
 
 public class RRService : IRRService
 {
-    private readonly IScanRepository _scanRepo;
+    private readonly ISlipEntryRepository _slipRepo;
     private readonly IBatchRepository _batchRepo;
     private readonly IAuditService _audit;
     private readonly ILogger<RRService> _logger;
 
-    public RRService(IScanRepository scanRepo, IBatchRepository batchRepo,
+    public RRService(ISlipEntryRepository slipRepo, IBatchRepository batchRepo,
         IAuditService audit, ILogger<RRService> logger)
     {
-        _scanRepo = scanRepo;
+        _slipRepo = slipRepo;
         _batchRepo = batchRepo;
         _audit = audit;
         _logger = logger;
@@ -32,23 +32,30 @@ public class RRService : IRRService
 
     public async Task<List<RRItemDto>> GetRRItemsAsync(long batchId)
     {
-        var items = await _scanRepo.GetRRItemsAsync(batchId);
-        return items.Select(MapToDto).ToList();
+        var cheques = await _slipRepo.GetChequeItemsByBatchAsync(batchId);
+        var result = new List<RRItemDto>();
+        foreach (var c in cheques)
+        {
+            var slip = await _slipRepo.GetByIdAsync(c.SlipEntryId);
+            result.Add(MapToDto(c, slip));
+        }
+        return result;
     }
 
-    public async Task<RRItemDto> GetRRItemAsync(long scanId)
+    public async Task<RRItemDto> GetRRItemAsync(long chequeItemId)
     {
-        var item = await _scanRepo.GetByIdAsync(scanId)
-            ?? throw new NotFoundException($"Scan item {scanId} not found.");
-        return MapToDto(item);
+        var item = await _slipRepo.GetChequeItemByIdAsync(chequeItemId)
+            ?? throw new NotFoundException($"Cheque item {chequeItemId} not found.");
+        var slip = await _slipRepo.GetByIdAsync(item.SlipEntryId);
+        return MapToDto(item, slip);
     }
 
-    public async Task<RRItemDto> SaveCorrectionAsync(long scanId, SaveRRCorrectionRequest request, int userId)
+    public async Task<RRItemDto> SaveCorrectionAsync(long chequeItemId, SaveRRCorrectionRequest request, int userId)
     {
-        var item = await _scanRepo.GetByIdAsync(scanId)
-            ?? throw new NotFoundException($"Scan item {scanId} not found.");
+        var item = await _slipRepo.GetChequeItemByIdAsync(chequeItemId)
+            ?? throw new NotFoundException($"Cheque item {chequeItemId} not found.");
 
-        var old = new { item.ChqNo, item.MICR1, item.MICR2, item.MICR3, item.RRState };
+        var old = new { item.ChqNo, item.ScanMICR1, item.ScanMICR2, item.ScanMICR3, item.RRState };
 
         if (request.Approve)
         {
@@ -56,19 +63,20 @@ public class RRService : IRRService
         }
         else
         {
-            // Validate MICR fields if saving corrections
             if (!string.IsNullOrWhiteSpace(request.ChqNo) && request.ChqNo.Length != 6)
                 throw new ValidationException("Cheque number must be exactly 6 digits.");
-            if (!string.IsNullOrWhiteSpace(request.MICR1) && request.MICR1.Length != 9)
+            if (!string.IsNullOrWhiteSpace(request.RRMICR1) && request.RRMICR1.Length != 9)
                 throw new ValidationException("MICR1 must be exactly 9 digits.");
-            if (!string.IsNullOrWhiteSpace(request.MICR2) && request.MICR2.Length != 6)
+            if (!string.IsNullOrWhiteSpace(request.RRMICR2) && request.RRMICR2.Length != 6)
                 throw new ValidationException("MICR2 must be exactly 6 digits.");
 
+            // Store corrections in RR fields — never overwrite ScanMICR fields
             item.ChqNo = request.ChqNo?.Trim() ?? item.ChqNo;
-            item.MICR1 = request.MICR1?.Trim() ?? item.MICR1;
-            item.MICR2 = request.MICR2?.Trim() ?? item.MICR2;
-            item.MICR3 = request.MICR3?.Trim() ?? item.MICR3;
-            item.MICRRepairFlag = BuildRepairFlag(request);
+            item.RRMICR1 = request.RRMICR1?.Trim();
+            item.RRMICR2 = request.RRMICR2?.Trim();
+            item.RRMICR3 = request.RRMICR3?.Trim();
+            item.RRAmount = request.RRAmount;
+            item.RRNotes = request.RRNotes?.Trim();
             item.RRState = (int)RRState.Repaired;
         }
 
@@ -79,17 +87,18 @@ public class RRService : IRRService
 
         try
         {
-            await _scanRepo.UpdateAsync(item);
+            await _slipRepo.UpdateChequeItemAsync(item);
         }
         catch (DbUpdateConcurrencyException)
         {
             throw new ConflictException("Item was modified by another user. Refresh and try again.");
         }
 
-        await _audit.LogAsync("ScanItems", scanId.ToString(), "UPDATE", old,
-            new { item.ChqNo, item.MICR1, item.MICR2, item.RRState }, userId);
+        await _audit.LogAsync("ChequeItems", chequeItemId.ToString(), "UPDATE", old,
+            new { item.ChqNo, item.RRMICR1, item.RRMICR2, item.RRState }, userId);
 
-        return MapToDto(item);
+        var slip = await _slipRepo.GetByIdAsync(item.SlipEntryId);
+        return MapToDto(item, slip);
     }
 
     public async Task CompleteRRAsync(long batchId, int userId)
@@ -97,7 +106,7 @@ public class RRService : IRRService
         var batch = await _batchRepo.GetByIdAsync(batchId)
             ?? throw new NotFoundException($"Batch {batchId} not found.");
 
-        if (!await _scanRepo.AllRRResolvedAsync(batchId))
+        if (!await _slipRepo.AllRRResolvedAsync(batchId))
             throw new ValidationException("Not all items have been reviewed. Complete all RR items first.");
 
         batch.BatchStatus = (int)BatchStatus.RRCompleted;
@@ -114,17 +123,7 @@ public class RRService : IRRService
             new { BatchStatus = (int)BatchStatus.RRCompleted }, userId);
     }
 
-    private static string BuildRepairFlag(SaveRRCorrectionRequest r)
-    {
-        var flags = new List<string>();
-        if (!string.IsNullOrWhiteSpace(r.ChqNo)) flags.Add("CHQ");
-        if (!string.IsNullOrWhiteSpace(r.MICR1)) flags.Add("M1");
-        if (!string.IsNullOrWhiteSpace(r.MICR2)) flags.Add("M2");
-        if (!string.IsNullOrWhiteSpace(r.MICR3)) flags.Add("M3");
-        return string.Join(",", flags);
-    }
-
-    private static RRItemDto MapToDto(ScanItem i)
+    private static RRItemDto MapToDto(ChequeItem c, SlipEntry? slip)
     {
         var stateLabels = new Dictionary<int, string>
         {
@@ -132,25 +131,31 @@ public class RRService : IRRService
         };
         return new RRItemDto
         {
-            ScanID = i.ScanID,
-            BatchID = i.BatchID,
-            SeqNo = i.SeqNo,
-            IsSlip = i.IsSlip,
-            ImageFrontPath = i.ImageFrontPath,
-            ImageBackPath = i.ImageBackPath,
-            MICRRaw = i.MICRRaw,
-            ChqNo = i.ChqNo,
-            MICR1 = i.MICR1,
-            MICR2 = i.MICR2,
-            MICR3 = i.MICR3,
-            RRState = i.RRState,
-            RRStateLabel = stateLabels.TryGetValue(i.RRState, out var lbl) ? lbl : "Unknown",
-            SlipID = i.SlipID,
-            SlipNo = i.Slip?.SlipNo,
-            ClientName = i.Slip?.ClientName,
-            SlipAmount = i.Slip?.SlipAmount,
-            TotalInstruments = i.Slip?.TotalInstruments,
-            RowVersion = i.RowVersion
+            ChequeItemId = c.ChequeItemId,
+            BatchId = c.BatchId,
+            SlipEntryId = c.SlipEntryId,
+            SeqNo = c.SeqNo,
+            ChqSeq = c.ChqSeq,
+            ImageFrontPath = c.FrontImagePath,
+            ImageBackPath = c.BackImagePath,
+            MICRRaw = c.MICRRaw,
+            ChqNo = c.ChqNo,
+            ScanMICR1 = c.ScanMICR1,
+            ScanMICR2 = c.ScanMICR2,
+            ScanMICR3 = c.ScanMICR3,
+            ScanAmount = c.ScanAmount,
+            RRMICR1 = c.RRMICR1,
+            RRMICR2 = c.RRMICR2,
+            RRMICR3 = c.RRMICR3,
+            RRAmount = c.RRAmount,
+            RRNotes = c.RRNotes,
+            RRState = c.RRState,
+            RRStateLabel = stateLabels.TryGetValue(c.RRState, out var lbl) ? lbl : "Unknown",
+            SlipNo = slip?.SlipNo,
+            ClientName = slip?.ClientName,
+            SlipAmount = slip?.SlipAmount,
+            TotalInstruments = slip?.TotalInstruments,
+            RowVersion = c.RowVersion
         };
     }
 }

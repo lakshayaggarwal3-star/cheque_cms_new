@@ -57,7 +57,7 @@ export function Layout() {
           <div>{user?.locationName}</div>
         </div>
 
-        <nav className="flex-1 p-2 space-y-1">
+        <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
           {navLinks.map(({ to, label, icon, role }) => {
             if (role && !user?.roles.includes(role) && !user?.roles.includes('Admin') && !user?.roles.includes('Developer'))
               return null;

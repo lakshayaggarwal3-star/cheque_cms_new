@@ -21,10 +21,11 @@ public class CpsDbContext : DbContext
     public DbSet<LocationFinance> LocationFinances { get; set; }
     public DbSet<ClientMaster> Clients { get; set; }
     public DbSet<BatchSequence> BatchSequences { get; set; }
-    public DbSet<SlipSequence> SlipSequences { get; set; }
+    public DbSet<BatchSlipSequence> BatchSlipSequences { get; set; }
     public DbSet<Batch> Batches { get; set; }
-    public DbSet<Slip> Slips { get; set; }
-    public DbSet<ScanItem> ScanItems { get; set; }
+    public DbSet<SlipEntry> SlipEntries { get; set; }
+    public DbSet<SlipScan> SlipScans { get; set; }
+    public DbSet<ChequeItem> ChequeItems { get; set; }
     public DbSet<MasterUploadLog> MasterUploadLogs { get; set; }
     public DbSet<AppSetting> AppSettings { get; set; }
     public DbSet<AuditLog> AuditLogs { get; set; }
@@ -51,7 +52,7 @@ public class CpsDbContext : DbContext
         modelBuilder.Entity<UserLocationHistory>()
             .HasIndex(h => new { h.UserID, h.AssignedDate });
 
-        // ClientMaster: indexes for searching (non-unique — multiple records per code/city allowed)
+        // ClientMaster: indexes for searching
         modelBuilder.Entity<ClientMaster>()
             .HasIndex(c => c.RCMSCode);
         modelBuilder.Entity<ClientMaster>()
@@ -63,11 +64,9 @@ public class CpsDbContext : DbContext
             .IsUnique()
             .HasFilter("[ScannerMappingID] IS NOT NULL");
 
-        // SlipSequence: unique per date+location+scanner
-        modelBuilder.Entity<SlipSequence>()
-            .HasIndex(s => new { s.SlipDate, s.LocationID, s.ScannerMappingID })
-            .IsUnique()
-            .HasFilter("[ScannerMappingID] IS NOT NULL");
+        // BatchSlipSequence: one row per batch
+        modelBuilder.Entity<BatchSlipSequence>()
+            .HasIndex(s => s.BatchId).IsUnique();
 
         // Batch
         modelBuilder.Entity<Batch>()
@@ -79,21 +78,43 @@ public class CpsDbContext : DbContext
         modelBuilder.Entity<Batch>()
             .Property(b => b.TotalAmount).HasColumnType("decimal(15,3)");
 
-        // Slip: unique SlipNo within batch
-        modelBuilder.Entity<Slip>()
-            .HasIndex(s => s.BatchID);
-        modelBuilder.Entity<Slip>()
-            .HasIndex(s => new { s.BatchID, s.SlipNo }).IsUnique();
-        modelBuilder.Entity<Slip>()
+        // SlipEntry: unique SlipNo within batch
+        modelBuilder.Entity<SlipEntry>()
+            .HasIndex(s => s.BatchId);
+        modelBuilder.Entity<SlipEntry>()
+            .HasIndex(s => new { s.BatchId, s.SlipNo }).IsUnique();
+        modelBuilder.Entity<SlipEntry>()
             .Property(s => s.SlipAmount).HasColumnType("decimal(15,3)");
 
-        // ScanItems
-        modelBuilder.Entity<ScanItem>()
-            .HasIndex(s => s.BatchID);
-        modelBuilder.Entity<ScanItem>()
-            .HasIndex(s => new { s.BatchID, s.SeqNo });
-        modelBuilder.Entity<ScanItem>()
-            .HasIndex(s => s.SlipID);
+        // SlipScan: no cascade from SlipEntry (avoids multi-path cascade via Batch)
+        modelBuilder.Entity<SlipScan>()
+            .HasOne(s => s.SlipEntry)
+            .WithMany(e => e.SlipScans)
+            .HasForeignKey(s => s.SlipEntryId)
+            .OnDelete(DeleteBehavior.NoAction);
+        modelBuilder.Entity<SlipScan>()
+            .HasIndex(s => s.SlipEntryId);
+        modelBuilder.Entity<SlipScan>()
+            .HasIndex(s => new { s.SlipEntryId, s.ScanOrder });
+
+        // ChequeItem: no cascade from SlipEntry (avoids multi-path cascade via Batch)
+        modelBuilder.Entity<ChequeItem>()
+            .HasOne(c => c.SlipEntry)
+            .WithMany(e => e.ChequeItems)
+            .HasForeignKey(c => c.SlipEntryId)
+            .OnDelete(DeleteBehavior.NoAction);
+        modelBuilder.Entity<ChequeItem>()
+            .HasIndex(c => c.BatchId);
+        modelBuilder.Entity<ChequeItem>()
+            .HasIndex(c => c.SlipEntryId);
+        modelBuilder.Entity<ChequeItem>()
+            .HasIndex(c => new { c.BatchId, c.SeqNo });
+        modelBuilder.Entity<ChequeItem>()
+            .HasIndex(c => new { c.SlipEntryId, c.ChqSeq });
+        modelBuilder.Entity<ChequeItem>()
+            .Property(c => c.ScanAmount).HasColumnType("decimal(15,3)");
+        modelBuilder.Entity<ChequeItem>()
+            .Property(c => c.RRAmount).HasColumnType("decimal(15,3)");
 
         // AppSettings: unique key
         modelBuilder.Entity<AppSetting>()

@@ -13,7 +13,7 @@ namespace CPS.API.Services;
 public interface IRRService
 {
     Task<List<RRItemDto>> GetRRItemsAsync(long batchId);
-    Task<RRItemDto> GetRRItemAsync(long scanId);
-    Task<RRItemDto> SaveCorrectionAsync(long scanId, SaveRRCorrectionRequest request, int userId);
+    Task<RRItemDto> GetRRItemAsync(long chequeItemId);
+    Task<RRItemDto> SaveCorrectionAsync(long chequeItemId, SaveRRCorrectionRequest request, int userId);
     Task CompleteRRAsync(long batchId, int userId);
 }

@@ -2,315 +2,393 @@
 // File        : ScanPage.tsx
 // Project     : CPS — Cheque Processing System
 // Module      : Scanning
-// Description : Scanning screen with slip/cheque mode, image preview, and MICR data entry.
-// Created     : 2026-04-14
+// Description : Scanning screen with slip entry → slip scan → cheque scan flow and resume support.
+// Created     : 2026-04-17
 // =============================================================================
 
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, type ReactNode } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { captureScan, completeScan, getScanSession, releaseScanLock, startFeed, startScan, stopFeed, uploadMobileScan } from '../services/scanService';
+import {
+  captureSlipScan, captureCheque, completeScan, getScanSession,
+  releaseScanLock, startFeed, startScan, stopFeed, uploadMobileCheque, uploadMobileSlipScan,
+} from '../services/scanService';
 import { getBatch } from '../services/batchService';
 import { useAuthStore } from '../store/authStore';
 import { toast } from '../store/toastStore';
 import { getImageUrl } from '../utils/imageUtils';
-import { BatchStatus, ScanItemDto, ScanSessionDto } from '../types';
+import { BatchStatus, type ChequeItemDto, type ScanSessionDto, type SlipEntryDto, type SlipScanDto } from '../types';
 import { SlipFormModal } from '../components/SlipFormModal';
 import { useSettingsStore } from '../store/settingsStore';
-import { getSlipsByBatch } from '../services/slipService';
-import { rangerEnableOptions, rangerGetCaptureData, rangerPrepareToChangeOptions, rangerSetImagingOptions, rangerShutdown, rangerStartFeeding, rangerStartup, rangerStopFeeding } from '../services/rangerWebService';
+import {
+  rangerEnableOptions, rangerGetCaptureData, rangerPrepareToChangeOptions,
+  rangerSetImagingOptions, rangerShutdown, rangerStartFeeding, rangerStartup, rangerStopFeeding,
+} from '../services/rangerWebService';
+import { CameraCapture } from '../components/CameraCapture';
+import { RangerFeedControl } from '../components/RangerFeedControl';
+import { ImageEditModal } from '../components/ImageEditModal';
 
-/** One-time default Slip/Cheque per batch (survives React Strict Mode remounts; never reset by loadSession after capture). */
-const initialScanTargetAppliedBatchIds = new Set<number>();
+// Scan step values
+type ScanStep = 'SlipEntry' | 'SlipScan' | 'ChequeScan';
+type EditableImageTarget = 'slip-front' | 'cheque-front' | 'cheque-back';
+
+const sessionInitBatchIds = new Set<number>();
 
 export function ScanPage() {
   const { batchId } = useParams<{ batchId: string }>();
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const { mockScanEnabled } = useSettingsStore();
+  const id = parseInt(batchId!);
+
   const [session, setSession] = useState<ScanSessionDto | null>(null);
   const [batchDetails, setBatchDetails] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [showStartModal, setShowStartModal] = useState(false);
-  const [startStep, setStartStep] = useState<'scanType' | 'slipMode'>('scanType');
-  const [selectedScanType, setSelectedScanType] = useState<'Scan' | 'Rescan'>('Scan');
+
+  // Modal / step state
   const [showSlipForm, setShowSlipForm] = useState(false);
-  const [slipCreated, setSlipCreated] = useState(false);
-  /** Current slip entry in the batch — slip + cheque scans link to this ID in the API. */
-  const [activeSlipId, setActiveSlipId] = useState<number | null>(null);
-  const [scanTarget, setScanTarget] = useState<'Cheque' | 'Slip'>('Cheque');
-  const [pickupPointCode, setPickupPointCode] = useState('');
+
+  // Active slip being worked on
+  const [activeSlipEntryId, setActiveSlipEntryId] = useState<number | null>(null);
+  const [activeSlipNo, setActiveSlipNo] = useState<string>('');
+  const [nextSlipScanOrder, setNextSlipScanOrder] = useState(1);
+  const [nextChqSeq, setNextChqSeq] = useState(1);
+  
+  // Track if a new slip entry has been saved after clicking "New Slip"
+  const [newSlipSaved, setNewSlipSaved] = useState(false);
+
+  // Current scan step
+  const [scanStep, setScanStep] = useState<ScanStep>('SlipEntry');
+  const scanStepRef = useRef<ScanStep>('SlipEntry');
+  scanStepRef.current = scanStep;
+
+  // Scanner state
   const [scannerChoice, setScannerChoice] = useState<'Ranger' | 'Document' | null>(null);
-  const [slipSide, setSlipSide] = useState<'Front' | 'Back' | 'Both'>('Both');
   const [scanRoundActive, setScanRoundActive] = useState(false);
   const [feedRunning, setFeedRunning] = useState<{ Cheque: boolean; Slip: boolean }>({ Cheque: false, Slip: false });
+
+  // Preview
   const [mockPreview, setMockPreview] = useState<{ front: string; back: string } | null>(null);
-  const [currentItem, setCurrentItem] = useState<ScanItemDto | null>(null);
+  const [currentSlipScan, setCurrentSlipScan] = useState<SlipScanDto | null>(null);
+  const [currentCheque, setCurrentCheque] = useState<ChequeItemDto | null>(null);
+  
+  // Camera capture state for mock mode
+  const [frontFile, setFrontFile] = useState<File | null>(null);
+  const [backFile, setBackFile] = useState<File | null>(null);
+  const [frontPreview, setFrontPreview] = useState<string | null>(null);
+  const [backPreview, setBackPreview] = useState<string | null>(null);
+  const [editorState, setEditorState] = useState<{ file: File; target: EditableImageTarget; title: string } | null>(null);
+
   const [completing, setCompleting] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
-  /** Always read current Slip/Cheque in async capture (avoids stale state after await loadSession). */
-  const scanTargetRef = useRef(scanTarget);
-  scanTargetRef.current = scanTarget;
+  const [pickupPointCode, setPickupPointCode] = useState('');
+  const [showStartModal, setShowStartModal] = useState(false);
 
-  const id = parseInt(batchId!);
+  // ─── Helpers ──────────────────────────────────────────────────────────────
 
-  const hasSlipScanForActiveSlip =
-    !!activeSlipId &&
-    !!session?.items.some((i) => i.isSlip && i.slipID === activeSlipId);
-  const hasChequeScanForActiveSlip =
-    !!activeSlipId &&
-    !!session?.items.some((i) => !i.isSlip && i.slipID === activeSlipId);
-  /** After at least one slip page + one cheque for this slip entry, user may add another slip entry (top button). */
-  const showNewSlipEntry =
-    !!session?.withSlip && slipCreated && hasSlipScanForActiveSlip && hasChequeScanForActiveSlip;
-
-  const controlsVisible =
-    (scanTarget === 'Cheque' || scannerChoice !== null) && scanRoundActive;
-  const canCaptureOrComplete =
-    controlsVisible &&
-    !feedRunning.Cheque &&
-    !feedRunning.Slip &&
-    !(session?.withSlip && scanTarget === 'Slip' && !slipCreated) &&
-    !(session?.withSlip && !activeSlipId);
-
-  const makeMockImage = (doc: 'Cheque' | 'Slip', side: 'Front' | 'Back') => {
-    const text = `${doc} ${side} Image`;
-    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='1200' height='700'><rect width='100%' height='100%' fill='${side === 'Front' ? '#e7f0ff' : '#f3f4f6'}'/><rect x='40' y='40' width='1120' height='620' rx='16' fill='white' stroke='#94a3b8' stroke-width='3'/><text x='600' y='340' text-anchor='middle' font-family='Arial' font-size='40' fill='#1f2937'>${text}</text><text x='600' y='390' text-anchor='middle' font-family='Arial' font-size='24' fill='#6b7280'>Developer Mock Preview</text></svg>`;
+  const makeMockImage = (doc: string, side: string) => {
+    const text = `${doc} ${side}`;
+    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='1200' height='700'><rect width='100%' height='100%' fill='${side === 'Front' ? '#e7f0ff' : '#f3f4f6'}'/><rect x='40' y='40' width='1120' height='620' rx='16' fill='white' stroke='#94a3b8' stroke-width='3'/><text x='600' y='340' text-anchor='middle' font-family='Arial' font-size='40' fill='#1f2937'>${text}</text><text x='600' y='390' text-anchor='middle' font-family='Arial' font-size='24' fill='#6b7280'>Developer Mock</text></svg>`;
     return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
   };
 
-  const toImageSrc = (rawPath?: string, fallback?: string) => {
-    if (!rawPath) return fallback;
-    if (rawPath.startsWith('data:')) return rawPath;
-    return getImageUrl(rawPath);
+  const toImageSrc = (path?: string, fallback?: string) => {
+    if (!path) return fallback;
+    if (path.startsWith('data:')) return path;
+    return getImageUrl(path);
   };
 
-  const base64ToFile = (base64: string, fileName: string): File | undefined => {
+  const base64ToFile = (base64: string, name: string): File | undefined => {
     if (!base64) return undefined;
-    const mimeMatch = base64.match(/^data:(.*?);base64,/);
-    const mime = mimeMatch?.[1] ?? 'image/jpeg';
+    const mime = base64.match(/^data:(.*?);base64,/)?.[1] ?? 'image/jpeg';
     const data = base64.includes(',') ? base64.split(',')[1] : base64;
-    const binary = atob(data);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-    return new File([bytes], fileName, { type: mime });
+    const bytes = new Uint8Array(atob(data).split('').map(c => c.charCodeAt(0)));
+    return new File([bytes], name, { type: mime });
   };
+
+  const clearCameraFiles = () => {
+    if (frontPreview) URL.revokeObjectURL(frontPreview);
+    if (backPreview) URL.revokeObjectURL(backPreview);
+    setFrontFile(null);
+    setBackFile(null);
+    setFrontPreview(null);
+    setBackPreview(null);
+  };
+
+  const openImageEditor = (file: File, target: EditableImageTarget) => {
+    const titleMap: Record<EditableImageTarget, string> = {
+      'slip-front': 'Edit slip image',
+      'cheque-front': 'Edit cheque front image',
+      'cheque-back': 'Edit cheque back image',
+    };
+    setEditorState({ file, target, title: titleMap[target] });
+  };
+
+  const applyEditedImage = (target: EditableImageTarget, file: File, previewUrl: string) => {
+    if (target === 'slip-front' || target === 'cheque-front') {
+      if (frontPreview) URL.revokeObjectURL(frontPreview);
+      setFrontFile(file);
+      setFrontPreview(previewUrl);
+      return;
+    }
+
+    if (backPreview) URL.revokeObjectURL(backPreview);
+    setBackFile(file);
+    setBackPreview(previewUrl);
+  };
+
+  // ─── Session load ─────────────────────────────────────────────────────────
 
   const loadSession = useCallback(async () => {
     try {
       const [s, batch] = await Promise.all([getScanSession(id), getBatch(id)]);
-      console.log('ScanPage loadSession:', { 
-        scanType: s.scanType, 
-        withSlip: s.withSlip, 
-        batchStatus: s.batchStatus,
-        needsConfig: !s.scanType || s.withSlip === null || s.withSlip === undefined
-      });
       setSession(s);
       setBatchDetails(batch);
       setPickupPointCode(batch.pickupPointCode ?? '');
-      if (s.withSlip && s.items.some(i => i.isSlip)) setSlipCreated(true);
-      if (s.withSlip) {
-        try {
-          const slips = await getSlipsByBatch(id);
-          if (slips.length) {
-            const latest = slips.reduce((a, b) => (a.slipID >= b.slipID ? a : b));
-            setActiveSlipId(latest.slipID);
-          }
-        } catch {
-          /* keep activeSlipId */
-        }
+
+      // Restore resume state from backend
+      const rs = s.resumeState;
+      if (rs.activeSlipEntryId) {
+        setActiveSlipEntryId(rs.activeSlipEntryId);
+        setActiveSlipNo(rs.activeSlipNo ?? '');
+        setNextSlipScanOrder(rs.nextSlipScanOrder);
+        setNextChqSeq(rs.nextChqSeq);
       }
-      // Only show start modal if batch status is Created/ScanningPending AND scanType/withSlip are not set
-      const needsScanConfig = !s.scanType || s.withSlip === null || s.withSlip === undefined;
-      if ((s.batchStatus === BatchStatus.Created || s.batchStatus === BatchStatus.ScanningPending) && needsScanConfig) {
-        console.log('Showing start modal - needs config');
-        setShowStartModal(true);
-        setStartStep('scanType');
-      } else if ((s.batchStatus === BatchStatus.Created || s.batchStatus === BatchStatus.ScanningPending) && !needsScanConfig) {
-        console.log('Skipping modal - config exists, auto-starting scan session');
-        // If scan config is already set but batch is not locked, auto-start the scan session
-        try {
-          await startScan(id, s.withSlip!, s.scanType);
-          console.log('Auto-start successful, reloading session');
-          // Reload session to get updated status
-          const updatedSession = await getScanSession(id);
-          setSession(updatedSession);
-          
-          // Initialize the scanning UI
-          setSelectedScanType((updatedSession.scanType as 'Scan' | 'Rescan') || 'Scan');
-          if (updatedSession.withSlip) {
-            setSlipCreated(false);
-            setActiveSlipId(null);
-            setScanTarget('Slip');
-          } else {
-            setSlipCreated(true);
-            setScanTarget('Cheque');
-            setScannerChoice('Ranger');
-          }
-        } catch (err: any) {
-          console.error('Auto-start failed:', err);
-          // If auto-start fails (e.g., locked by another user), show the modal
-          toast.error(err?.response?.data?.message ?? 'Failed to auto-start scan session');
-          setShowStartModal(true);
-          setStartStep('scanType');
-        }
-      }
-    } catch (err) {
-      console.error('loadSession error:', err);
+    } catch {
       toast.error('Failed to load scan session');
     } finally {
       setLoading(false);
     }
   }, [id]);
 
+  // On mount: load session, determine initial step
   useEffect(() => {
-    if (!session) return;
-    if (Number(session.batchID) !== id) return;
-    if (initialScanTargetAppliedBatchIds.has(id)) return;
-    initialScanTargetAppliedBatchIds.add(id);
-    setScanTarget(session.withSlip ? 'Slip' : 'Cheque');
-  }, [session, id]);
+    const init = async () => {
+      try {
+        const [s, batch] = await Promise.all([getScanSession(id), getBatch(id)]);
+        setSession(s);
+        setBatchDetails(batch);
+        setPickupPointCode(batch.pickupPointCode ?? '');
 
-  useEffect(() => {
-    loadSession();
-    // Release lock on unmount (navigating away)
+        const isStartable =
+          s.batchStatus === BatchStatus.Created || s.batchStatus === BatchStatus.ScanningPending;
+
+        if (isStartable) {
+          // Re-acquire lock silently (resume)
+          try {
+            await startScan(id, s.withSlip!, s.scanType);
+            const fresh = await getScanSession(id);
+            setSession(fresh);
+            applyResumeState(fresh, s.withSlip!);
+          } catch (err: any) {
+            toast.error(err?.response?.data?.message ?? 'Failed to resume scan session');
+            setShowStartModal(true);
+          }
+        } else {
+          // Batch is in progress / locked — just display
+          const rs = s.resumeState;
+          if (rs.activeSlipEntryId) {
+            setActiveSlipEntryId(rs.activeSlipEntryId);
+            setActiveSlipNo(rs.activeSlipNo ?? '');
+            setNextSlipScanOrder(rs.nextSlipScanOrder);
+            setNextChqSeq(rs.nextChqSeq);
+            setScanStep(rs.resumeStep as ScanStep ?? 'ChequeScan');
+          }
+        }
+      } catch {
+        toast.error('Failed to load scan session');
+      } finally {
+        setLoading(false);
+      }
+    };
+    init();
     return () => {
       releaseScanLock(id).catch(() => {});
       rangerShutdown().catch(() => {});
     };
-  }, [id, loadSession]);
+  }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleStart = async (withSlip: boolean) => {
-    try {
-      await startScan(id, withSlip, selectedScanType);
-      setShowStartModal(false);
-      setScannerChoice(null);
-      setScanRoundActive(false);
-      setFeedRunning({ Cheque: false, Slip: false });
-      setMockPreview(null);
-      if (withSlip) {
-        setSlipCreated(false);
-        setActiveSlipId(null);
-        setScanTarget('Slip');
-        setShowSlipForm(true);
-      } else {
-        setSlipCreated(true);
-        setScanTarget('Cheque');
-        setScannerChoice('Ranger');
-      }
-      await loadSession();
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? 'Failed to start scanning');
+  const applyResumeState = (s: ScanSessionDto, withSlip: boolean) => {
+    const rs = s.resumeState;
+    if (!sessionInitBatchIds.has(id)) {
+      sessionInitBatchIds.add(id);
+    }
+    if (rs.activeSlipEntryId) {
+      setActiveSlipEntryId(rs.activeSlipEntryId);
+      setActiveSlipNo(rs.activeSlipNo ?? '');
+      setNextSlipScanOrder(rs.nextSlipScanOrder);
+      setNextChqSeq(rs.nextChqSeq);
+      const step = (rs.resumeStep as ScanStep) ?? 'SlipEntry';
+      setScanStep(step);
+      if (step === 'ChequeScan') setScannerChoice('Ranger');
+    } else {
+      setScanStep('SlipEntry');
+      setShowSlipForm(true);
     }
   };
 
-  const handleStartFeed = async (scannerType: 'Cheque' | 'Slip') => {
+
+  // ─── Feed controls ────────────────────────────────────────────────────────
+
+  const handleStartFeed = async (type: 'Cheque' | 'Slip') => {
     setIsBusy(true);
     try {
       if (scannerChoice === 'Ranger') {
         await rangerStartup();
         await rangerEnableOptions();
-        await rangerSetImagingOptions({
-          needImaging: true,
-          needFrontGrayscale: true,
-          needRearGrayscale: true,
-        });
-        const feedType = scannerType === 'Slip' ? 2 : 0;
-        await rangerStartFeeding(feedType, 0);
+        await rangerSetImagingOptions({ needImaging: true, needFrontGrayscale: true, needRearGrayscale: true });
+        await rangerStartFeeding(type === 'Slip' ? 2 : 0, 0);
       } else {
-        await startFeed(id, scannerType);
+        await startFeed(id, type);
       }
-      setFeedRunning(prev => ({ ...prev, [scannerType]: true }));
-      toast.success(`${scannerType} feed started`);
+      setFeedRunning(p => ({ ...p, [type]: true }));
     } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? `Failed to start ${scannerType} feed`);
+      toast.error(err?.response?.data?.message ?? `Failed to start ${type} feed`);
     } finally {
       setIsBusy(false);
     }
   };
 
-  const handleStopFeed = async (scannerType: 'Cheque' | 'Slip') => {
+  const handleStopFeed = async (type: 'Cheque' | 'Slip') => {
     setIsBusy(true);
     try {
-      if (scannerChoice === 'Ranger') {
-        await rangerStopFeeding();
-      } else {
-        await stopFeed(id, scannerType);
-      }
-      setFeedRunning(prev => ({ ...prev, [scannerType]: false }));
-      toast.success(`${scannerType} feed stopped`);
+      if (scannerChoice === 'Ranger') await rangerStopFeeding();
+      else await stopFeed(id, type);
+      setFeedRunning(p => ({ ...p, [type]: false }));
     } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? `Failed to stop ${scannerType} feed`);
+      toast.error(err?.response?.data?.message ?? `Failed to stop ${type} feed`);
     } finally {
       setIsBusy(false);
     }
   };
 
-  const handleCapture = async (force?: boolean) => {
-    const isSlip = scanTargetRef.current === 'Slip';
-    if (!force && !canCaptureOrComplete) return;
+  // Stop Ranger feed AND auto-capture — single action for bulk cheque scanning
+  const handleRangerStopAndCapture = async () => {
+    if (!activeSlipEntryId) return;
     setIsBusy(true);
     try {
-      const item = scannerChoice === 'Ranger'
-        ? await (async () => {
-            const capture = rangerGetCaptureData(isSlip ? slipSide : 'Both');
-            const frontFile = base64ToFile(capture.frontBase64, `${isSlip ? 'slip' : 'cheque'}-front.jpg`);
-            const backFile = base64ToFile(capture.backBase64, `${isSlip ? 'slip' : 'cheque'}-back.jpg`);
-            return uploadMobileScan(id, {
-              isSlip,
-              slipID: session?.withSlip && activeSlipId ? activeSlipId : undefined,
-              scannerType: isSlip
-                ? `Ranger-Web-Slip-${slipSide}`
-                : 'Ranger-Web-Cheque-Both',
-              imageFront: frontFile,
-              imageBack: backFile,
-              micrRaw: capture.micrRaw || undefined,
-            });
-          })()
-        : await captureScan(id, {
-            isSlip,
-            slipID: session?.withSlip && activeSlipId ? activeSlipId : undefined,
-            scannerType: isSlip
-              ? `${scannerChoice ?? 'Ranger'}-Slip-${slipSide}`
-              : 'Ranger-Cheque-Both',
-          });
-      setCurrentItem(item);
-      if (mockScanEnabled && user?.isDeveloper) {
-        const frontOnly = isSlip && slipSide === 'Front';
-        const backOnly = isSlip && slipSide === 'Back';
-        setMockPreview({
-          front: backOnly ? '' : makeMockImage(isSlip ? 'Slip' : 'Cheque', 'Front'),
-          back: frontOnly ? '' : makeMockImage(isSlip ? 'Slip' : 'Cheque', 'Back'),
-        });
-      } else {
-        setMockPreview(null);
-      }
+      await rangerStopFeeding();
+      setFeedRunning(p => ({ ...p, Cheque: false }));
+      await rangerPrepareToChangeOptions();
+      const capture = rangerGetCaptureData('Both');
+      const front = base64ToFile(capture.frontBase64, 'cheque-front.jpg');
+      const back = base64ToFile(capture.backBase64, 'cheque-back.jpg');
+      const result = await uploadMobileCheque(id, {
+        slipEntryId: activeSlipEntryId,
+        chqSeq: nextChqSeq,
+        imageFront: front,
+        imageBack: back,
+        micrRaw: capture.micrRaw || undefined,
+      });
+      setCurrentCheque(result);
+      setNextChqSeq(s => s + 1);
       await loadSession();
-      toast.success(isSlip ? 'Slip captured' : 'Cheque captured');
+      toast.success('Cheque captured from Ranger');
     } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? 'Capture failed');
+      toast.error(err?.response?.data?.message ?? 'Failed to stop/capture Ranger feed');
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  // ─── Capture ──────────────────────────────────────────────────────────────
+
+  const handleCaptureSlipScan = async () => {
+    if (!activeSlipEntryId) return;
+    setIsBusy(true);
+    try {
+      let result: SlipScanDto;
+      
+      // Mock mode with camera: use captured file
+      if (user?.isDeveloper && mockScanEnabled && frontFile) {
+        result = await uploadMobileSlipScan(id, {
+          slipEntryId: activeSlipEntryId,
+          scanOrder: nextSlipScanOrder,
+          image: frontFile,
+        });
+        clearCameraFiles();
+      } else {
+        // Real scanner or mock without camera
+        result = await captureSlipScan(id, {
+          slipEntryId: activeSlipEntryId,
+          scanOrder: nextSlipScanOrder,
+          scannerType: 'Document',
+        });
+        if (mockScanEnabled && user?.isDeveloper) {
+          setMockPreview({ front: makeMockImage('Slip', 'Front'), back: '' });
+        }
+      }
+      
+      setCurrentSlipScan(result);
+      setNextSlipScanOrder(o => o + 1);
+      await loadSession();
+      toast.success('Slip scan captured');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? 'Slip scan capture failed');
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const handleCaptureChecque = async () => {
+    if (!activeSlipEntryId) return;
+    setIsBusy(true);
+    try {
+      let result: ChequeItemDto;
+      
+      // Mock mode with camera: use captured files
+      if (user?.isDeveloper && mockScanEnabled && (frontFile || backFile)) {
+        result = await uploadMobileCheque(id, {
+          slipEntryId: activeSlipEntryId,
+          chqSeq: nextChqSeq,
+          imageFront: frontFile ?? undefined,
+          imageBack: backFile ?? undefined,
+        });
+        clearCameraFiles();
+      } else if (user?.isDeveloper && mockScanEnabled) {
+        // Mock mode without camera: use mock images
+        result = await captureCheque(id, {
+          slipEntryId: activeSlipEntryId,
+          scannerType: 'Cheque',
+        });
+        setMockPreview({ front: makeMockImage('Cheque', 'Front'), back: makeMockImage('Cheque', 'Back') });
+      } else {
+        // Real Ranger scanner
+        await rangerPrepareToChangeOptions();
+        const capture = rangerGetCaptureData('Both');
+        const front = base64ToFile(capture.frontBase64, 'cheque-front.jpg');
+        const back = base64ToFile(capture.backBase64, 'cheque-back.jpg');
+        result = await uploadMobileCheque(id, {
+          slipEntryId: activeSlipEntryId,
+          chqSeq: nextChqSeq,
+          imageFront: front,
+          imageBack: back,
+          micrRaw: capture.micrRaw || undefined,
+        });
+      }
+      
+      setCurrentCheque(result);
+      setNextChqSeq(s => s + 1);
+      await loadSession();
+      toast.success('Cheque captured');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? 'Cheque capture failed');
     } finally {
       setIsBusy(false);
     }
   };
 
   const handleStartRound = async () => {
-    if (scanTarget === 'Cheque') setScannerChoice('Ranger');
-    await handleStartFeed(scanTarget === 'Cheque' ? 'Cheque' : 'Slip');
+    const type = scanStep === 'ChequeScan' ? 'Cheque' : 'Slip';
+    if (scanStep === 'ChequeScan') setScannerChoice('Ranger');
+    await handleStartFeed(type);
     setScanRoundActive(true);
   };
 
   const handleStopRound = async () => {
-    const wasSlip = scanTarget === 'Slip';
-    if (scanTarget === 'Cheque' ? feedRunning.Cheque : feedRunning.Slip) {
-      await handleStopFeed(scanTarget === 'Cheque' ? 'Cheque' : 'Slip');
-    }
+    const type = scanStep === 'ChequeScan' ? 'Cheque' : 'Slip';
+    if (feedRunning[type]) await handleStopFeed(type);
     setScanRoundActive(false);
-    if (wasSlip && session?.withSlip) {
-      setScanTarget('Cheque');
-      setScannerChoice('Ranger');
-    } else {
-      setScannerChoice(null);
-    }
+    setScannerChoice(null);
   };
 
   const handleCompleteScan = async () => {
@@ -326,467 +404,512 @@ export function ScanPage() {
     }
   };
 
-  if (loading) return <div className="p-8 text-center text-gray-400 animate-pulse">Loading scan session...</div>;
+  // ─── Step transitions ─────────────────────────────────────────────────────
 
+  const moveToSlipScan = () => {
+    setScanStep('SlipScan');
+    setScannerChoice(null);
+    setScanRoundActive(false);
+  };
+
+  const moveToChequeScan = () => {
+    setScanStep('ChequeScan');
+    setScannerChoice('Ranger');
+    setScanRoundActive(false);
+  };
+
+  const startNewSlip = () => {
+    // Lock the previous slip group - mark that new slip entry is pending
+    setNewSlipSaved(false);
+    setActiveSlipEntryId(null);
+    setActiveSlipNo('');
+    setNextSlipScanOrder(1);
+    setNextChqSeq(1);
+    setScanStep('SlipEntry');
+    setScanRoundActive(false);
+    setFeedRunning({ Cheque: false, Slip: false });
+    setCurrentSlipScan(null);
+    setCurrentCheque(null);
+    setMockPreview(null);
+    clearCameraFiles();
+    setShowSlipForm(true);
+  };
+
+  // ─── Render ───────────────────────────────────────────────────────────────
+
+  if (loading) return <div className="p-8 text-center text-gray-400 animate-pulse">Loading scan session…</div>;
   if (!session) return <div className="p-8 text-center text-red-500">Session not found</div>;
+
+  const withSlip = session.withSlip ?? false;
+  const activeGroup = session.slipGroups.find(g => g.slipEntryId === activeSlipEntryId);
+  const slipScansForActive = activeGroup?.slipScans ?? [];
+  const chequesDoneForActive = activeGroup?.cheques.length ?? 0;
+  const isCurrentSlipScanDone = withSlip && slipScansForActive.length > 0;
+  const canMoveToChequeScan = !withSlip || isCurrentSlipScanDone;
+
+  // Image preview source
+  const previewFront = toImageSrc(currentCheque?.frontImagePath, mockPreview?.front)
+    || toImageSrc(currentSlipScan?.imagePath, mockPreview?.front);
+  const previewBack = toImageSrc(currentCheque?.backImagePath, mockPreview?.back);
 
   return (
     <div className="flex flex-col min-h-[calc(100dvh-5rem)]">
-      {/* Batch Details Header */}
+
+      {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div className="mb-4 bg-white rounded-lg shadow-sm p-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-3">
           <div>
             <h1 className="text-lg font-bold text-gray-900">Scanning — {session.batchNo}</h1>
             <p className="text-sm text-gray-500">
-              Mode: {session.scanType || 'Scan'} / {session.withSlip ? 'With Slip' : 'Without Slip'} |
-              Scanned: {session.totalScanned} cheques | {session.totalSlips} slips
+              {session.scanType || 'Scan'} / {withSlip ? 'With Slip' : 'Without Slip'} &nbsp;|&nbsp;
+              {session.totalSlipEntries} slips &nbsp;|&nbsp; {session.totalCheques} cheques &nbsp;|&nbsp;
+              ₹{session.totalAmount.toLocaleString()}
             </p>
           </div>
-          <div className="ml-auto flex gap-2 mt-2 sm:mt-0">
-            {(!scanRoundActive) && (
-              <button
-                onClick={handleCompleteScan}
-                disabled={completing}
-                className="bg-green-700 text-white text-sm px-4 py-2 rounded-lg hover:bg-green-800 disabled:opacity-50"
-              >
-                {completing ? 'Completing...' : '✓ Complete Batch'}
-              </button>
-            )}
-          </div>
+          {!scanRoundActive && (
+            <button onClick={handleCompleteScan} disabled={completing}
+              className="mt-2 sm:mt-0 bg-green-700 text-white text-sm px-4 py-2 rounded-lg hover:bg-green-800 disabled:opacity-50">
+              {completing ? 'Completing…' : '✓ Complete Batch'}
+            </button>
+          )}
         </div>
 
-        {/* Detailed Batch Info */}
         {batchDetails && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 pt-3 border-t border-gray-200">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3 border-t border-gray-200">
             <div>
               <div className="text-[10px] font-semibold text-gray-500 uppercase">Location</div>
               <div className="text-xs font-medium text-gray-900">{batchDetails.locationName}</div>
               <div className="text-[10px] text-gray-500">{batchDetails.locationCode}</div>
             </div>
             <div>
-              <div className="text-[10px] font-semibold text-gray-500 uppercase">Pickup Point Location</div>
-              <div className="text-xs font-medium text-gray-900">{batchDetails.pickupPointCode || '—'}</div>
+              <div className="text-[10px] font-semibold text-gray-500 uppercase">Batch Date</div>
+              <div className="text-xs font-medium text-gray-900">{batchDetails.batchDate}</div>
             </div>
             <div>
               <div className="text-[10px] font-semibold text-gray-500 uppercase">Scanner</div>
               <div className="text-xs font-medium text-gray-900">{batchDetails.scannerID || '—'}</div>
             </div>
             <div>
-              <div className="text-[10px] font-semibold text-gray-500 uppercase">Batch Date</div>
-              <div className="text-xs font-medium text-gray-900">{batchDetails.batchDate}</div>
-            </div>
-            <div>
-              <div className="text-[10px] font-semibold text-gray-500 uppercase">Clearing Type</div>
+              <div className="text-[10px] font-semibold text-gray-500 uppercase">Clearing</div>
               <div className="text-xs font-medium text-gray-900">{batchDetails.clearingType === '01' ? 'CTS (01)' : 'Non-CTS (11)'}</div>
-            </div>
-            <div>
-              <div className="text-[10px] font-semibold text-gray-500 uppercase">Total Slips</div>
-              <div className="text-xs font-medium text-gray-900">{batchDetails.totalSlips}</div>
-            </div>
-            <div>
-              <div className="text-[10px] font-semibold text-gray-500 uppercase">Total Amount</div>
-              <div className="text-xs font-medium text-gray-900">₹{batchDetails.totalAmount.toLocaleString()}</div>
-            </div>
-            <div>
-              <div className="text-[10px] font-semibold text-gray-500 uppercase">PDC</div>
-              <div className="text-xs font-medium text-gray-900">{batchDetails.isPDC ? 'Yes' : 'No'}</div>
-              {batchDetails.isPDC && batchDetails.pdcDate && (
-                <div className="text-[10px] text-gray-500">{batchDetails.pdcDate}</div>
-              )}
-            </div>
-            <div>
-              <div className="text-[10px] font-semibold text-gray-500 uppercase">Created</div>
-              <div className="text-xs font-medium text-gray-900">{batchDetails.createdAt}</div>
             </div>
           </div>
         )}
 
         {user?.isDeveloper && (
-          <p className="text-xs text-orange-600 mt-3">Developer mock scanner mode available (visual mock images).</p>
+          <p className="text-xs text-orange-600 mt-2">Developer mode — mock scanning available.</p>
         )}
       </div>
 
-      {/* Main scan layout */}
+      {/* ── Main area ──────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 flex-1 min-h-0">
-        {/* Image preview */}
-        <div className="grid grid-cols-2 lg:grid-cols-1 gap-3 min-h-0">
-          <div className="bg-white rounded-lg shadow-sm p-3 flex flex-col min-h-0">
-            <div className="text-[11px] font-semibold text-gray-500 mb-2 tracking-wide">FRONT IMAGE</div>
-            <div className="flex-1 min-h-0 bg-gray-100 rounded flex items-center justify-center overflow-hidden">
-              {currentItem?.imageFrontPath || mockPreview?.front ? (
-                <img
-                  src={toImageSrc(currentItem?.imageFrontPath, mockPreview?.front)}
-                  alt="Cheque front"
-                  className="w-full h-full object-contain"
-                />
-              ) : (
-                <span className="text-gray-400 text-sm">{mockPreview?.front ? 'Mock front preview' : 'No image'}</span>
-              )}
+
+        {/* Left — image preview */}
+        <div className="grid gap-3 min-h-0">
+          {/* SlipScan step: single image panel (front only) */}
+          {scanStep === 'SlipScan' && (
+            <div className="bg-white rounded-lg shadow-sm p-3 flex flex-col min-h-0">
+              <div className="text-[11px] font-semibold text-gray-500 mb-2 tracking-wide">SLIP IMAGE</div>
+              <div className="flex-1 min-h-0 bg-gray-100 rounded flex items-center justify-center overflow-hidden">
+                {previewFront
+                  ? <img src={previewFront} alt="Slip" className="w-full h-full object-contain" />
+                  : <span className="text-gray-400 text-sm">No image</span>}
+              </div>
             </div>
-          </div>
-          <div className="bg-white rounded-lg shadow-sm p-3 flex flex-col min-h-0">
-            <div className="text-[11px] font-semibold text-gray-500 mb-2 tracking-wide">BACK IMAGE</div>
-            <div className="flex-1 min-h-0 bg-gray-100 rounded flex items-center justify-center overflow-hidden">
-              {currentItem?.imageBackPath || mockPreview?.back ? (
-                <img
-                  src={toImageSrc(currentItem?.imageBackPath, mockPreview?.back)}
-                  alt="Cheque back"
-                  className="w-full h-full object-contain"
-                />
-              ) : (
-                <span className="text-gray-400 text-sm">{mockPreview?.back ? 'Mock back preview' : 'No image'}</span>
-              )}
-            </div>
-          </div>
+          )}
+
+          {/* ChequeScan step: two image panels (front + back) */}
+          {scanStep !== 'SlipScan' && (
+            <>
+              <div className="bg-white rounded-lg shadow-sm p-3 flex flex-col min-h-0">
+                <div className="text-[11px] font-semibold text-gray-500 mb-2 tracking-wide">FRONT IMAGE</div>
+                <div className="flex-1 min-h-0 bg-gray-100 rounded flex items-center justify-center overflow-hidden">
+                  {previewFront
+                    ? <img src={previewFront} alt="Front" className="w-full h-full object-contain" />
+                    : <span className="text-gray-400 text-sm">No image</span>}
+                </div>
+              </div>
+              <div className="bg-white rounded-lg shadow-sm p-3 flex flex-col min-h-0">
+                <div className="text-[11px] font-semibold text-gray-500 mb-2 tracking-wide">BACK IMAGE</div>
+                <div className="flex-1 min-h-0 bg-gray-100 rounded flex items-center justify-center overflow-hidden">
+                  {previewBack
+                    ? <img src={previewBack} alt="Back" className="w-full h-full object-contain" />
+                    : <span className="text-gray-400 text-sm">No image</span>}
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
-        {/* Controls + scan list */}
-        <div className="space-y-3 min-h-0">
-          {session.withSlip && !slipCreated && !scanRoundActive && (
+        {/* Right — controls + grouped slip list */}
+        <div className="space-y-3 min-h-0 overflow-y-auto">
+
+          {/* ── Step: SlipEntry ──────────────────────────────────────────── */}
+          {scanStep === 'SlipEntry' && !showSlipForm && (
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-              <p className="text-sm font-semibold text-amber-800">Slip entry</p>
-              <p className="text-xs text-amber-700 mt-1">Save slip details first (modal), then you can scan slip pages and cheques for this slip.</p>
-              <button
-                type="button"
-                onClick={() => setShowSlipForm(true)}
-                className="mt-3 bg-amber-600 text-white text-sm px-4 py-2 rounded hover:bg-amber-700"
-              >
-                Open Slip Entry
+              <p className="text-sm font-semibold text-amber-800">Slip Entry Required</p>
+              <p className="text-xs text-amber-700 mt-1">
+                Fill in slip details before scanning {withSlip ? 'slip images and ' : ''}cheques.
+              </p>
+              <button onClick={() => setShowSlipForm(true)}
+                className="mt-3 bg-amber-600 text-white text-sm px-4 py-2 rounded hover:bg-amber-700">
+                Open Slip Entry Form
               </button>
             </div>
           )}
 
-          {/* Scan setup: after slip entry modal, user picks Slip/Cheque + scanner. New Slip Entry only after slip + cheque for current slip (top). */}
-          {!scanRoundActive && (!session.withSlip || slipCreated) && (
+          {/* ── Step: SlipScan (WithSlip only) ───────────────────────────── */}
+          {scanStep === 'SlipScan' && (
             <div className="bg-white rounded-lg shadow-sm p-4 space-y-3">
-              <div className="text-xs font-semibold text-gray-500">SCAN SETUP</div>
-
-              {session.withSlip && showNewSlipEntry && (
-                <button
-                  type="button"
-                  onClick={() => setShowSlipForm(true)}
-                  className="w-full bg-orange-500 text-white text-sm font-medium py-2.5 rounded-lg hover:bg-orange-600"
-                >
-                  + New Slip Entry
-                </button>
-              )}
-
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => { setScanTarget('Slip'); setScannerChoice(null); }}
-                  className={`text-sm py-2 rounded ${scanTarget === 'Slip' ? 'bg-indigo-700 text-white' : 'bg-gray-100 text-gray-700'}`}
-                >
-                  Slip
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setScanTarget('Cheque'); setScannerChoice('Ranger'); }}
-                  disabled={session.withSlip && slipCreated && !hasSlipScanForActiveSlip}
-                  className={`text-sm py-2 rounded ${scanTarget === 'Cheque' ? 'bg-blue-700 text-white' : 'bg-gray-100 text-gray-700'}
-                    disabled:opacity-50 disabled:cursor-not-allowed`}
-                  title={session.withSlip && slipCreated && !hasSlipScanForActiveSlip ? 'Scan at least one slip page for this slip entry first' : undefined}
-                >
-                  Cheque
-                </button>
+              <div className="flex items-center justify-between">
+                <div className="text-xs font-semibold text-gray-500">SLIP SCAN — {activeSlipNo}</div>
+                <span className="text-xs text-gray-400">{slipScansForActive.length} image(s)</span>
               </div>
 
-              {session.withSlip && slipCreated && !hasSlipScanForActiveSlip && (
-                <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
-                  Slip entry is saved — scan one or more <span className="font-semibold">slip pages</span> first (each capture adds a row). Then you can scan cheques for this slip.
-                </p>
-              )}
-              {session.withSlip && slipCreated && hasSlipScanForActiveSlip && !hasChequeScanForActiveSlip && (
-                <p className="text-xs text-gray-600">
-                  You can add more slip pages or switch to <span className="font-semibold">Cheque</span> to scan instruments linked to this slip.
+              {slipScansForActive.length === 0 && (
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded px-3 py-2">
+                  Scan one or more slip images before moving to cheques.
                 </p>
               )}
 
-              {scanTarget === 'Slip' && (
-                <>
-                  <div className="text-xs font-semibold text-gray-500">Scanner</div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setScannerChoice('Document')}
-                      className={`text-sm py-2 rounded ${scannerChoice === 'Document' ? 'bg-indigo-700 text-white' : 'bg-gray-100 text-gray-700'}`}
-                    >
-                      Document
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setScannerChoice('Ranger')}
-                      className={`text-sm py-2 rounded ${scannerChoice === 'Ranger' ? 'bg-blue-700 text-white' : 'bg-gray-100 text-gray-700'}`}
-                    >
-                      Ranger
-                    </button>
-                  </div>
-                </>
-              )}
-
-              {scanTarget === 'Slip' && scannerChoice && (
-                <div className="grid grid-cols-3 gap-2">
-                  {(['Front', 'Back', 'Both'] as const).map(side => (
-                    <button
-                      key={side}
-                      type="button"
-                      onClick={() => setSlipSide(side)}
-                      className={`text-xs py-2 rounded ${slipSide === side ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-700'}`}
-                    >
-                      {side}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {(scanTarget === 'Cheque' || scannerChoice) && (
+              <ScannerSection
+                title="Document Scanner — Scan Slip"
+                eyebrow="Slip Scanner"
+                description="Place the slip on the flatbed and press the button. One scan per slip image."
+                tone="blue"
+              >
                 <button
-                  type="button"
-                  onClick={handleStartRound}
-                  className="w-full bg-green-700 text-white text-sm py-2 rounded hover:bg-green-800"
+                  onClick={handleCaptureSlipScan}
+                  disabled={isBusy}
+                  className="w-full rounded-xl bg-sky-700 px-4 py-3 text-base font-bold text-white hover:bg-sky-800 disabled:opacity-50"
                 >
-                  {scanTarget === 'Slip' && scannerChoice === 'Document' ? 'Start Scanning' : 'Start Scanner'}
+                  {isBusy ? 'Scanning…' : 'Scan Slip'}
                 </button>
-              )}
+              </ScannerSection>
 
               {user?.isDeveloper && mockScanEnabled && (
-                <p className="text-xs text-orange-600">
-                  Mock scan mode is on in Settings — use Mock Capture while scanning for fake images.
-                </p>
+                <ScannerSection
+                  title="Mock / Mobile Capture"
+                  eyebrow="Frontend Preview Flow"
+                  description="Use phone or camera capture for UI testing. Backend and device logic can be connected later."
+                  tone="amber"
+                >
+                  <CameraCapture
+                    mode="slip"
+                    isMockMode={true}
+                    onCaptureFront={(file) => openImageEditor(file, 'slip-front')}
+                    frontPreview={frontPreview}
+                    disabled={isBusy}
+                  />
+
+                  {frontFile && (
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <button
+                        type="button"
+                        onClick={() => frontFile && openImageEditor(frontFile, 'slip-front')}
+                        className="rounded-xl border border-amber-300 px-4 py-2.5 text-sm font-medium text-amber-800 hover:bg-amber-50"
+                      >
+                        Edit captured slip
+                      </button>
+                      <button
+                        onClick={handleCaptureSlipScan}
+                        disabled={isBusy}
+                        className="rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+                      >
+                        {isBusy ? 'Uploading…' : 'Upload slip image'}
+                      </button>
+                    </div>
+                  )}
+                </ScannerSection>
+              )}
+
+              {/* Move to cheque scan */}
+              {slipScansForActive.length > 0 && !scanRoundActive && (
+                <button onClick={moveToChequeScan}
+                  className="w-full bg-blue-700 text-white text-sm py-2 rounded hover:bg-blue-800">
+                  Scan Cheques for This Slip →
+                </button>
               )}
             </div>
           )}
 
-          {controlsVisible && (
-          <div className="bg-white rounded-lg shadow-sm p-4">
-            <div className="text-xs font-semibold text-gray-500 mb-3">
-              {scanTarget === 'Cheque' ? 'RANGER CHEQUE CONTROLS' : `${scannerChoice} SLIP CONTROLS`}
-            </div>
-            {scannerChoice === 'Document' ? (
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={handleStartRound}
-                  disabled={isBusy}
-                  className="bg-blue-600 text-white text-sm py-2 rounded hover:bg-blue-700 disabled:opacity-50"
-                >
-                  Start Scanning
-                </button>
-                <button
-                  onClick={async () => {
-                    await handleStopRound();
-                  }}
-                  disabled={isBusy}
-                  className="bg-gray-600 text-white text-sm py-2 rounded hover:bg-gray-700 disabled:opacity-50"
-                >
-                  Stop Scanning
-                </button>
+          {/* ── Step: ChequeScan ─────────────────────────────────────────── */}
+          {scanStep === 'ChequeScan' && canMoveToChequeScan && (
+            <div className="bg-white rounded-lg shadow-sm p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="text-xs font-semibold text-gray-500">CHEQUE SCAN — Slip {activeSlipNo}</div>
+                <span className="text-xs text-gray-400">{chequesDoneForActive} cheque(s)</span>
               </div>
-            ) : (
-            <div className="grid grid-cols-4 gap-2">
-              <button
-                onClick={() => handleStartFeed(scanTarget === 'Cheque' ? 'Cheque' : 'Slip')}
-                disabled={isBusy}
-                className="bg-blue-600 text-white text-sm py-2 rounded hover:bg-blue-700 disabled:opacity-50"
+
+              <ScannerSection
+                title="Ranger / PICA Cheque Scanner"
+                eyebrow="Cheque Scanner — Bulk Feed"
+                description="Start Feed to begin. Place cheques in the hopper. Stop Feed to finish — the scanner captures images automatically."
+                tone="blue"
               >
-                Start Scanner
-              </button>
-              <button
-                onClick={() => handleStartFeed(scanTarget === 'Cheque' ? 'Cheque' : 'Slip')}
-                disabled={isBusy}
-                className="bg-indigo-600 text-white text-sm py-2 rounded hover:bg-indigo-700 disabled:opacity-50"
-              >
-                Start Feeding
-              </button>
-              <button
-                onClick={() => handleStopFeed(scanTarget === 'Cheque' ? 'Cheque' : 'Slip')}
-                disabled={isBusy}
-                className="bg-gray-600 text-white text-sm py-2 rounded hover:bg-gray-700 disabled:opacity-50"
-              >
-                Stop Feeding
-              </button>
-                <button
-                  onClick={handleStopRound}
+                <RangerFeedControl
+                  isRunning={feedRunning.Cheque}
+                  scanType="Cheque"
+                  onStartFeed={() => {
+                    setScannerChoice('Ranger');
+                    handleStartFeed('Cheque');
+                  }}
+                  onStopFeed={handleRangerStopAndCapture}
+                  isMockMode={false}
                   disabled={isBusy}
-                  className="bg-green-700 text-white text-sm py-2 rounded hover:bg-green-800 disabled:opacity-50"
+                />
+              </ScannerSection>
+
+              {user?.isDeveloper && mockScanEnabled && (
+                <ScannerSection
+                  title="Mock / Mobile Capture"
+                  eyebrow="Frontend Preview Flow"
+                  description="Use camera capture for collaborator mobile scanner testing. Users can edit images before saving."
+                  tone="amber"
                 >
-                  Stop Scanning
-                </button>
+                  <CameraCapture
+                    mode="cheque"
+                    isMockMode={true}
+                    onCaptureFront={(file) => openImageEditor(file, 'cheque-front')}
+                    onCaptureBack={(file) => openImageEditor(file, 'cheque-back')}
+                    frontPreview={frontPreview}
+                    backPreview={backPreview}
+                    disabled={isBusy}
+                  />
+
+                  {(frontFile || backFile) && (
+                    <div className="grid gap-2 sm:grid-cols-3">
+                      <button
+                        type="button"
+                        onClick={() => frontFile && openImageEditor(frontFile, 'cheque-front')}
+                        disabled={!frontFile}
+                        className="rounded-xl border border-amber-300 px-4 py-2.5 text-sm font-medium text-amber-800 hover:bg-amber-50 disabled:opacity-40"
+                      >
+                        Edit front
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => backFile && openImageEditor(backFile, 'cheque-back')}
+                        disabled={!backFile}
+                        className="rounded-xl border border-amber-300 px-4 py-2.5 text-sm font-medium text-amber-800 hover:bg-amber-50 disabled:opacity-40"
+                      >
+                        Edit back
+                      </button>
+                      <button
+                        onClick={handleCaptureChecque}
+                        disabled={isBusy}
+                        className="rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+                      >
+                        {isBusy ? 'Uploading…' : 'Upload cheque image(s)'}
+                      </button>
+                    </div>
+                  )}
+                </ScannerSection>
+              )}
+
+              {/* After cheques done — offer new slip or finish */}
+              {chequesDoneForActive > 0 && !scanRoundActive && (
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <button onClick={startNewSlip}
+                    className="bg-orange-500 text-white text-sm py-2 rounded hover:bg-orange-600">
+                    + New Slip
+                  </button>
+                  <button onClick={handleCompleteScan} disabled={completing}
+                    className="bg-green-700 text-white text-sm py-2 rounded hover:bg-green-800 disabled:opacity-50">
+                    {completing ? 'Completing…' : 'Complete Batch'}
+                  </button>
+                </div>
+              )}
             </div>
-            )}
-            <p className="mt-3 text-xs text-gray-500">
-              Use <span className="font-medium">Mock Capture</span> (when enabled in Settings) to record a scan, or your scanner&apos;s hardware trigger in production.
-            </p>
-            {scannerChoice === 'Ranger' && (
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                <button
-                  onClick={async () => {
-                    setIsBusy(true);
-                    try {
-                      await rangerEnableOptions();
-                      toast.success('Ranger options enabled');
-                    } catch (err: any) {
-                      toast.error(err?.message ?? 'Failed to enable Ranger options');
-                    } finally {
-                      setIsBusy(false);
-                    }
-                  }}
-                  disabled={isBusy}
-                  className="border border-blue-300 text-blue-700 text-sm py-2 rounded disabled:opacity-50"
-                >
-                  Enable Options
-                </button>
-                <button
-                  onClick={async () => {
-                    setIsBusy(true);
-                    try {
-                      await rangerPrepareToChangeOptions();
-                      toast.success('Ranger ready for option changes');
-                    } catch (err: any) {
-                      toast.error(err?.message ?? 'Failed to prepare Ranger options');
-                    } finally {
-                      setIsBusy(false);
-                    }
-                  }}
-                  disabled={isBusy}
-                  className="border border-indigo-300 text-indigo-700 text-sm py-2 rounded disabled:opacity-50"
-                >
-                  Change Options
-                </button>
-              </div>
-            )}
-          </div>
           )}
 
-          {/* Scanned items list */}
-          <div className="bg-white rounded-lg shadow-sm p-4 max-h-[28dvh] lg:max-h-96 overflow-y-auto">
-            <div className="text-xs font-semibold text-gray-500 mb-3">
-              SCANNED ITEMS ({session.items.length})
+          {/* ── Step indicator / slip scan required guard ─────────────────── */}
+          {scanStep === 'ChequeScan' && !canMoveToChequeScan && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+              <p className="text-sm text-amber-800">
+                Scan at least one slip image before scanning cheques.
+              </p>
+              <button onClick={() => setScanStep('SlipScan')}
+                className="mt-2 bg-amber-600 text-white text-sm px-4 py-2 rounded hover:bg-amber-700">
+                Go Back to Slip Scan
+              </button>
             </div>
-            {session.items.length === 0 ? (
-              <p className="text-sm text-gray-400">No items scanned yet</p>
-            ) : (
-              <div className="space-y-2">
-                {session.items.map((item) => (
-                  <div
-                    key={item.scanID}
-                    onClick={() => setCurrentItem(item)}
-                    className={`flex items-center gap-3 p-2 rounded cursor-pointer hover:bg-gray-50
-                      ${currentItem?.scanID === item.scanID ? 'bg-blue-50 border border-blue-200' : ''}`}
-                  >
-                    <div className="w-8 h-8 bg-gray-100 rounded flex items-center justify-center text-xs font-mono">
-                      {String(item.seqNo).padStart(3, '0')}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-xs font-medium">
-                        {item.isSlip ? '📄 Slip' : '🏦 Cheque'}
-                        {item.chqNo && ` — ${item.chqNo}`}
-                      </div>
-                      <div className="text-xs text-gray-500 truncate">
-                        {item.scanStatus === 'Captured' ? '✓ Captured' : item.scanStatus}
-                        {item.rrState === 0 && !item.isSlip && ' ⚠ MICR Error'}
-                      </div>
-                    </div>
-                  </div>
-                ))}
+          )}
+
+          {/* ── Grouped slip list ─────────────────────────────────────────── */}
+          {session.slipGroups.length > 0 && (
+            <div className="bg-white rounded-lg shadow-sm p-4">
+              <div className="text-xs font-semibold text-gray-500 mb-3">
+                SLIPS IN BATCH ({session.slipGroups.length})
               </div>
-            )}
-          </div>
+              <div className="space-y-3">
+                {session.slipGroups.map(group => {
+                  const isLocked = newSlipSaved && group.slipEntryId !== activeSlipEntryId;
+                  return (
+                    <SlipGroup
+                      key={group.slipEntryId}
+                      group={group}
+                      isActive={group.slipEntryId === activeSlipEntryId}
+                      isLocked={isLocked}
+                      onSelect={() => {
+                        if (!isLocked) {
+                          setActiveSlipEntryId(group.slipEntryId);
+                          setActiveSlipNo(group.slipNo);
+                          setNewSlipSaved(false); // Allow continuing this group
+                        } else {
+                          toast.warning('Cannot return to this slip - new slip entry has been created');
+                        }
+                      }}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Floating mock capture (bottom-right) */}
-      {user?.isDeveloper && mockScanEnabled && controlsVisible && !(session.withSlip && !activeSlipId) && !(session.withSlip && scanTarget === 'Slip' && !slipCreated) && (
-        <button
-          type="button"
-          onClick={() => handleCapture(true)}
-          disabled={isBusy}
-          className="fixed bottom-6 right-6 z-50 bg-orange-600 text-white text-sm font-semibold px-4 py-3 rounded-full shadow-lg hover:bg-orange-700 active:scale-[0.99]"
-        >
-          Mock Capture
-        </button>
-      )}
 
-      {/* Start modal */}
-      {showStartModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6">
-            <h2 className="text-lg font-bold text-gray-900 mb-2">Start Scanning</h2>
-            {startStep === 'scanType' ? (
-              <>
-                <p className="text-sm text-gray-500 mb-5">Choose scan mode</p>
-                <div className="space-y-3">
-                  <button
-                    onClick={() => {
-                      setSelectedScanType('Scan');
-                      setStartStep('slipMode');
-                    }}
-                    className="w-full bg-blue-700 text-white py-3 rounded-lg font-medium hover:bg-blue-800"
-                  >
-                    Scan
-                  </button>
-                  <button
-                    onClick={() => {
-                      setSelectedScanType('Rescan');
-                      setStartStep('slipMode');
-                    }}
-                    className="w-full bg-indigo-700 text-white py-3 rounded-lg font-medium hover:bg-indigo-800"
-                  >
-                    Rescan
-                  </button>
-                  <button
-                    onClick={() => navigate('/')}
-                    className="w-full text-gray-500 text-sm py-2"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <p className="text-sm text-gray-500 mb-5">Mode: {selectedScanType}. Choose slip option.</p>
-                <div className="space-y-3">
-                  <button
-                    onClick={() => handleStart(true)}
-                    className="w-full bg-blue-700 text-white py-3 rounded-lg font-medium hover:bg-blue-800"
-                  >
-                    With Slip (Slip + Cheques)
-                  </button>
-                  <button
-                    onClick={() => handleStart(false)}
-                    className="w-full bg-gray-100 text-gray-800 py-3 rounded-lg font-medium hover:bg-gray-200"
-                  >
-                    Without Slip (Cheques only)
-                  </button>
-                  <button
-                    onClick={() => setStartStep('scanType')}
-                    className="w-full text-gray-500 text-sm py-2"
-                  >
-                    Back
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Slip form modal */}
-      {showSlipForm && session && (
+      {/* ── Slip form modal ───────────────────────────────────────────────── */}
+      {showSlipForm && (
         <SlipFormModal
           batchId={id}
           defaultPickupPoint={pickupPointCode}
           onClose={() => setShowSlipForm(false)}
-          onSaved={(slip) => {
+          onSaved={slip => {
             setShowSlipForm(false);
-            setSlipCreated(true);
-            setActiveSlipId(slip.slipID);
-            setScanTarget('Slip');
-            setScannerChoice(null);
+            // Mark that a new slip entry has been saved - previous groups are now locked
+            setNewSlipSaved(true);
+            setActiveSlipEntryId(slip.slipEntryId);
+            setActiveSlipNo(slip.slipNo);
+            setNextSlipScanOrder(1);
+            setNextChqSeq(1);
+            // After slip entry: go to SlipScan if withSlip, else ChequeScan
+            if (withSlip) {
+              moveToSlipScan();
+              toast.success(`Slip ${slip.slipNo} saved — scan slip images`);
+            } else {
+              moveToChequeScan();
+              toast.success(`Slip ${slip.slipNo} saved — scan cheques`);
+            }
             loadSession();
-            toast.success('Slip entry saved — scan slip pages, then cheques');
           }}
         />
       )}
+
+      {editorState && (
+        <ImageEditModal
+          file={editorState.file}
+          title={editorState.title}
+          onClose={() => setEditorState(null)}
+          onSave={(file, previewUrl) => {
+            applyEditedImage(editorState.target, file, previewUrl);
+            setEditorState(null);
+            toast.success('Edited image saved');
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── SlipGroup component ────────────────────────────────────────────────────
+
+function SlipGroup({ group, isActive, isLocked, onSelect }: {
+  group: SlipEntryDto;
+  isActive: boolean;
+  isLocked: boolean;
+  onSelect: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className={`border rounded-lg overflow-hidden ${
+      isLocked ? 'border-gray-300 bg-gray-100 opacity-60' :
+      isActive ? 'border-blue-300 bg-blue-50' : 'border-gray-200'
+    }`}>
+      {/* Slip header */}
+      <div
+        className={`flex items-center gap-2 px-3 py-2 ${isLocked ? 'cursor-not-allowed' : 'cursor-pointer hover:bg-gray-50'}`}
+        onClick={() => { if (!isLocked) { onSelect(); setExpanded(e => !e); } }}
+      >
+        <span className="text-xs font-mono font-bold text-blue-700 w-16 shrink-0">{group.slipNo}</span>
+        <div className="flex-1 min-w-0">
+          <div className="text-xs font-medium text-gray-900 truncate">
+            {group.clientName || 'No client'} {group.clientCode && <span className="text-gray-500">({group.clientCode})</span>}
+          </div>
+          <div className="text-[10px] text-gray-500">
+            {group.slipScans.length} slip image(s) · {group.cheques.length} cheque(s) · ₹{group.slipAmount.toLocaleString()}
+          </div>
+        </div>
+        <span className="text-[10px] text-gray-400">{expanded ? '▲' : '▼'}</span>
+      </div>
+
+      {/* Expanded detail */}
+      {expanded && (
+        <div className="border-t border-gray-200 divide-y divide-gray-100">
+          {/* Slip images */}
+          {group.slipScans.length > 0 && (
+            <div className="px-3 py-2">
+              <div className="text-[10px] font-semibold text-gray-500 mb-1">SLIP IMAGES</div>
+              <div className="flex gap-2 flex-wrap">
+                {group.slipScans.map(s => (
+                  <div key={s.slipScanId} className="text-[10px] bg-indigo-100 text-indigo-800 px-2 py-1 rounded">
+                    Image {s.scanOrder} — {s.scanStatus}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {/* Cheques */}
+          {group.cheques.length > 0 && (
+            <div className="px-3 py-2">
+              <div className="text-[10px] font-semibold text-gray-500 mb-1">CHEQUES</div>
+              <div className="space-y-1">
+                {group.cheques.map(c => (
+                  <div key={c.chequeItemId} className="flex items-center gap-2 text-[10px]">
+                    <span className="font-mono text-gray-600 w-6">{String(c.chqSeq).padStart(2, '0')}</span>
+                    <span className="text-gray-800">{c.chqNo || 'No Chq No'}</span>
+                    <span className="text-gray-500">{c.scanMICR1 || '—'} / {c.scanMICR2 || '—'}</span>
+                    {c.rrState === 0 && <span className="text-orange-600 font-semibold">⚠ RR</span>}
+                    {c.rrState === 1 && <span className="text-green-600">✓</span>}
+                    {c.rrState === 2 && <span className="text-blue-600">Repaired</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ScannerSection({
+  title,
+  eyebrow,
+  description,
+  tone,
+  children,
+}: {
+  title: string;
+  eyebrow: string;
+  description: string;
+  tone: 'blue' | 'amber';
+  children: ReactNode;
+}) {
+  const tones = tone === 'blue'
+    ? 'border-sky-200 bg-sky-50/70'
+    : 'border-amber-200 bg-amber-50/80';
+
+  return (
+    <div className={`space-y-3 rounded-2xl border p-4 ${tones}`}>
+      <div>
+        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">{eyebrow}</div>
+        <div className="mt-1 text-sm font-semibold text-gray-900">{title}</div>
+        <p className="mt-1 text-xs leading-5 text-gray-600">{description}</p>
+      </div>
+      {children}
     </div>
   );
 }

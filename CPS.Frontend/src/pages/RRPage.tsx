@@ -41,7 +41,12 @@ export function RRPage() {
         const targetIndex = firstPendingIndex >= 0 ? firstPendingIndex : 0;
         const first = data[targetIndex];
         setCurrent(targetIndex);
-        setMicr({ chqNo: first.chqNo ?? '', micr1: first.micr1 ?? '', micr2: first.micr2 ?? '', micr3: first.micr3 ?? '' });
+        setMicr({
+          chqNo: first.chqNo ?? '',
+          micr1: first.rrmicr1 ?? first.scanMICR1 ?? '',
+          micr2: first.rrmicr2 ?? first.scanMICR2 ?? '',
+          micr3: first.rrmicr3 ?? first.scanMICR3 ?? '',
+        });
       }
     } catch {
       setLoadError('Unable to load RR items for this batch.');
@@ -57,24 +62,21 @@ export function RRPage() {
   const pendingItems = items.filter(i => i.rrState === RRState.NeedsReview);
   const isLastPending = pendingItems.length <= 1;
   const currentSlipItems = item
-    ? items.filter(i => i.slipID === item.slipID && !i.isSlip)
-    : [];
-  const currentSlipScans = item
-    ? items.filter(i => i.slipID === item.slipID && i.isSlip)
+    ? items.filter(i => i.slipEntryId === item.slipEntryId)
     : [];
   const currentSlipPosition = item
-    ? currentSlipItems.findIndex(i => i.scanID === item.scanID) + 1
+    ? currentSlipItems.findIndex(i => i.chequeItemId === item.chequeItemId) + 1
     : 0;
 
   const handleApproveAndNext = async () => {
     if (!item) return;
     setSaving(true);
     try {
-      await saveRRCorrection(item.scanID, {
+      await saveRRCorrection(item.chequeItemId, {
         chqNo: micr.chqNo,
-        micr1: micr.micr1,
-        micr2: micr.micr2,
-        micr3: micr.micr3,
+        rrmicr1: micr.micr1,
+        rrmicr2: micr.micr2,
+        rrmicr3: micr.micr3,
         approve: false,
         rowVersion: item.rowVersion,
       });
@@ -87,9 +89,9 @@ export function RRPage() {
         setCurrent(nextPendingIndex);
         setMicr({
           chqNo: nextItem.chqNo ?? '',
-          micr1: nextItem.micr1 ?? '',
-          micr2: nextItem.micr2 ?? '',
-          micr3: nextItem.micr3 ?? ''
+          micr1: nextItem.rrmicr1 ?? nextItem.scanMICR1 ?? '',
+          micr2: nextItem.rrmicr2 ?? nextItem.scanMICR2 ?? '',
+          micr3: nextItem.rrmicr3 ?? nextItem.scanMICR3 ?? '',
         });
         toast.success('Saved. Moving to next item.');
       } else {
@@ -132,7 +134,7 @@ export function RRPage() {
   if (pendingItems.length === 0) {
     return (
       <div className="text-center p-12">
-        <div className="text-4xl mb-3">✓</div>
+        <div className="text-4xl mb-3">&#10003;</div>
         <h2 className="text-lg font-bold text-gray-900 mb-2">All Items Reviewed</h2>
         <p className="text-gray-500 text-sm mb-5">No more items need review.</p>
         <button onClick={handleComplete} className="bg-green-700 text-white px-6 py-2 rounded-lg font-medium hover:bg-green-800">
@@ -176,34 +178,21 @@ export function RRPage() {
                 ) : <span className="text-gray-400 text-sm">No image</span>}
               </div>
             </div>
-
-            {currentSlipScans.length > 0 && (
-              <div className="bg-blue-50 rounded-lg p-3 space-y-3">
-                <div className="text-xs font-semibold text-blue-800">SLIP SCANS</div>
-                {currentSlipScans.map((slipScan, idx) => (
-                  <div key={slipScan.scanID} className="bg-white rounded p-2 border border-blue-100">
-                    <div className="text-[11px] text-blue-700 mb-1">Slip Page {idx + 1} (Seq {String(slipScan.seqNo).padStart(3, '0')})</div>
-                    <div className="aspect-video bg-gray-100 rounded flex items-center justify-center">
-                      {slipScan.imageFrontPath ? (
-                        <img
-                          src={getImageUrl(slipScan.imageFrontPath)}
-                          alt={`Slip page ${idx + 1}`}
-                          className="max-w-full max-h-full object-contain"
-                        />
-                      ) : (
-                        <span className="text-gray-400 text-sm">No slip image</span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
 
           {/* MICR + slip data + actions */}
           <div className="space-y-3">
             <div className="bg-white rounded-lg shadow-sm p-4">
-              <div className="text-xs font-semibold text-gray-500 mb-3">MICR DATA</div>
+              <div className="text-xs font-semibold text-gray-500 mb-1">RAW SCAN MICR (read-only)</div>
+              <div className="text-xs font-mono text-gray-500 mb-3 bg-gray-50 rounded p-2 space-y-0.5">
+                <div>CHQ: {item.chqNo ?? '—'}</div>
+                <div>MICR1: {item.scanMICR1 ?? '—'}</div>
+                <div>MICR2: {item.scanMICR2 ?? '—'}</div>
+                <div>MICR3: {item.scanMICR3 ?? '—'}</div>
+                <div className="text-gray-400">Raw: {item.micrRaw ?? 'N/A'}</div>
+              </div>
+
+              <div className="text-xs font-semibold text-gray-500 mb-3">REPAIR VALUES</div>
               <div className="space-y-2">
                 {[
                   { label: 'Cheque No (6 digits)', key: 'chqNo', maxLen: 6 },
@@ -222,9 +211,6 @@ export function RRPage() {
                     />
                   </div>
                 ))}
-                <div className="text-xs text-gray-400 mt-1">
-                  Raw MICR: <span className="font-mono">{item.micrRaw ?? 'N/A'}</span>
-                </div>
               </div>
             </div>
 
@@ -234,13 +220,13 @@ export function RRPage() {
                 <div className="text-xs text-blue-700 space-y-0.5">
                   <div>Slip No: {item.slipNo}</div>
                   <div>Client: {item.clientName ?? '—'}</div>
-                  <div>Amount: ₹{item.slipAmount?.toLocaleString() ?? '—'}</div>
+                  <div>Amount: &#8377;{item.slipAmount?.toLocaleString() ?? '—'}</div>
                   <div>Instruments: {item.totalInstruments ?? '—'}</div>
                   <div>
                     Current Cheque in Slip: {currentSlipPosition} of {currentSlipItems.length}
                   </div>
                   <div>
-                    Slip Cheques: {currentSlipItems.map(i => String(i.seqNo).padStart(3, '0')).join(', ') || '—'}
+                    Slip Cheques: {currentSlipItems.map(i => String(i.chqSeq).padStart(2, '0')).join(', ') || '—'}
                   </div>
                 </div>
               </div>

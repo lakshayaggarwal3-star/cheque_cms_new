@@ -2,8 +2,8 @@
 // File        : ScanController.cs
 // Project     : CPS — Cheque Processing System
 // Module      : Scanning
-// Description : API endpoints for scan session management, cheque saving, and scan completion.
-// Created     : 2026-04-14
+// Description : API endpoints for scan session, slip scan images, and cheque capture.
+// Created     : 2026-04-17
 // =============================================================================
 
 using System.Security.Claims;
@@ -22,6 +22,8 @@ public class ScanController : ControllerBase
     private readonly IScanService _scanService;
 
     public ScanController(IScanService scanService) => _scanService = scanService;
+
+    // ─── Session ─────────────────────────────────────────────────────────────
 
     [HttpGet("{batchId:long}")]
     public async Task<IActionResult> GetSession(long batchId)
@@ -55,31 +57,54 @@ public class ScanController : ControllerBase
         return Ok(ApiResponse<object>.Ok(new { }, "Feed stopped"));
     }
 
-    [HttpPost("{batchId:long}/capture")]
-    public async Task<IActionResult> Capture(long batchId, [FromBody] CaptureScanRequest request)
+    // ─── Slip scan images ─────────────────────────────────────────────────────
+
+    [HttpPost("{batchId:long}/slip-scan/capture")]
+    public async Task<IActionResult> CaptureSlipScan(long batchId, [FromBody] CaptureSlipScanRequest request)
     {
         var userId = int.Parse(User.FindFirstValue("userId")!);
-        var result = await _scanService.CaptureAsync(batchId, request, userId);
-        return StatusCode(201, ApiResponse<ScanItemDto>.Ok(result, "Capture saved"));
+        var result = await _scanService.CaptureSlipScanAsync(batchId, request, userId);
+        return StatusCode(201, ApiResponse<SlipScanDto>.Ok(result, "Slip scan saved"));
     }
 
-    [HttpPost("{batchId:long}/upload-mobile")]
+    [HttpPost("{batchId:long}/slip-scan/upload-mobile")]
+    [RequestSizeLimit(15_000_000)]
+    public async Task<IActionResult> UploadMobileSlipScan(long batchId, [FromForm] MobileUploadSlipScanRequest request)
+    {
+        var userId = int.Parse(User.FindFirstValue("userId")!);
+        var result = await _scanService.UploadMobileSlipScanAsync(batchId, request, userId);
+        return StatusCode(201, ApiResponse<SlipScanDto>.Ok(result, "Slip scan uploaded"));
+    }
+
+    // ─── Cheque capture ───────────────────────────────────────────────────────
+
+    [HttpPost("{batchId:long}/cheque/capture")]
+    public async Task<IActionResult> CaptureChecque(long batchId, [FromBody] CaptureChequeRequest request)
+    {
+        var userId = int.Parse(User.FindFirstValue("userId")!);
+        var result = await _scanService.CaptureChequeAsync(batchId, request, userId);
+        return StatusCode(201, ApiResponse<ChequeItemDto>.Ok(result, "Cheque captured"));
+    }
+
+    [HttpPost("{batchId:long}/cheque/save")]
+    public async Task<IActionResult> SaveCheque(long batchId, [FromBody] SaveChequeItemRequest request)
+    {
+        request.BatchId = batchId;
+        var userId = int.Parse(User.FindFirstValue("userId")!);
+        var result = await _scanService.SaveChequeItemAsync(request, userId);
+        return StatusCode(201, ApiResponse<ChequeItemDto>.Ok(result));
+    }
+
+    [HttpPost("{batchId:long}/cheque/upload-mobile")]
     [RequestSizeLimit(25_000_000)]
-    public async Task<IActionResult> UploadMobile(long batchId, [FromForm] MobileUploadScanRequest request)
+    public async Task<IActionResult> UploadMobileCheque(long batchId, [FromForm] MobileUploadChequeRequest request)
     {
         var userId = int.Parse(User.FindFirstValue("userId")!);
-        var result = await _scanService.UploadMobileCaptureAsync(batchId, request, userId);
-        return StatusCode(201, ApiResponse<ScanItemDto>.Ok(result, "Mobile capture saved"));
+        var result = await _scanService.UploadMobileChequeAsync(batchId, request, userId);
+        return StatusCode(201, ApiResponse<ChequeItemDto>.Ok(result, "Cheque uploaded"));
     }
 
-    [HttpPost("{batchId:long}/save-cheque")]
-    public async Task<IActionResult> SaveCheque(long batchId, [FromBody] SaveChequeRequest request)
-    {
-        request.BatchID = batchId;
-        var userId = int.Parse(User.FindFirstValue("userId")!);
-        var result = await _scanService.SaveChequeAsync(request, userId);
-        return StatusCode(201, ApiResponse<ScanItemDto>.Ok(result));
-    }
+    // ─── Complete / Release ───────────────────────────────────────────────────
 
     [HttpPost("{batchId:long}/complete")]
     public async Task<IActionResult> Complete(long batchId)
@@ -95,5 +120,14 @@ public class ScanController : ControllerBase
         var userId = int.Parse(User.FindFirstValue("userId")!);
         await _scanService.ReleaseLockAsync(batchId, userId);
         return Ok(ApiResponse<object>.Ok(new { }, "Lock released"));
+    }
+
+    [HttpPost("{batchId:long}/reopen")]
+    [Authorize(Roles = "Admin,Developer")]
+    public async Task<IActionResult> ReopenBatch(long batchId)
+    {
+        var userId = int.Parse(User.FindFirstValue("userId")!);
+        await _scanService.ReopenBatchAsync(batchId, userId);
+        return Ok(ApiResponse<object>.Ok(new { }, "Batch reopened for scanning"));
     }
 }

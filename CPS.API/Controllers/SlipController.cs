@@ -2,8 +2,8 @@
 // File        : SlipController.cs
 // Project     : CPS — Cheque Processing System
 // Module      : Slip Entry
-// Description : API endpoints for slip creation, update, and listing within a batch.
-// Created     : 2026-04-14
+// Description : API endpoints for SlipEntry creation, update, and listing within a batch.
+// Created     : 2026-04-17
 // =============================================================================
 
 using System.Security.Claims;
@@ -26,26 +26,26 @@ public class SlipController : ControllerBase
     [HttpGet("{batchId:long}")]
     public async Task<IActionResult> GetByBatch(long batchId)
     {
-        var slips = await _slipService.GetByBatchAsync(batchId);
-        return Ok(ApiResponse<List<SlipDto>>.Ok(slips));
+        var result = await _slipService.GetByBatchAsync(batchId);
+        return Ok(ApiResponse<List<SlipEntryDto>>.Ok(result));
     }
 
     [HttpPost]
     [Authorize(Roles = "Scanner,MobileScanner,Admin,Developer")]
-    public async Task<IActionResult> Create([FromBody] CreateSlipRequest request)
+    public async Task<IActionResult> Create([FromBody] CreateSlipEntryRequest request)
     {
         var userId = int.Parse(User.FindFirstValue("userId")!);
-        var result = await _slipService.CreateSlipAsync(request, userId);
-        return StatusCode(201, ApiResponse<SlipDto>.Ok(result, "Slip created"));
+        var result = await _slipService.CreateSlipEntryAsync(request, userId);
+        return StatusCode(201, ApiResponse<SlipEntryDto>.Ok(result, "Slip entry created"));
     }
 
     [HttpPut("{id:int}")]
     [Authorize(Roles = "Scanner,MobileScanner,Admin,Developer")]
-    public async Task<IActionResult> Update(int id, [FromBody] UpdateSlipRequest request)
+    public async Task<IActionResult> Update(int id, [FromBody] UpdateSlipEntryRequest request)
     {
         var userId = int.Parse(User.FindFirstValue("userId")!);
-        var result = await _slipService.UpdateSlipAsync(id, request, userId);
-        return Ok(ApiResponse<SlipDto>.Ok(result));
+        var result = await _slipService.UpdateSlipEntryAsync(id, request, userId);
+        return Ok(ApiResponse<SlipEntryDto>.Ok(result));
     }
 
     [HttpGet("autofill/{clientCode}")]

@@ -56,7 +56,7 @@ export function SettingsPage() {
             <div>
               <p className="text-sm font-semibold text-gray-900">Mock Scan Mode</p>
               <p className="text-xs text-gray-500 mt-0.5">
-                When enabled, Scan page can generate mock front/back images (for dev/UAT without hardware).
+                When enabled, Scan page can generate mock front/back images (for testing without physical scanner).
               </p>
             </div>
             <input
