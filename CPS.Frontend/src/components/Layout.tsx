@@ -183,6 +183,7 @@ function Sidebar({ expanded, open, currentPath, onNav, onLogout, user }: {
         transition: 'width var(--dur) var(--ease), min-width var(--dur) var(--ease)',
         position: 'relative', zIndex: 2,
         height: '100vh', flexShrink: 0,
+        overflow: 'hidden',
       }}
     >
       {/* Brand */}
@@ -207,6 +208,9 @@ function Sidebar({ expanded, open, currentPath, onNav, onLogout, user }: {
         padding: expanded ? '6px 10px' : '6px 0',
         display: 'flex', flexDirection: 'column', gap: 2,
         overflow: 'hidden',
+        overflowY: 'hidden',
+        scrollbarWidth: 'none',
+        msOverflowStyle: 'none'
       }}>
         {NAV_LINKS.filter(l => hasRole(l.roles)).map(l => (
           <NavItem key={l.id} icon={l.icon} label={l.label}
@@ -304,18 +308,33 @@ export function Layout() {
   const { user, clearUser } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
+  const autoClosePaths = ['/scan', '/batch/create', '/rr'];
+
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 1024);
-  const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 1024);
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    if (window.innerWidth < 1024) return false;
+    if (autoClosePaths.some(p => window.location.pathname.startsWith(p))) return false;
+    return true;
+  });
 
   useEffect(() => {
     const onResize = () => {
       const mobile = window.innerWidth < 1024;
       setIsMobile(mobile);
-      if (!mobile) setSidebarOpen(true);
+      if (!mobile) {
+        const shouldClose = autoClosePaths.some(p => window.location.pathname.startsWith(p));
+        if (!shouldClose) setSidebarOpen(true);
+      }
     };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
+
+  useEffect(() => {
+    if (autoClosePaths.some(p => location.pathname.startsWith(p))) {
+      setSidebarOpen(false);
+    }
+  }, [location.pathname]);
 
   const handleLogout = async () => {
     try { await logout(); } finally { clearUser(); navigate('/login'); }
@@ -323,7 +342,11 @@ export function Layout() {
 
   const handleNav = (path: string) => {
     navigate(path);
-    if (isMobile) setSidebarOpen(false);
+    
+    const isAutoClosePage = autoClosePaths.some(p => path.startsWith(p));
+    if (isMobile || path === location.pathname || isAutoClosePage) {
+      setSidebarOpen(false);
+    }
   };
 
   const pageInfo = Object.entries(PAGE_TITLES).find(([pattern]) =>

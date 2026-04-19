@@ -2,709 +2,668 @@
 // File        : BatchCreatePage.tsx
 // Project     : CPS — Cheque Processing System
 // Module      : Batch
-// Description : Batch creation form with location, scanner, clearing type, and PDC fields.
+// Description : Batch creation with unconditional middle fields & generic submit.
 // Created     : 2026-04-14
 // =============================================================================
 
 import React, { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { useForm } from 'react-hook-form';
+import { useNavigate } from 'react-router-dom';
 import { getLocations, getScanners } from '../services/locationService';
-import { createBatch, getBatch, updateBatch } from '../services/batchService';
+import { createBatch, updateBatch } from '../services/batchService';
 import { useAuthStore } from '../store/authStore';
 import { toast } from '../store/toastStore';
-import type { BatchDto, LocationDto, ScannerDto } from '../types';
+import type { LocationDto, ScannerDto } from '../types';
 
-interface BatchForm {
-  locationID: string;
-  scannerMappingID: string;
-  pickupPointCode: string;
-  batchDate: string;
-  clearingType: string;
-  isPDC: boolean;
-  pdcDate: string;
-  summRefNo: string;
-  pif: string;
-  totalSlips: string;
-  totalAmount: string;
-  scanType: string;
-  withSlip: boolean;
+// ── Icon ─────────────────────────────────────────────────────────────────────
+
+function Icon({ name, size = 20, style }: { name: string; size?: number; style?: React.CSSProperties }) {
+  return (
+    <span
+      className="material-symbols-outlined"
+      style={{
+        fontSize: size,
+        fontVariationSettings: `'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' ${size}`,
+        lineHeight: 1, userSelect: 'none', flexShrink: 0, ...style,
+      }}
+    >{name}</span>
+  );
 }
+
+// ── Segmented ─────────────────────────────────────────────────────────────────
+
+function Segmented({ options, value, onChange, disabled }: {
+  options: { id: string; label: string; icon?: string }[];
+  value: string;
+  onChange: (v: string) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div style={{
+      display: 'inline-flex', padding: 3,
+      background: 'var(--bg-subtle)', borderRadius: 'var(--r-md)',
+      border: '1px solid var(--border)', opacity: disabled ? 0.55 : 1,
+    }}>
+      {options.map(o => {
+        const active = value === o.id;
+        return (
+          <button key={o.id} type="button"
+            onClick={() => !disabled && onChange(o.id)}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: '5px 12px', fontSize: 'var(--text-sm)', fontWeight: 500,
+              color: active ? 'var(--fg)' : 'var(--fg-muted)',
+              background: active ? 'var(--bg-raised)' : 'transparent',
+              border: 'none', borderRadius: 'calc(var(--r-md) - 3px)',
+              cursor: disabled ? 'not-allowed' : 'pointer',
+              boxShadow: active ? 'var(--shadow-xs)' : 'none',
+              fontFamily: 'inherit',
+              transition: 'background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease)',
+            }}>
+            {o.icon && <Icon name={o.icon} size={14} />}
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── ReadStat ──────────────────────────────────────────────────────────────────
+
+function ReadStat({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div>
+      <div style={{
+        fontSize: 'var(--text-xs)', fontWeight: 500,
+        textTransform: 'uppercase', letterSpacing: '.04em',
+        color: 'var(--fg-subtle)', marginBottom: 4,
+      }}>{label}</div>
+      <div style={{
+        fontSize: 'var(--text-sm)', fontWeight: 500, color: 'var(--fg)',
+        fontFamily: mono ? 'var(--font-mono)' : undefined,
+      }}>{value}</div>
+    </div>
+  );
+}
+
+// ── BatchCreatePage ───────────────────────────────────────────────────────────
 
 export function BatchCreatePage() {
   const navigate = useNavigate();
-  const { batchId: batchIdParam } = useParams<{ batchId: string }>();
-  const { user } = useAuthStore();
-  const [locations, setLocations] = useState<LocationDto[]>([]);
-  const [scanners, setScanners] = useState<ScannerDto[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [createdBatch, setCreatedBatch] = useState<BatchDto | null>(null);
-  const [showScanOptions, setShowScanOptions] = useState(false);
-  const [selectedScanType, setSelectedScanType] = useState<'Scan' | 'Rescan'>('Scan');
-  const [selectedWithSlip, setSelectedWithSlip] = useState<boolean | null>(true);
-  const [entryMode, setEntryMode] = useState<'scanner' | 'mobile' | null>(null);
+  const { user }  = useAuthStore();
+
+  const [scanners,        setScanners]        = useState<ScannerDto[]>([]);
+  const [locationDetails, setLocationDetails] = useState<LocationDto | null>(null);
+  const [submitting,      setSubmitting]      = useState(false);
+
+  // Entry Mode
+  const hasBothRoles = !!(user?.roles.includes('Scanner') && user?.roles.includes('MobileScanner'));
+  const onlyMobile   = !!(user?.roles.includes('MobileScanner') && !user?.roles.includes('Scanner'));
+  const [entryMode, setEntryMode] = useState<'scanner' | 'mobile'>(onlyMobile ? 'mobile' : 'scanner');
+
+  // Form State
+  const [clearingType, setClearingType] = useState('03');
+  const [batchDate, setBatchDate] = useState(user?.eodDate ?? new Date().toISOString().slice(0, 10));
+  
+  const [summRefNo, setSummRefNo] = useState('');
+  const [pif, setPif] = useState('');
   const [showHiddenFields, setShowHiddenFields] = useState(false);
+  const [totalSlips, setTotalSlips] = useState('');
+  const [totalAmount, setTotalAmount] = useState('');
 
-  // Determine mode: 'create' or 'details'
-  const mode = batchIdParam ? 'details' : 'create';
+  // Shared scan options
+  const [scanType, setScanType] = useState<'Scan' | 'Rescan'>('Scan');
+  const [withSlip, setWithSlip] = useState<'with' | 'without'>('with');
+  const [pdc, setPdc] = useState(false);
+  const [pdcDate, setPdcDate] = useState('');
 
-  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<BatchForm>({
-    defaultValues: {
-      locationID: user?.locationId?.toString() ?? '',
-      batchDate: user?.eodDate ?? new Date().toISOString().slice(0, 10),
-      clearingType: '01',
-      isPDC: false,
-      scanType: 'Scan',
-      withSlip: false,
-    }
-  });
+  // Mobile Mode Modal state
+  const [showMobileModal, setShowMobileModal] = useState(false);
+  const [modalSumm, setModalSumm] = useState('');
+  const [modalPif, setModalPif] = useState('');
+  const [modalSlips, setModalSlips] = useState('');
+  const [modalAmount, setModalAmount] = useState('');
+  const [modalErrors, setModalErrors] = useState<Record<string, string>>({});
 
-  const isPDC = watch('isPDC');
-  const selectedLocation = watch('locationID');
-  const selectedLocationDetails = locations.find(
-    l => l.locationID === (selectedLocation ? parseInt(selectedLocation) : -1)
-  );
+  const activeScanner = scanners.find(s => s.isActive) ?? scanners[0];
 
-  useEffect(() => {
-    getLocations()
-      .then(setLocations)
-      .catch(() => toast.error('Failed to load locations'))
-      .finally(() => setLoading(false));
-  }, []);
+  const formatDate = (iso: string) => {
+    if (!iso) return '—';
+    const [y, m, d] = iso.split('-');
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return `${d} ${months[parseInt(m) - 1]} ${y}`;
+  };
 
   useEffect(() => {
     if (!user?.locationId) return;
-    setValue('locationID', user.locationId.toString(), { shouldValidate: true });
-  }, [user?.locationId, setValue]);
+    getScanners(user.locationId).then(setScanners).catch(() => {});
+    getLocations().then(locs => {
+      const loc = locs.find(l => l.locationID === user.locationId);
+      if (loc) setLocationDetails(loc);
+    }).catch(() => {});
+  }, [user?.locationId]);
 
+  // Open mobile modal automatically when mobile mode is selected
   useEffect(() => {
-    if (!selectedLocation) {
-      setScanners([]);
-      setValue('scannerMappingID', '', { shouldValidate: true });
-      return;
+    if (entryMode === 'mobile') {
+      setShowMobileModal(true);
+      setWithSlip('with');
+      setShowHiddenFields(true); // Automatically show in center when mobile
+    } else {
+      setShowMobileModal(false);
+      setShowHiddenFields(false); // Reset to hidden in scanner mode unless toggled
     }
+  }, [entryMode]);
 
-    getScanners(parseInt(selectedLocation))
-      .then((list) => {
-        setScanners(list);
-        const preferred = list.find(s => s.isActive) ?? list[0];
-        setValue('scannerMappingID', preferred ? preferred.scannerMappingID.toString() : '', { shouldValidate: true });
-      })
-      .catch(() => setScanners([]));
-  }, [selectedLocation, setValue]);
-
+  // Auto-fill PIF with Summary Ref No in Mobile mode
   useEffect(() => {
-    if (selectedLocationDetails?.locationCode) {
-      setValue('pickupPointCode', selectedLocationDetails.locationCode, { shouldValidate: true });
-    }
-  }, [selectedLocationDetails?.locationCode, setValue]);
+    if (modalSumm) setModalPif(modalSumm);
+  }, [modalSumm]);
 
-  // Determine entry mode based on user roles
-  useEffect(() => {
-    if (!user) return;
-    const isScanner = user.roles.includes('Scanner');
-    const isMobileScanner = user.roles.includes('MobileScanner');
-    
-    if (isScanner && isMobileScanner) {
-      // User has both roles - will ask them to choose
-      setEntryMode(null);
-    } else if (isMobileScanner) {
-      setEntryMode('mobile');
-      setSelectedWithSlip(true); // Mobile mode always uses With Slip
-    } else if (isScanner) {
-      setEntryMode('scanner');
-    }
-  }, [user]);
+  const handleModalFill = () => {
+    const newErrs: Record<string, string> = {};
+    if (!modalSumm.trim()) newErrs.summ = 'Required';
+    if (!modalPif.trim()) newErrs.pif = 'Required';
+    if (!modalSlips || parseInt(modalSlips) <= 0) newErrs.slips = 'Required (>0)';
+    if (!modalAmount || parseFloat(modalAmount) <= 0) newErrs.amount = 'Required (>0)';
 
-  // Load existing batch data if in details mode
-  useEffect(() => {
-    if (mode === 'details' && batchIdParam) {
-      const loadBatchDetails = async () => {
-        try {
-          const batchData = await getBatch(parseInt(batchIdParam));
-          setCreatedBatch(batchData);
-          setShowScanOptions(true);
-          
-          // Pre-fill form with batch data
-          setValue('locationID', batchData.locationID.toString());
-          setValue('scannerMappingID', batchData.scannerMappingID?.toString() || '');
-          setValue('pickupPointCode', batchData.pickupPointCode || '');
-          setValue('batchDate', batchData.batchDate);
-          setValue('clearingType', batchData.clearingType);
-          setValue('isPDC', batchData.isPDC);
-          setValue('pdcDate', batchData.pdcDate || '');
-          setValue('summRefNo', batchData.summRefNo || '');
-          setValue('pif', batchData.pif || '');
-          setValue('totalSlips', batchData.totalSlips > 0 ? batchData.totalSlips.toString() : '');
-          setValue('totalAmount', batchData.totalAmount > 0 ? batchData.totalAmount.toString() : '');
-          
-          // Show hidden fields if they have values in details mode
-          if (batchData.totalSlips > 0 || batchData.totalAmount > 0) {
-            setShowHiddenFields(true);
-          }
-          
-          // Pre-fill scan type and slip mode if they exist
-          if (batchData.scanType) {
-            setSelectedScanType(batchData.scanType as 'Scan' | 'Rescan');
-          }
-          if (batchData.withSlip !== null && batchData.withSlip !== undefined) {
-            setSelectedWithSlip(batchData.withSlip);
-          }
-        } catch (err: any) {
-          toast.error(err?.response?.data?.message ?? 'Failed to load batch details');
-          navigate('/');
-        } finally {
-          setLoading(false);
-        }
-      };
-      
-      loadBatchDetails();
-    }
-  }, [mode, batchIdParam, setValue, navigate]);
+    setModalErrors(newErrs);
+    if (Object.keys(newErrs).length > 0) return;
 
-  useEffect(() => {
-    if (createdBatch && mode === 'create') {
-      setValue('summRefNo', createdBatch.summRefNo || '');
-      setValue('pif', createdBatch.pif || '');
-    }
-  }, [createdBatch, setValue, mode]);
-
-  // Auto-fill PIF with SummRefNo value for mobile scanner mode
-  const summRefNoValue = watch('summRefNo');
-  useEffect(() => {
-    if (entryMode === 'mobile' && summRefNoValue && mode === 'create') {
-      setValue('pif', summRefNoValue);
-    }
-  }, [summRefNoValue, entryMode, setValue, mode]);
-
-  const onSubmit = async (data: BatchForm) => {
-    if (mode === 'create') {
-      setSubmitting(true);
-      try {
-        const batch = await createBatch({
-          locationID: parseInt(data.locationID),
-          scannerMappingID: parseInt(data.scannerMappingID),
-          pickupPointCode: data.pickupPointCode || undefined,
-          batchDate: data.batchDate,
-          clearingType: data.clearingType,
-          isPDC: data.isPDC,
-          pdcDate: data.isPDC ? data.pdcDate : undefined,
-          totalSlips: 0,
-          totalAmount: 0,
-          entryMode: entryMode || 'scanner',
-          // In mobile mode, SummRefNo and PIF will be provided after batch creation via update
-          summRefNo: undefined,
-          pif: undefined,
-        });
-        setCreatedBatch(batch);
-        setShowScanOptions(true);
-        toast.success(`Batch ${batch.batchNo} created successfully. Enter total slips and amount below.`);
-      } catch (err: any) {
-        toast.error(err?.response?.data?.message ?? 'Failed to create batch');
-      } finally {
-        setSubmitting(false);
-      }
-    }
+    // Push inputs to form wrapper
+    setSummRefNo(modalSumm);
+    setPif(modalPif);
+    setTotalSlips(modalSlips);
+    setTotalAmount(modalAmount);
+    setShowMobileModal(false);
   };
 
-  const handleSaveAndNavigate = async () => {
-    if (!createdBatch) return;
-
-    const totalSlipsStr = watch('totalSlips');
-    const totalAmountStr = watch('totalAmount');
-    const totalSlips = totalSlipsStr ? parseInt(totalSlipsStr) : 0;
-    const totalAmount = totalAmountStr ? parseFloat(totalAmountStr) : 0;
-    const isPDCValue = watch('isPDC');
-    const pdcDateValue = watch('pdcDate');
-    const summRefNoValue = watch('summRefNo');
-    const pifValue = watch('pif');
-
-    // Total Slips and Amount are REQUIRED in mobile mode, optional in scanner mode
-    if (entryMode === 'mobile') {
-      if (!totalSlipsStr || totalSlips <= 0) {
-        toast.error('Total Slips is required in mobile scanner mode');
-        return;
-      }
-      if (!totalAmountStr || totalAmount <= 0) {
-        toast.error('Total Amount is required in mobile scanner mode');
-        return;
-      }
-    } else {
-      // In scanner mode, only validate if provided
-      if (totalSlipsStr && totalSlips <= 0) {
-        toast.error('Total Slips must be greater than 0 if provided');
-        return;
-      }
-      if (totalAmountStr && totalAmount <= 0) {
-        toast.error('Total Amount must be greater than 0 if provided');
-        return;
-      }
+  const handleCreateAndStart = async () => {
+    // Validate Scanner mode hidden fields if checked
+    if (entryMode === 'scanner' && showHiddenFields) {
+       if (!totalSlips || parseInt(totalSlips) <= 0) {
+         toast.error('Total slips is required and must be > 0 when hidden fields are active');
+         return;
+       }
+       if (!totalAmount || parseFloat(totalAmount) <= 0) {
+         toast.error('Total amount is required and must be > 0 when hidden fields are active');
+         return;
+       }
     }
-    if (isPDCValue && !pdcDateValue) {
+
+    if (pdc && !pdcDate) {
       toast.error('PDC Date is required');
       return;
     }
-    if (!summRefNoValue?.trim()) {
-      toast.error('Summary Ref No is required');
-      return;
-    }
-    if (!pifValue?.trim()) {
-      toast.error('PIF No is required');
-      return;
-    }
-    if (selectedWithSlip === null) {
-      toast.error('Please select With Slip or Without Slip mode');
-      return;
-    }
+
+    if (!user?.locationId) return;
+    if (!activeScanner) { toast.error('No active scanner found for your location'); return; }
 
     setSubmitting(true);
     try {
-      await updateBatch(createdBatch.batchID, {
-        totalSlips,
-        totalAmount,
-        isPDC: isPDCValue,
-        pdcDate: isPDCValue ? pdcDateValue : undefined,
-        summRefNo: summRefNoValue,
-        pif: pifValue,
-        scanType: selectedScanType,
-        withSlip: selectedWithSlip
+      // Create initial batch
+      const batch = await createBatch({
+        locationID:       user.locationId,
+        scannerMappingID: activeScanner.scannerMappingID,
+        pickupPointCode:  locationDetails?.locationCode,
+        batchDate:        batchDate,
+        clearingType:     clearingType,
+        isPDC:            pdc,
+        pdcDate:          pdc ? pdcDate : undefined,
+        totalSlips:       0,
+        totalAmount:      0,
+        entryMode:        entryMode,
+        summRefNo:        entryMode === 'mobile' ? summRefNo : undefined,
+        pif:              entryMode === 'mobile' ? pif : undefined,
       });
-      toast.success('Batch details saved');
-      navigate(`/scan/${createdBatch.batchID}`);
+
+      // Update secondary fields including optional ones
+      await updateBatch(batch.batchID, {
+        totalSlips: (showHiddenFields || entryMode === 'mobile') && totalSlips ? parseInt(totalSlips) : 0,
+        totalAmount: (showHiddenFields || entryMode === 'mobile') && totalAmount ? parseFloat(totalAmount) : 0,
+        isPDC: pdc,
+        pdcDate: pdc ? pdcDate : undefined,
+        scanType,
+        withSlip: withSlip === 'with',
+        summRefNo: entryMode === 'mobile' ? summRefNo : batch.summRefNo,
+        pif: entryMode === 'mobile' ? pif : batch.pif,
+      });
+
+      toast.success(`Batch ${batch.batchNo} created`);
+      navigate(`/scan/${batch.batchID}`);
     } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? 'Failed to save batch details');
+      toast.error(err?.response?.data?.message ?? 'Failed to create batch');
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleCancel = async () => {
-    if (!createdBatch) {
-      navigate('/');
-      return;
-    }
-
-    // Save data even on cancel
-    const totalSlips = parseInt(watch('totalSlips') || '0');
-    const totalAmount = parseFloat(watch('totalAmount') || '0');
-    
-    if (totalSlips > 0 && totalAmount > 0) {
-      setSubmitting(true);
-      try {
-        await updateBatch(createdBatch.batchID, {
-          totalSlips,
-          totalAmount,
-          isPDC: watch('isPDC'),
-          pdcDate: watch('isPDC') ? watch('pdcDate') : undefined,
-          summRefNo: watch('summRefNo'),
-          pif: watch('pif')
-        });
-      } catch (err: any) {
-        toast.error(err?.response?.data?.message ?? 'Failed to save batch details');
-      } finally {
-        setSubmitting(false);
-      }
-    }
-    
-    navigate('/');
-  };
-
-  if (loading) return <div className="p-8 text-center text-gray-400 animate-pulse">Loading...</div>;
-
-  // Show entry mode selection if user has both roles
-  if (mode === 'create' && user?.roles.includes('Scanner') && user?.roles.includes('MobileScanner') && entryMode === null && !createdBatch) {
-    return (
-      <div className="max-w-md mx-auto mt-20">
-        <div className="bg-white rounded-xl shadow-xl p-8">
-          <div className="text-center mb-6">
-            <div className="mx-auto w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4">
-              <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-              </svg>
-            </div>
-            <h2 className="text-xl font-bold text-gray-900 mb-2">Select Entry Mode</h2>
-            <p className="text-sm text-gray-600">
-              You have both Scanner and Mobile Scanner roles. How will you process this batch?
-            </p>
-          </div>
-
-          <div className="space-y-3">
-            <button
-              onClick={() => setEntryMode('scanner')}
-              className="w-full text-left p-4 border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all"
-            >
-              <div className="font-semibold text-gray-900 mb-1">🖥️ Scanner Mode</div>
-              <div className="text-xs text-gray-600">
-                SummRefNo and PIF are auto-generated by the system. Suitable for desktop scanner workflow.
-              </div>
-            </button>
-
-            <button
-              onClick={() => { setEntryMode('mobile'); setSelectedWithSlip(true); }}
-              className="w-full text-left p-4 border-2 border-gray-200 rounded-lg hover:border-orange-500 hover:bg-orange-50 transition-all"
-            >
-              <div className="font-semibold text-gray-900 mb-1">📱 Mobile Scanner Mode</div>
-              <div className="text-xs text-gray-600">
-                You manually type both SummRefNo and PIF. Nothing is auto-generated.
-              </div>
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="max-w-2xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-xl font-bold text-gray-900">
-          {mode === 'details' ? 'Batch Details' : 'Create New Batch'}
-        </h1>
-        <p className="text-sm text-gray-500 mt-1">
-          {mode === 'details'
-            ? 'Review and update batch details. All fields are editable.'
-            : 'Fill in batch details to start scanning'}
-        </p>
-        {mode === 'details' && selectedLocationDetails && (
-          <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-            <p className="text-sm text-gray-700">
-              <span className="font-medium">Location:</span> {selectedLocationDetails.locationName}
-            </p>
+    <div style={{ position: 'relative', minHeight: '100%' }}>
+      {/* Breadcrumb + title */}
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--text-xs)', color: 'var(--fg-subtle)', marginBottom: 6 }}>
+            <a onClick={() => navigate('/')} style={{ cursor: 'pointer', color: 'var(--fg-muted)', textDecoration: 'none' }}>Dashboard</a>
+            <Icon name="chevron_right" size={14} />
+            <span>New batch</span>
           </div>
-        )}
-        {mode === 'create' && entryMode && (
-          <div className={`mt-2 inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium ${
-            entryMode === 'mobile' ? 'bg-orange-100 text-orange-800' : 'bg-blue-100 text-blue-800'
-          }`}>
-            {entryMode === 'mobile' ? '📱 Mobile Scanner Mode' : '🖥️ Scanner Mode'}
-            {(user?.roles.includes('Scanner') && user?.roles.includes('MobileScanner')) && (
-              <button
-                onClick={() => { setEntryMode(null); setCreatedBatch(null); }}
-                className="ml-1 hover:underline"
-              >
-                (Change)
-              </button>
-            )}
+          <h1 style={{ margin: 0, fontSize: 'var(--text-2xl)', fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--fg)' }}>
+            Create batch
+          </h1>
+          <p style={{ margin: '4px 0 0', fontSize: 'var(--text-sm)', color: 'var(--fg-muted)' }}>
+            Batch number is assigned after save. Most fields below are inferred from your session.
+          </p>
+        </div>
+
+        {/* Entry mode — Top right alignment */}
+        {hasBothRoles && (
+          <div>
+            <div style={{ fontSize: 'var(--text-xs)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--fg-muted)', marginBottom: 6, textAlign: 'right' }}>
+              Entry mode (Dev)
+            </div>
+            <Segmented
+              options={[
+                { id: 'scanner', label: 'Scanner',        icon: 'document_scanner' },
+                { id: 'mobile',  label: 'Mobile scanner', icon: 'smartphone' },
+              ]}
+              value={entryMode}
+              onChange={v => setEntryMode(v as 'scanner' | 'mobile')}
+            />
           </div>
         )}
       </div>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="bg-white rounded-lg shadow-sm p-6 space-y-5">
-        {/* Location + Scanner */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Location *</label>
-            <select
-              {...register('locationID', { required: 'Location is required' })}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">Select location</option>
-              {locations.filter(l => l.isActive).map(l => (
-                <option key={l.locationID} value={l.locationID}>{l.locationName}</option>
-              ))}
-            </select>
-            {errors.locationID && <p className="text-red-500 text-xs mt-1">{errors.locationID.message}</p>}
-            <p className="text-xs text-gray-500 mt-1">Defaults from your assigned location, but you can change it.</p>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Scanner *</label>
-            <select
-              {...register('scannerMappingID', { required: 'Scanner is required' })}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">Select scanner</option>
-              {scanners.filter(s => s.isActive).map(s => (
-                <option key={s.scannerMappingID} value={s.scannerMappingID}>
-                  {s.scannerID} {s.scannerModel ? `(${s.scannerModel})` : ''}
-                </option>
-              ))}
-            </select>
-            {errors.scannerMappingID && <p className="text-red-500 text-xs mt-1">{errors.scannerMappingID.message}</p>}
-            <p className="text-xs text-gray-500 mt-1">Defaults to first active scanner for selected location.</p>
-          </div>
+      {/* Header Prefilled section (Read-only properties + Configuration) */}
+      <div style={{
+        background: 'var(--bg-raised)', border: '1px solid var(--border)',
+        borderRadius: 'var(--r-lg)', boxShadow: 'var(--shadow-xs)',
+        padding: '16px', marginBottom: 16,
+      }}>
+        {/* Prefilled Stats Row */}
+        <div style={{
+          display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+          gap: 16, marginBottom: 16, paddingBottom: 16, borderBottom: '1px solid var(--border-subtle)', alignItems: 'center'
+        }}>
+          <ReadStat label="Location Name" value={user?.locationName ?? '—'} />
+          <ReadStat label="Location Code" value={locationDetails?.locationCode ?? '—'} mono />
+          <ReadStat label="Cluster" value={locationDetails?.clusterCode ?? '—'} mono />
+          <ReadStat label="Scanner" value={activeScanner ? `${activeScanner.scannerID}` : '—'} mono />
+          <ReadStat label="User" value={user?.username?.toUpperCase() ?? '—'} mono />
+          <ReadStat label="EOD" value={formatDate(user?.eodDate ?? '')} />
         </div>
 
-        {/* Batch Date + Clearing */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {/* Global Configuration Row */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, maxWidth: 500 }}>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Batch Date *</label>
-            <input
-              {...register('batchDate', { required: 'Batch date is required' })}
-              type="date"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            {errors.batchDate && <p className="text-red-500 text-xs mt-1">{errors.batchDate.message}</p>}
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Clearing Type *</label>
+            <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--fg-muted)', display: 'block', marginBottom: 6 }}>
+              Clearing type <span style={{ color: 'var(--danger)' }}>*</span>
+            </label>
             <select
-              {...register('clearingType', { required: true })}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              autoFocus
+              value={clearingType}
+              onChange={e => setClearingType(e.target.value)}
+              style={{
+                width: '100%', boxSizing: 'border-box',
+                padding: '7px 10px', background: 'var(--bg-input)', color: 'var(--fg)',
+                border: '1px solid var(--border-strong)', borderRadius: 'var(--r-md)',
+                fontSize: 'var(--text-sm)', fontFamily: 'var(--font-sans)', outline: 'none', cursor: 'pointer',
+              }}
             >
-              <option value="01">CTS (01)</option>
+              <option value="01">Regular (01)</option>
+              <option value="02">High Value (02)</option>
+              <option value="03">CTS (03)</option>
               <option value="11">Non-CTS (11)</option>
             </select>
           </div>
-        </div>
-
-        {/* Pickup Point */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Pickup Location (Location Name - Location Code - Cluster Code)</label>
-          <select
-            {...register('pickupPointCode')}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">Select pickup location</option>
-            {locations.filter(l => l.isActive).map(l => (
-              <option key={l.locationID} value={l.locationCode}>
-                {l.locationName} ({l.locationCode}){l.clusterCode ? ` - ${l.clusterCode}` : ''}
-              </option>
-            ))}
-          </select>
-          <p className="text-xs text-gray-500 mt-1">Shows: Location Name (Location Code) - Cluster Code. Defaults to your location.</p>
-        </div>
-
-        {/* PDC */}
-        <div>
-          <label className="flex items-center gap-2 cursor-pointer">
+          <div>
+            <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--fg-muted)', display: 'block', marginBottom: 6 }}>
+              Batch Date <span style={{ color: 'var(--danger)' }}>*</span>
+            </label>
             <input
-              {...register('isPDC')}
-              type="checkbox"
-              className="rounded border-gray-300"
+              type="date"
+              value={batchDate}
+              onChange={e => setBatchDate(e.target.value)}
+              style={{
+                width: '100%', boxSizing: 'border-box', padding: '6px 10px',
+                background: 'var(--bg-input)', border: '1px solid var(--border-strong)',
+                color: 'var(--fg)',
+                borderRadius: 'var(--r-md)', fontSize: 'var(--text-sm)', outline: 'none',
+              }}
             />
-            <span className="text-sm font-medium text-gray-700">Post-Dated Cheque (PDC)</span>
-          </label>
+          </div>
+        </div>
+      </div>
 
-          {isPDC && (
-            <div className="mt-3">
-              <label className="block text-sm font-medium text-gray-700 mb-1">PDC Date *</label>
-              <input
-                {...register('pdcDate', { required: isPDC ? 'PDC date is required' : false })}
-                type="date"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+      <form onSubmit={(e) => { e.preventDefault(); handleCreateAndStart(); }}>
+        {/* Main editable container */}
+        <div style={{
+          background: 'var(--bg-raised)', border: '1px solid var(--border)',
+          borderRadius: 'var(--r-lg)', boxShadow: 'var(--shadow-xs)',
+          padding: '16px',
+        }}>
+
+        {/* Midsection Generics (BATCH NO, SUMM REF NO, PIF NO) */}
+        <div style={{
+          background: 'var(--bg-subtle)', border: '1px solid var(--border-strong)',
+          borderRadius: 'var(--r-md)', padding: '16px', marginBottom: 16,
+          display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 16
+        }}>
+          <div>
+            <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--fg-muted)', display: 'block', marginBottom: 4 }}>
+              Batch No <span style={{ color: 'var(--danger)' }}>*</span>
+            </label>
+            <input
+              type="text"
+              disabled
+              style={{
+                width: '100%', boxSizing: 'border-box', padding: '7px 10px',
+                background: 'transparent', border: '1px solid var(--border-strong)',
+                borderRadius: 'var(--r-md)', fontSize: 'var(--text-sm)', fontFamily: 'var(--font-mono)', outline: 'none',
+                opacity: 0.6, cursor: 'not-allowed', color: 'var(--fg)'
+              }}
+            />
+          </div>
+          <div>
+            <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--fg-muted)', display: 'block', marginBottom: 4 }}>
+              Summary Ref No <span style={{ color: 'var(--danger)' }}>*</span>
+            </label>
+            <input
+              type="text"
+              value={summRefNo}
+              disabled={entryMode === 'scanner'}
+              onChange={e => setSummRefNo(e.target.value)}
+              style={{
+                width: '100%', boxSizing: 'border-box', padding: '7px 10px',
+                background: entryMode === 'scanner' ? 'transparent' : 'var(--bg-input)', border: '1px solid var(--border-strong)',
+                borderRadius: 'var(--r-md)', fontSize: 'var(--text-sm)', fontFamily: 'var(--font-mono)', outline: 'none',
+                opacity: entryMode === 'scanner' ? 0.6 : 1, cursor: entryMode === 'scanner' ? 'not-allowed' : 'text', color: 'var(--fg)'
+              }}
+            />
+          </div>
+          <div>
+            <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--fg-muted)', display: 'block', marginBottom: 4 }}>
+              PIF No <span style={{ color: 'var(--danger)' }}>*</span>
+            </label>
+            <input
+              type="text"
+              value={pif}
+              disabled={entryMode === 'scanner'}
+              onChange={e => setPif(e.target.value)}
+              style={{
+                width: '100%', boxSizing: 'border-box', padding: '7px 10px',
+                background: entryMode === 'scanner' ? 'transparent' : 'var(--bg-input)', border: '1px solid var(--border-strong)',
+                borderRadius: 'var(--r-md)', fontSize: 'var(--text-sm)', fontFamily: 'var(--font-mono)', outline: 'none',
+                opacity: entryMode === 'scanner' ? 0.6 : 1, cursor: entryMode === 'scanner' ? 'not-allowed' : 'text', color: 'var(--fg)'
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Hidden Fields Toggles & Inputs */}
+        <div style={{ marginBottom: 16, animation: 'fadeIn 0.2s ease-out' }}>
+          {entryMode === 'scanner' && (
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 'var(--text-sm)', fontWeight: 500, color: 'var(--fg)', cursor: 'pointer', marginBottom: 12 }}>
+              <input 
+                type="checkbox" 
+                checked={showHiddenFields} 
+                onChange={e => setShowHiddenFields(e.target.checked)} 
+                style={{ accentColor: 'var(--accent-500)', width: 14, height: 14 }}
               />
-              {errors.pdcDate && <p className="text-red-500 text-xs mt-1">{errors.pdcDate.message}</p>}
+              Show hidden fields (Total Slips & Amount)
+            </label>
+          )}
+
+          {(showHiddenFields || entryMode === 'mobile') && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, maxWidth: 640 }}>
+              <div>
+                <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--fg-muted)', display: 'block', marginBottom: 4 }}>
+                  Total Slips <span style={{ color: 'var(--danger)' }}>*</span>
+                </label>
+                <input
+                  type="number"
+                  value={totalSlips}
+                  onChange={e => setTotalSlips(e.target.value)}
+                  style={{
+                    width: '100%', boxSizing: 'border-box', padding: '7px 10px',
+                    background: 'var(--bg-input)', border: '1px solid var(--border-strong)',
+                    borderRadius: 'var(--r-md)', fontSize: 'var(--text-sm)', outline: 'none', color: 'var(--fg)'
+                  }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--fg-muted)', display: 'block', marginBottom: 4 }}>
+                  Total Amount (₹) <span style={{ color: 'var(--danger)' }}>*</span>
+                </label>
+                <input
+                  type="number"
+                  value={totalAmount}
+                  onChange={e => setTotalAmount(e.target.value)}
+                  style={{
+                    width: '100%', boxSizing: 'border-box', padding: '7px 10px',
+                    background: 'var(--bg-input)', border: '1px solid var(--border-strong)',
+                    borderRadius: 'var(--r-md)', fontSize: 'var(--text-sm)', outline: 'none', color: 'var(--fg)'
+                  }}
+                />
+              </div>
             </div>
           )}
         </div>
 
-        {/* Create Batch and Cancel Buttons */}
-        {!createdBatch && (
-          <div className="grid grid-cols-2 gap-3 pt-2">
-            <button
-              type="submit"
-              disabled={submitting}
-              className="w-full bg-blue-700 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-blue-800 disabled:opacity-50 transition-colors"
-            >
-              {submitting ? 'Creating...' : 'Create Batch'}
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate('/')}
-              className="w-full border border-gray-300 text-gray-700 py-2.5 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-        )}
-
-        {/* Post-create success card */}
-        {createdBatch && (
-          <div className="border border-green-200 bg-green-50 rounded-lg p-4 space-y-4">
-            <p className="text-sm font-semibold text-green-800">Batch created successfully</p>
-            
-            {/* Batch Info (Non-editable) */}
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Batch No</label>
+        {/* Scan Options Midsection */}
+        <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: 20 }}>
+          <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--fg-muted)', display: 'block', marginBottom: 10 }}>
+            Scan options
+          </label>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
+            <Segmented
+              options={[
+                { id: 'Scan',   label: 'Scan',   icon: 'document_scanner' },
+                { id: 'Rescan', label: 'Rescan', icon: 'refresh' },
+              ]}
+              value={scanType}
+              onChange={v => setScanType(v as 'Scan' | 'Rescan')}
+            />
+            <span style={{ width: 1, height: 24, background: 'var(--border)', margin: '0 4px' }} />
+            <Segmented
+              options={[
+                { id: 'with',    label: 'With slip',    icon: 'receipt' },
+                { id: 'without', label: 'Without slip', icon: 'receipt_long' },
+              ]}
+              value={withSlip}
+              onChange={v => setWithSlip(v as 'with' | 'without')}
+              disabled={entryMode === 'mobile'}
+            />
+            <span style={{ width: 1, height: 24, background: 'var(--border)', margin: '0 4px' }} />
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <label style={{
+                display: 'flex', alignItems: 'center', gap: 8, height: 38, boxSizing: 'border-box',
+                fontSize: 'var(--text-sm)', color: 'var(--fg-muted)', cursor: 'pointer',
+                padding: '0 12px', background: 'var(--bg-subtle)',
+                borderRadius: pdc ? 'var(--r-md) 0 0 var(--r-md)' : 'var(--r-md)',
+                border: '1px solid var(--border)',
+                borderRight: pdc ? 'none' : '1px solid var(--border)'
+              }}>
                 <input
-                  type="text"
-                  value={createdBatch.batchNo}
-                  readOnly
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-gray-50 font-mono font-semibold"
+                  type="checkbox"
+                  checked={pdc}
+                  onChange={e => setPdc(e.target.checked)}
+                  style={{ accentColor: 'var(--accent-500)', width: 15, height: 15 }}
                 />
-              </div>
+                PDC
+              </label>
 
-              {/* SummRefNo and PIF - Editable */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">
-                    Summary Ref No
-                    {entryMode === 'mobile' && <span className="text-orange-600 ml-1">*</span>}
-                  </label>
-                  <input
-                    {...register('summRefNo', { required: entryMode === 'mobile' ? 'Summary Ref No is required' : false })}
-                    type="text"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder={entryMode === 'mobile' ? "Enter manually" : "Auto-generated (editable)"}
-                    readOnly={entryMode === 'scanner'}
-                  />
-                  {errors.summRefNo && <p className="text-red-500 text-xs mt-1">{errors.summRefNo.message}</p>}
-                  {entryMode === 'scanner' && (
-                    <p className="text-[10px] text-gray-500 mt-1">
-                      ℹ️ Auto-generated by system. You can edit if needed.
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">
-                    PIF No
-                    {entryMode === 'mobile' && <span className="text-orange-600 ml-1">*</span>}
-                  </label>
-                  <input
-                    {...register('pif', { required: entryMode === 'mobile' ? 'PIF No is required' : false })}
-                    type="text"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder={entryMode === 'mobile' ? "Auto-filled from Summary Ref" : "Auto-generated (editable)"}
-                    readOnly={entryMode === 'scanner'}
-                  />
-                  {errors.pif && <p className="text-red-500 text-xs mt-1">{errors.pif.message}</p>}
-                  {entryMode === 'scanner' && (
-                    <p className="text-[10px] text-gray-500 mt-1">
-                      ℹ️ Auto-generated by system. You can edit if needed.
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Total Slips + Amount + PDC */}
-            <div className="border-t border-green-200 pt-4 space-y-4">
-              {/* Show hidden fields checkbox for scanner mode */}
-              {entryMode === 'scanner' && (
-                <div>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={showHiddenFields}
-                      onChange={(e) => setShowHiddenFields(e.target.checked)}
-                      className="rounded border-gray-300"
-                    />
-                    <span className="text-sm font-medium text-gray-700">Show hidden fields (Total Slips & Amount)</span>
-                  </label>
-                </div>
+              {pdc && (
+                <input
+                  type="date"
+                  value={pdcDate}
+                  title="Select PDC Date"
+                  onChange={e => setPdcDate(e.target.value)}
+                  style={{
+                    padding: '0 10px', height: 38, boxSizing: 'border-box',
+                    background: 'var(--bg-subtle)', color: 'var(--fg)',
+                    border: '1px solid var(--border)', borderRadius: '0 var(--r-md) var(--r-md) 0', 
+                    fontSize: 'var(--text-sm)', outline: 'none'
+                  }}
+                />
               )}
-
-              {/* Total Slips and Amount - shown in mobile mode or when checkbox is checked in scanner mode */}
-              {(entryMode === 'mobile' || showHiddenFields) && (
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Total Slips
-                      {entryMode === 'mobile' && <span className="text-orange-600 ml-1">*</span>}
-                    </label>
-                    <input
-                      {...register('totalSlips', { 
-                        required: entryMode === 'mobile' ? 'Required' : false,
-                        min: { value: 1, message: 'Must be > 0' } 
-                      })}
-                      type="number"
-                      min="0"
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Optional"
-                    />
-                    {errors.totalSlips && <p className="text-red-500 text-xs mt-1">{errors.totalSlips.message}</p>}
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Total Amount (₹)
-                      {entryMode === 'mobile' && <span className="text-orange-600 ml-1">*</span>}
-                    </label>
-                    <input
-                      {...register('totalAmount', { 
-                        required: entryMode === 'mobile' ? 'Required' : false,
-                        min: { value: 0.001, message: 'Must be > 0' } 
-                      })}
-                      type="number"
-                      step="0.001"
-                      min="0"
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Optional"
-                    />
-                    {errors.totalAmount && <p className="text-red-500 text-xs mt-1">{errors.totalAmount.message}</p>}
-                  </div>
-                </div>
-              )}
-
-              {/* PDC - REMOVED FROM HERE, ONLY SHOW BEFORE CREATE BATCH */}
-
             </div>
-
-            {/* Start Scanning Buttons */}
-            <div className="space-y-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Scan Type</label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedScanType('Scan')}
-                    className={`py-2 rounded text-sm font-medium ${selectedScanType === 'Scan' ? 'bg-blue-700 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-                  >
-                    Scan
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedScanType('Rescan')}
-                    className={`py-2 rounded text-sm font-medium ${selectedScanType === 'Rescan' ? 'bg-blue-700 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-                  >
-                    Rescan
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Slip Mode</label>
-                {entryMode === 'mobile' ? (
-                  <div className="py-2 px-3 bg-orange-50 border border-orange-200 rounded text-sm text-orange-800">
-                    ✓ With Slip (Always enabled in mobile scanner mode)
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedWithSlip(true)}
-                      className={`py-2 rounded text-sm font-medium ${selectedWithSlip === true ? 'bg-orange-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-                    >
-                      With Slip
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedWithSlip(false)}
-                      className={`py-2 rounded text-sm font-medium ${selectedWithSlip === false ? 'bg-orange-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-                    >
-                      Without Slip
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="flex gap-3 pt-1">
-              <button
-                type="button"
-                onClick={handleSaveAndNavigate}
-                disabled={submitting}
-                className="flex-1 bg-green-700 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-green-800 transition-colors disabled:opacity-50"
-              >
-                {submitting ? 'Saving...' : 'Start Scanning'}
-              </button>
-              <button
-                type="button"
-                onClick={handleCancel}
-                disabled={submitting}
-                className="flex-1 border border-gray-300 text-gray-700 py-2.5 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
-              >
-                Cancel
-              </button>
-            </div>
-
           </div>
-        )}
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 12 }}>
+        <button
+          type="button"
+          onClick={() => navigate('/')}
+          disabled={submitting}
+          style={{
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            padding: '7px 16px', height: 38,
+            background: 'var(--bg-raised)', color: 'var(--fg)',
+            border: '1px solid var(--border-strong)', borderRadius: 'var(--r-md)',
+            fontSize: 'var(--text-sm)', fontWeight: 500, fontFamily: 'var(--font-sans)',
+            cursor: submitting ? 'not-allowed' : 'pointer', opacity: submitting ? 0.5 : 1,
+          }}
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          disabled={submitting}
+          style={{
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            padding: '7px 20px', height: 38,
+            background: 'var(--accent-500)', color: 'var(--fg-on-accent)',
+            border: '1px solid var(--accent-600)', borderRadius: 'var(--r-md)',
+            fontSize: 'var(--text-sm)', fontWeight: 500, fontFamily: 'var(--font-sans)',
+            cursor: submitting ? 'not-allowed' : 'pointer', opacity: submitting ? 0.7 : 1,
+          }}
+        >
+          <Icon name="play_arrow" size={18} style={{ color: 'inherit' }} />
+          {submitting ? 'Creating and Storing...' : 'Create & start scanning'}
+        </button>
+        </div>
       </form>
+
+      {/* --------- MOBILE SCANNER MODAL --------- */}
+      {entryMode === 'mobile' && showMobileModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(3px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 100, padding: 24, animation: 'fadeIn 0.2s ease-out'
+        }}>
+          <form 
+            onSubmit={(e) => { e.preventDefault(); handleModalFill(); }}
+            style={{
+              background: 'var(--bg-raised, #fff)', border: '1px solid var(--border)',
+              borderRadius: 'var(--r-xl, 16px)', boxShadow: 'var(--shadow-xl)',
+              width: '100%', maxWidth: 520, overflow: 'hidden',
+              display: 'flex', flexDirection: 'column'
+            }}
+          >
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 600, color: 'var(--fg)' }}>
+                  Mobile Scanner Form
+                </h2>
+                <div style={{ marginTop: 4, fontSize: 'var(--text-xs)', color: 'var(--fg-subtle)' }}>
+                  Please fill all fields to populate the batch configuration.
+                </div>
+              </div>
+              {hasBothRoles && (
+                <button onClick={() => setShowMobileModal(false)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--fg-muted)' }}>
+                  <Icon name="close" size={24} />
+                </button>
+              )}
+            </div>
+
+            <div style={{ padding: 24, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--fg-muted)', display: 'block', marginBottom: 6 }}>
+                  Summary Ref No <span style={{ color: 'var(--danger)' }}>*</span>
+                </label>
+                <input
+                  autoFocus
+                  value={modalSumm} onChange={e => { setModalSumm(e.target.value); setModalErrors(prev => ({ ...prev, summ: '' })); }}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', background: 'var(--bg-input)', border: `1px solid ${modalErrors.summ ? 'var(--danger)' : 'var(--border-strong)'}`, borderRadius: 'var(--r-md)', fontSize: 'var(--text-sm)', fontFamily: 'var(--font-mono)', outline: 'none', color: 'var(--fg)' }}
+                />
+                {modalErrors.summ && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--danger)', marginTop: 4 }}>{modalErrors.summ}</div>}
+              </div>
+
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--fg-muted)', display: 'block', marginBottom: 6 }}>
+                  PIF No <span style={{ color: 'var(--danger)' }}>*</span>
+                </label>
+                <input
+                  value={modalPif} onChange={e => { setModalPif(e.target.value); setModalErrors(prev => ({ ...prev, pif: '' })); }}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', background: 'var(--bg-input)', border: `1px solid ${modalErrors.pif ? 'var(--danger)' : 'var(--border-strong)'}`, borderRadius: 'var(--r-md)', fontSize: 'var(--text-sm)', fontFamily: 'var(--font-mono)', outline: 'none', color: 'var(--fg)' }}
+                />
+                {modalErrors.pif && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--danger)', marginTop: 4 }}>{modalErrors.pif}</div>}
+              </div>
+
+              <div>
+                <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--fg-muted)', display: 'block', marginBottom: 6 }}>
+                  Total Slips <span style={{ color: 'var(--danger)' }}>*</span>
+                </label>
+                <input
+                  type="number"
+                  value={modalSlips} onChange={e => { setModalSlips(e.target.value); setModalErrors(prev => ({ ...prev, slips: '' })); }}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', background: 'var(--bg-input)', border: `1px solid ${modalErrors.slips ? 'var(--danger)' : 'var(--border-strong)'}`, borderRadius: 'var(--r-md)', fontSize: 'var(--text-sm)', outline: 'none', color: 'var(--fg)' }}
+                />
+                {modalErrors.slips && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--danger)', marginTop: 4 }}>{modalErrors.slips}</div>}
+              </div>
+
+              <div>
+                <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--fg-muted)', display: 'block', marginBottom: 6 }}>
+                  Total Amount (₹) <span style={{ color: 'var(--danger)' }}>*</span>
+                </label>
+                <input
+                  type="number"
+                  value={modalAmount} onChange={e => { setModalAmount(e.target.value); setModalErrors(prev => ({ ...prev, amount: '' })); }}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', background: 'var(--bg-input)', border: `1px solid ${modalErrors.amount ? 'var(--danger)' : 'var(--border-strong)'}`, borderRadius: 'var(--r-md)', fontSize: 'var(--text-sm)', outline: 'none', color: 'var(--fg)' }}
+                />
+                {modalErrors.amount && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--danger)', marginTop: 4 }}>{modalErrors.amount}</div>}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, padding: '16px 24px', borderTop: '1px solid var(--border)', background: 'var(--bg-subtle)' }}>
+              {hasBothRoles && (
+                <button
+                  type="button" onClick={() => setShowMobileModal(false)} disabled={submitting}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '9px 16px', height: 38,
+                    background: 'var(--bg-raised)', color: 'var(--fg)', border: '1px solid var(--border-strong)', borderRadius: 'var(--r-md)', fontSize: 'var(--text-sm)', fontWeight: 500, cursor: 'pointer'
+                  }}
+                >
+                  Cancel
+                </button>
+              )}
+              <button
+                type="submit" disabled={submitting}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '9px 16px', height: 38,
+                  background: 'var(--accent-500)', color: 'var(--fg-on-accent)', border: '1px solid var(--accent-600)', borderRadius: 'var(--r-md)', fontSize: 'var(--text-sm)', fontWeight: 500, cursor: 'pointer'
+                }}
+              >
+                <Icon name="check_circle" size={16} />
+                Confirm Details To Form
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+      
+      <style>{`
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(5px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
     </div>
   );
 }
