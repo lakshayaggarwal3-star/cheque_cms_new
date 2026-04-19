@@ -23,9 +23,22 @@ public class ClientRepository : IClientRepository
 
     public async Task<List<ClientMaster>> GetAllAsync() =>
         await _db.Clients
+            .AsNoTracking()
             .Where(c => !c.IsDeleted)
             .OrderBy(c => c.CityCode)
             .ToListAsync();
+
+    public async Task<List<ClientMaster>> GetByLocationCodesAsync(string locationName, string locationCode, string clusterCode)
+    {
+        return await _db.Clients
+            .AsNoTracking()
+            .Where(c => !c.IsDeleted && c.CityCode != null && (
+                c.CityCode == locationName ||
+                c.CityCode == locationCode ||
+                c.CityCode == clusterCode))
+            .OrderBy(c => c.CityCode)
+            .ToListAsync();
+    }
 
     public async Task<List<ClientMaster>> SearchAsync(string? query, int page, int pageSize)
     {

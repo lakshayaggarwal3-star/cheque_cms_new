@@ -85,6 +85,17 @@ export async function rangerSetImagingOptions(options: {
   }
 }
 
+export async function rangerSetEndorsementOptions(options: {
+  enabled: boolean;
+  text?: string;
+}): Promise<void> {
+  const ranger = ensureRangerInstance();
+  await ranger.SetGenericOption('OptionalDevices', 'NeedRearEndorser', options.enabled ? 'true' : 'false');
+  if (options.enabled && options.text) {
+    await ranger.SetGenericOption('EndorsementControl', 'FixedLine1', options.text);
+  }
+}
+
 export function rangerGetCaptureData(side: 'Front' | 'Back' | 'Both') {
   const ranger = ensureRangerInstance();
   const includeFront = side === 'Front' || side === 'Both';

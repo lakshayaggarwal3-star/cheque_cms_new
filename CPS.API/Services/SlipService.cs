@@ -156,31 +156,24 @@ public class SlipService : ISlipService
         var userLocation = await _locationRepo.GetByIdAsync(userLocationId)
             ?? throw new NotFoundException($"Location {userLocationId} not found.");
 
-        var allClients = await _clientRepo.GetAllAsync();
+        var locationName = userLocation.LocationName?.Trim() ?? "";
+        var locationCode = userLocation.LocationCode?.Trim() ?? "";
+        var clusterCode = userLocation.ClusterCode?.Trim() ?? "";
 
-        var locationName = userLocation.LocationName?.Trim().ToUpperInvariant() ?? "";
-        var locationCode = userLocation.LocationCode?.Trim().ToUpperInvariant() ?? "";
-        var clusterCode = userLocation.ClusterCode?.Trim().ToUpperInvariant() ?? "";
+        var filteredClients = await _clientRepo.GetByLocationCodesAsync(locationName, locationCode, clusterCode);
 
         var result = new List<ClientAutoFillDto>();
-        foreach (var client in allClients)
+        foreach (var client in filteredClients)
         {
-            var cityCode = client.CityCode?.Trim().ToUpperInvariant() ?? "";
-            if (!string.IsNullOrEmpty(cityCode) && (
-                cityCode.Equals(locationName) ||
-                cityCode.Equals(locationCode) ||
-                cityCode.Equals(clusterCode)))
+            result.Add(new ClientAutoFillDto
             {
-                result.Add(new ClientAutoFillDto
-                {
-                    CityCode = client.CityCode,
-                    ClientName = client.ClientName,
-                    PickupPointCode = client.PickupPointCode,
-                    PickupPointDesc = client.PickupPointDesc,
-                    RCMSCode = client.RCMSCode,
-                    Status = client.Status
-                });
-            }
+                CityCode = client.CityCode,
+                ClientName = client.ClientName,
+                PickupPointCode = client.PickupPointCode,
+                PickupPointDesc = client.PickupPointDesc,
+                RCMSCode = client.RCMSCode,
+                Status = client.Status
+            });
         }
         return result;
     }

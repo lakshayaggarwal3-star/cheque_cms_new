@@ -1,0 +1,188 @@
+// =============================================================================
+// File        : useBatchForm.ts
+// Project     : CPS — Cheque Processing System
+// Module      : Batch — Form Logic Hook
+// Description : Custom hook for batch creation form state and logic
+// Created     : 2026-04-19
+// =============================================================================
+
+import { useEffect, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { getLocations, getScanners } from '../services/locationService';
+import { createBatch, updateBatch } from '../services/batchService';
+import { useAuthStore } from '../store/authStore';
+import { toast } from '../store/toastStore';
+import type { LocationDto, ScannerDto } from '../types';
+
+export function useBatchForm() {
+  const navigate = useNavigate();
+  const { user } = useAuthStore();
+
+  const [scanners, setScanners] = useState<ScannerDto[]>([]);
+  const [locationDetails, setLocationDetails] = useState<LocationDto | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  // Entry Mode
+  const hasBothRoles = !!(user?.roles.includes('Scanner') && user?.roles.includes('MobileScanner'));
+  const onlyMobile = !!(user?.roles.includes('MobileScanner') && !user?.roles.includes('Scanner'));
+  const [entryMode, setEntryMode] = useState<'scanner' | 'mobile'>(onlyMobile ? 'mobile' : 'scanner');
+
+  // Form State
+  const [clearingType, setClearingType] = useState('03');
+  const [batchDate, setBatchDate] = useState(user?.eodDate ?? new Date().toISOString().slice(0, 10));
+  
+  const [summRefNo, setSummRefNo] = useState('');
+  const [pif, setPif] = useState('');
+  const [showHiddenFields, setShowHiddenFields] = useState(false);
+  const [totalSlips, setTotalSlips] = useState('');
+  const [totalAmount, setTotalAmount] = useState('');
+
+  // Shared scan options
+  const [scanType, setScanType] = useState<'Scan' | 'Rescan'>('Scan');
+  const [withSlip, setWithSlip] = useState<'with' | 'without'>('with');
+  const [pdc, setPdc] = useState(false);
+  const [pdcDate, setPdcDate] = useState('');
+
+  // Mobile Mode Modal state
+  const [showMobileModal, setShowMobileModal] = useState(false);
+
+  const activeScanner = scanners.find(s => s.isActive) ?? scanners[0];
+
+  const formatDate = (iso: string) => {
+    if (!iso) return '—';
+    const [y, m, d] = iso.split('-');
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return `${d} ${months[parseInt(m) - 1]} ${y}`;
+  };
+
+  // Load scanners and location details
+  useEffect(() => {
+    if (!user?.locationId) return;
+    getScanners(user.locationId).then(setScanners).catch(() => {});
+    getLocations().then(locs => {
+      const loc = locs.find(l => l.locationID === user.locationId);
+      if (loc) setLocationDetails(loc);
+    }).catch(() => {});
+  }, [user?.locationId]);
+
+  // Open mobile modal automatically when mobile mode is selected
+  useEffect(() => {
+    if (entryMode === 'mobile') {
+      setShowMobileModal(true);
+      setWithSlip('with');
+      setShowHiddenFields(true);
+    } else {
+      setShowMobileModal(false);
+      setShowHiddenFields(false);
+    }
+  }, [entryMode]);
+
+  const handleModalFill = useCallback((data: { summ: string; pif: string; slips: string; amount: string }) => {
+    setSummRefNo(data.summ);
+    setPif(data.pif);
+    setTotalSlips(data.slips);
+    setTotalAmount(data.amount);
+    setShowMobileModal(false);
+  }, []);
+
+  const handleCreateAndStart = useCallback(async () => {
+    // Validate Scanner mode hidden fields if checked
+    if (entryMode === 'scanner' && showHiddenFields) {
+       if (!totalSlips || parseInt(totalSlips) <= 0) {
+         toast.error('Total slips is required and must be > 0 when hidden fields are active');
+         return;
+       }
+       if (!totalAmount || parseFloat(totalAmount) <= 0) {
+         toast.error('Total amount is required and must be > 0 when hidden fields are active');
+         return;
+       }
+    }
+
+    if (pdc && !pdcDate) {
+      toast.error('PDC Date is required');
+      return;
+    }
+
+    if (!user?.locationId) return;
+    if (!activeScanner) {
+      toast.error('No active scanner found for your location');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      // Create initial batch
+      const batch = await createBatch({
+        locationID:       user.locationId,
+        scannerMappingID: activeScanner.scannerMappingID,
+        pickupPointCode:  locationDetails?.locationCode,
+        batchDate:        batchDate,
+        clearingType:     clearingType,
+        isPDC:            pdc,
+        pdcDate:          pdc ? pdcDate : undefined,
+        totalSlips:       0,
+        totalAmount:      0,
+        entryMode:        entryMode,
+        summRefNo:        entryMode === 'mobile' ? summRefNo : undefined,
+        pif:              entryMode === 'mobile' ? pif : undefined,
+      });
+
+      // Update secondary fields including optional ones
+      await updateBatch(batch.batchID, {
+        totalSlips: (showHiddenFields || entryMode === 'mobile') && totalSlips ? parseInt(totalSlips) : 0,
+        totalAmount: (showHiddenFields || entryMode === 'mobile') && totalAmount ? parseFloat(totalAmount) : 0,
+        isPDC: pdc,
+        pdcDate: pdc ? pdcDate : undefined,
+        scanType,
+        withSlip: withSlip === 'with',
+        summRefNo: entryMode === 'mobile' ? summRefNo : batch.summRefNo,
+        pif: entryMode === 'mobile' ? pif : batch.pif,
+      });
+
+      toast.success(`Batch ${batch.batchNo} created`);
+      navigate(`/scan/${batch.batchID}`);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? 'Failed to create batch');
+    } finally {
+      setSubmitting(false);
+    }
+  }, [entryMode, showHiddenFields, totalSlips, totalAmount, pdc, pdcDate, user?.locationId, activeScanner, locationDetails?.locationCode, batchDate, clearingType, summRefNo, pif, scanType, withSlip, navigate]);
+
+  return {
+    user,
+    scanners,
+    locationDetails,
+    submitting,
+    hasBothRoles,
+    entryMode,
+    clearingType,
+    batchDate,
+    summRefNo,
+    pif,
+    showHiddenFields,
+    totalSlips,
+    totalAmount,
+    scanType,
+    withSlip,
+    pdc,
+    pdcDate,
+    showMobileModal,
+    activeScanner,
+    setShowMobileModal,
+    setEntryMode,
+    setClearingType,
+    setBatchDate,
+    setSummRefNo,
+    setPif,
+    setShowHiddenFields,
+    setTotalSlips,
+    setTotalAmount,
+    setScanType,
+    setWithSlip,
+    setPdc,
+    setPdcDate,
+    formatDate,
+    handleModalFill,
+    handleCreateAndStart,
+  };
+}

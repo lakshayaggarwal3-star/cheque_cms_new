@@ -14,6 +14,7 @@ public interface IClientRepository
 {
     Task<ClientMaster?> GetByCodeAsync(string cityCode);
     Task<List<ClientMaster>> GetAllAsync();
+    Task<List<ClientMaster>> GetByLocationCodesAsync(string locationName, string locationCode, string clusterCode);
     Task<List<ClientMaster>> SearchAsync(string? query, int page, int pageSize);
     Task<int> GetSearchCountAsync(string? query);
     Task UpsertAsync(ClientMaster client);

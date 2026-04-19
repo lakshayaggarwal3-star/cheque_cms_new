@@ -6,8 +6,6 @@
 // Created     : 2026-04-17
 // =============================================================================
 
-import React from 'react';
-
 interface RangerFeedControlProps {
   isRunning: boolean;
   scanType: 'Cheque' | 'Slip';
@@ -26,52 +24,70 @@ export function RangerFeedControl({
   disabled = false,
 }: RangerFeedControlProps) {
   return (
-    <div className={`rounded-lg border-2 p-4 ${
-      isRunning 
-        ? 'border-green-300 bg-green-50' 
-        : 'border-gray-200 bg-gray-50'
-    }`}>
+    <div style={{
+      border: `1px solid ${isRunning ? 'var(--success, #16a34a)' : 'var(--border)'}`,
+      borderRadius: 'var(--r-md)',
+      background: isRunning ? 'var(--success-bg, #f0fdf4)' : 'var(--bg-raised)',
+      padding: '12px 14px',
+      transition: 'border-color 0.2s ease, background 0.2s ease',
+    }}>
+
       {/* Header */}
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-              d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
-          </svg>
-          <div>
-            <h3 className="text-sm font-bold text-gray-900">Ranger Scanner</h3>
-            <p className="text-xs text-gray-500">
-              {scanType} | {isMockMode ? 'Mock Mode (One-by-One)' : 'Bulk Scan'}
-            </p>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+        <div style={{
+          width: 30, height: 30, borderRadius: 'var(--r-sm)',
+          background: 'var(--bg-subtle)', border: '1px solid var(--border)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+        }}>
+          <span
+            className="material-symbols-outlined"
+            style={{ fontSize: 16, fontVariationSettings: `'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 16`, color: 'var(--fg-muted)' }}
+          >developer_board</span>
+        </div>
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--fg)', lineHeight: 1.2 }}>
+            Ranger Scanner
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--fg-subtle)', marginTop: 1 }}>
+            {scanType} · {isMockMode ? 'Mock' : 'Bulk Scan'}
           </div>
         </div>
 
-        {/* Status Indicator */}
-        <div className="flex items-center gap-2">
-          <span className={`w-2.5 h-2.5 rounded-full ${
-            isRunning ? 'bg-green-500 animate-pulse' : 'bg-gray-300'
-          }`} />
-          <span className={`text-xs font-semibold ${
-            isRunning ? 'text-green-700' : 'text-gray-500'
-          }`}>
+        {/* Status badge */}
+        <div style={{
+          display: 'inline-flex', alignItems: 'center', gap: 5,
+          padding: '3px 8px', borderRadius: 'var(--r-full)',
+          border: `1px solid ${isRunning ? 'var(--success, #16a34a)' : 'var(--border-strong)'}`,
+          background: isRunning ? 'transparent' : 'var(--bg-subtle)',
+        }}>
+          <span style={{
+            width: 6, height: 6, borderRadius: '50%',
+            background: isRunning ? 'var(--success, #16a34a)' : 'var(--fg-faint)',
+            boxShadow: isRunning ? '0 0 0 2px var(--success-bg, #dcfce7)' : 'none',
+          }} />
+          <span style={{
+            fontSize: 10, fontWeight: 600,
+            color: isRunning ? 'var(--success, #16a34a)' : 'var(--fg-muted)',
+          }}>
             {isRunning ? 'Running' : 'Stopped'}
           </span>
         </div>
       </div>
 
-      {/* Control Buttons */}
-      <div className="grid grid-cols-2 gap-3">
+      {/* Buttons */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
         <button
           type="button"
           onClick={onStartFeed}
           disabled={isRunning || disabled}
-          className="bg-green-600 text-white py-3 rounded-xl text-sm font-bold
-            hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed
-            flex items-center justify-center gap-2 transition-colors"
+          className="btn-primary"
+          style={{ justifyContent: 'center', gap: 6, whiteSpace: 'nowrap' }}
         >
-          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
-          </svg>
+          <span
+            className="material-symbols-outlined"
+            style={{ fontSize: 15, fontVariationSettings: `'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 15` }}
+          >play_circle</span>
           Start Feed
         </button>
 
@@ -79,31 +95,25 @@ export function RangerFeedControl({
           type="button"
           onClick={onStopFeed}
           disabled={!isRunning || disabled}
-          className="bg-red-600 text-white py-3 rounded-xl text-sm font-bold
-            hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed
-            flex items-center justify-center gap-2 transition-colors"
+          style={{
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            height: 36, padding: '0 12px', borderRadius: 'var(--r-md)',
+            fontSize: 'var(--text-sm)', fontWeight: 500, fontFamily: 'inherit',
+            background: (!isRunning || disabled) ? 'var(--bg-subtle)' : 'var(--danger-bg, #fef2f2)',
+            color: (!isRunning || disabled) ? 'var(--fg-faint)' : 'var(--danger, #dc2626)',
+            border: `1px solid ${(!isRunning || disabled) ? 'var(--border)' : 'var(--danger, #dc2626)'}`,
+            cursor: (!isRunning || disabled) ? 'not-allowed' : 'pointer',
+            transition: 'background 0.15s ease, border-color 0.15s ease, color 0.15s ease',
+            whiteSpace: 'nowrap',
+          }}
         >
-          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clipRule="evenodd" />
-          </svg>
+          <span
+            className="material-symbols-outlined"
+            style={{ fontSize: 15, fontVariationSettings: `'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 15` }}
+          >stop_circle</span>
           Stop Feed
         </button>
       </div>
-
-      {/* Info Message */}
-      {isMockMode && (
-        <div className="mt-3 bg-orange-50 border border-orange-200 rounded-lg p-2">
-          <p className="text-xs text-orange-700 flex items-start gap-1.5">
-            <svg className="w-4 h-4 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-            </svg>
-            <span>
-              <strong>Mock Mode:</strong> Cheques will be captured one-by-one with mock images. 
-              Real Ranger scanner captures in bulk automatically.
-            </span>
-          </p>
-        </div>
-      )}
     </div>
   );
 }

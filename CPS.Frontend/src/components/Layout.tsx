@@ -83,7 +83,7 @@ function NavItem({ icon, label, active, expanded, onClick }: {
 }) {
   const [hover, setHover] = useState(false);
   return (
-    <a
+    <button
       onClick={onClick}
       title={expanded ? '' : label}
       onMouseEnter={() => setHover(true)}
@@ -115,7 +115,7 @@ function NavItem({ icon, label, active, expanded, onClick }: {
           background: 'var(--accent-500)',
         }} />
       )}
-    </a>
+    </button>
   );
 }
 
@@ -304,16 +304,17 @@ function TopBar({ onToggle, title, subtitle, isDeveloper }: {
 
 // ── Layout ────────────────────────────────────────────────────────────────────
 
+const AUTO_CLOSE_PATHS = ['/scan', '/batch/create', '/rr'];
+
 export function Layout() {
   const { user, clearUser } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
-  const autoClosePaths = ['/scan', '/batch/create', '/rr'];
 
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 1024);
   const [sidebarOpen, setSidebarOpen] = useState(() => {
     if (window.innerWidth < 1024) return false;
-    if (autoClosePaths.some(p => window.location.pathname.startsWith(p))) return false;
+    if (AUTO_CLOSE_PATHS.some(p => window.location.pathname.startsWith(p))) return false;
     return true;
   });
 
@@ -322,7 +323,7 @@ export function Layout() {
       const mobile = window.innerWidth < 1024;
       setIsMobile(mobile);
       if (!mobile) {
-        const shouldClose = autoClosePaths.some(p => window.location.pathname.startsWith(p));
+        const shouldClose = AUTO_CLOSE_PATHS.some(p => window.location.pathname.startsWith(p));
         if (!shouldClose) setSidebarOpen(true);
       }
     };
@@ -331,7 +332,7 @@ export function Layout() {
   }, []);
 
   useEffect(() => {
-    if (autoClosePaths.some(p => location.pathname.startsWith(p))) {
+    if (AUTO_CLOSE_PATHS.some(p => location.pathname.startsWith(p))) {
       setSidebarOpen(false);
     }
   }, [location.pathname]);
@@ -343,7 +344,7 @@ export function Layout() {
   const handleNav = (path: string) => {
     navigate(path);
     
-    const isAutoClosePage = autoClosePaths.some(p => path.startsWith(p));
+    const isAutoClosePage = AUTO_CLOSE_PATHS.some(p => path.startsWith(p));
     if (isMobile || path === location.pathname || isAutoClosePage) {
       setSidebarOpen(false);
     }

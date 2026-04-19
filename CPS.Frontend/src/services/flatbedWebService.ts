@@ -127,6 +127,17 @@ export function flatbedDisconnect() {
   _pendingReject = null;
 }
 
+export async function flatbedDisconnectAction(): Promise<void> {
+  if (!isFlatbedConnected()) return;
+  try {
+    await sendAction('disconnect', {}, 5000);
+  } catch (err) {
+    // Ignore timeout or errors on disconnect
+  } finally {
+    flatbedDisconnect();
+  }
+}
+
 // ── Send / Receive ─────────────────────────────────────────────────────────────
 
 function sendAction(action: string, params: object = {}, timeoutMs = 60_000): Promise<WsResponse> {

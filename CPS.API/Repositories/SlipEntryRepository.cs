@@ -23,12 +23,14 @@ public class SlipEntryRepository : ISlipEntryRepository
         await _db.SlipEntries
             .Include(s => s.SlipScans.Where(ss => !ss.IsDeleted).OrderBy(ss => ss.ScanOrder))
             .Include(s => s.ChequeItems.Where(c => !c.IsDeleted).OrderBy(c => c.ChqSeq))
+            .AsSplitQuery()
             .FirstOrDefaultAsync(s => s.SlipEntryId == slipEntryId && !s.IsDeleted);
 
     public async Task<List<SlipEntry>> GetByBatchAsync(long batchId) =>
         await _db.SlipEntries
             .Include(s => s.SlipScans.Where(ss => !ss.IsDeleted).OrderBy(ss => ss.ScanOrder))
             .Include(s => s.ChequeItems.Where(c => !c.IsDeleted).OrderBy(c => c.ChqSeq))
+            .AsSplitQuery()
             .Where(s => s.BatchId == batchId && !s.IsDeleted)
             .OrderBy(s => s.CreatedAt)
             .ToListAsync();

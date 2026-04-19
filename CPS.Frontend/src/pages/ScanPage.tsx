@@ -1,36 +1,31 @@
 // =============================================================================
-// File        : ScanPage.tsx
+// File        : ScanPage.tsx (REFACTORED)
 // Project     : CPS — Cheque Processing System
 // Module      : Scanning
-// Description : Scanning screen with slip entry → slip scan → cheque scan flow and resume support.
+// Description : Scanning screen with slip entry → slip scan → cheque scan flow.
+//               REFACTORED: Components and logic extracted to separate files.
 // Created     : 2026-04-17
+// Refactored  : 2026-04-19
 // =============================================================================
 
-import { useEffect, useState, useCallback, useRef, type ReactNode, type CSSProperties } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import {
-  captureSlipScan, captureCheque, completeScan, getScanSession,
-  releaseScanLock, startFeed, startScan, stopFeed, uploadMobileCheque, uploadMobileSlipScan,
-} from '../services/scanService';
+import { getScanSession, releaseScanLock, startScan } from '../services/scanService';
 import { getBatch } from '../services/batchService';
 import { useAuthStore } from '../store/authStore';
 import { toast } from '../store/toastStore';
 import { getImageUrl } from '../utils/imageUtils';
-import { BatchStatus, type ChequeItemDto, type ScanSessionDto, type SlipEntryDto, type SlipScanDto } from '../types';
+import { BatchStatus, type ScanSessionDto } from '../types';
 import { SlipFormModal } from '../components/SlipFormModal';
 import { useSettingsStore } from '../store/settingsStore';
-import {
-  rangerEnableOptions, rangerGetCaptureData, rangerPrepareToChangeOptions,
-  rangerSetImagingOptions, rangerShutdown, rangerStartFeeding, rangerStartup, rangerStopFeeding,
-} from '../services/rangerWebService';
-import {
-  flatbedConnect, flatbedDisconnect, flatbedScan, flatbedDetectScanners, flatbedAutoSelect,
-  getFlatbedWsUrl, isFlatbedConnected, setFlatbedWsUrl as applyFlatbedWsUrl,
-  type FlatbedScanner, type ScanSettings,
-} from '../services/flatbedWebService';
 import { CameraCapture } from '../components/CameraCapture';
 import { RangerFeedControl } from '../components/RangerFeedControl';
 import { ImageEditModal } from '../components/ImageEditModal';
+import { useScannerLogic } from '../hooks/useScannerLogic';
+import {
+  Icon, Pill, IconBtn, ImagePlaceholder, StepDot, ControlCard, DevMockSection,
+  SlipGroupList, ScannerSettingsModal, ScanItemsTable,
+} from '../components/scan';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -39,73 +34,19 @@ type EditableImageTarget = 'slip-front' | 'cheque-front' | 'cheque-back';
 
 const sessionInitBatchIds = new Set<number>();
 
-// ── Icon ──────────────────────────────────────────────────────────────────────
-
-function Icon({ name, size = 18, style }: { name: string; size?: number; style?: CSSProperties }) {
-  return (
-    <span
-      className="material-symbols-outlined"
-      style={{
-        fontSize: size,
-        fontVariationSettings: `'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' ${size}`,
-        lineHeight: 1, userSelect: 'none', flexShrink: 0, ...style,
-      }}
-    >{name}</span>
-  );
-}
-
-// ── Pill chip ─────────────────────────────────────────────────────────────────
-
-function Pill({ icon, children, mono }: { icon?: string; children: ReactNode; mono?: boolean }) {
-  return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: 4,
-      padding: '3px 8px', borderRadius: 'var(--r-full)',
-      fontSize: 'var(--text-xs)', fontWeight: 500,
-      background: 'var(--bg-subtle)', border: '1px solid var(--border)',
-      color: 'var(--fg-muted)',
-      fontFamily: mono ? 'var(--font-mono)' : undefined,
-      whiteSpace: 'nowrap',
-    }}>
-      {icon && <Icon name={icon} size={12} />}
-      {children}
-    </span>
-  );
-}
-
-// ── IconBtn ───────────────────────────────────────────────────────────────────
-
-function IconBtn({ icon, tooltip, onClick, size = 34 }: { icon: string; tooltip?: string; onClick?: () => void; size?: number }) {
-  const [hover, setHover] = useState(false);
-  return (
-    <button
-      title={tooltip}
-      onClick={onClick}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      style={{
-        width: size, height: size,
-        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        background: hover ? 'var(--bg-hover)' : 'transparent',
-        border: '1px solid transparent', borderRadius: 'var(--r-md)',
-        color: hover ? 'var(--fg)' : 'var(--fg-muted)',
-        cursor: 'pointer',
-        transition: 'background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease)',
-        flexShrink: 0,
-      }}
-    >
-      <Icon name={icon} size={16} />
-    </button>
-  );
-}
-
 // ── ScanPage ──────────────────────────────────────────────────────────────────
 
 export function ScanPage() {
   const { batchId } = useParams<{ batchId: string }>();
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const { mockScanEnabled } = useSettingsStore();
+  const {
+    mockScanEnabled,
+    rangerMicrEnabled, setRangerMicrEnabled,
+    rangerEndorsementEnabled, setRangerEndorsementEnabled,
+    rangerEndorsementUseImageName, setRangerEndorsementUseImageName,
+    rangerEndorsementCustomText, setRangerEndorsementCustomText,
+  } = useSettingsStore();
   const id = parseInt(batchId!);
 
   const [session, setSession] = useState<ScanSessionDto | null>(null);
@@ -126,15 +67,7 @@ export function ScanPage() {
   const scanStepRef = useRef<ScanStep>('SlipEntry');
   scanStepRef.current = scanStep;
 
-  // Scanner state
-  const [scannerChoice, setScannerChoice] = useState<'Ranger' | 'Document' | null>(null);
-  const [scanRoundActive, setScanRoundActive] = useState(false);
-  const [feedRunning, setFeedRunning] = useState<{ Cheque: boolean; Slip: boolean }>({ Cheque: false, Slip: false });
-
   // Preview
-  const [mockPreview, setMockPreview] = useState<{ front: string; back: string } | null>(null);
-  const [currentSlipScan, setCurrentSlipScan] = useState<SlipScanDto | null>(null);
-  const [currentCheque, setCurrentCheque] = useState<ChequeItemDto | null>(null);
   const [frontFile, setFrontFile] = useState<File | null>(null);
   const [backFile, setBackFile] = useState<File | null>(null);
   const [frontPreview, setFrontPreview] = useState<string | null>(null);
@@ -145,34 +78,50 @@ export function ScanPage() {
   const [flipped, setFlipped] = useState(false);
   const [zoom, setZoom] = useState(1);
 
-  // Scanner settings state
-  const [rangerWsUrl, setRangerWsUrl] = useState('ws://127.0.0.1:9002');
-  const [flatbedWsUrl, setFlatbedWsUrl] = useState(getFlatbedWsUrl());
-  const [useFlatbedWs, setUseFlatbedWs] = useState(true);
-  const [flatbedConnecting, setFlatbedConnecting] = useState(false);
-  const [detectedScanners, setDetectedScanners] = useState<FlatbedScanner[]>([]);
-  const [selectedScannerId, setSelectedScannerId] = useState('');
-  const [flatbedResolution, setFlatbedResolution] = useState(300);
-  const [flatbedMode, setFlatbedMode] = useState<ScanSettings['mode']>('Lineart');
-  const [flatbedStatus, setFlatbedStatus] = useState<'idle' | 'connecting' | 'ready' | 'error'>('idle');
-  const [flatbedError, setFlatbedError] = useState('');
+  // Pan/drag state
+  const viewerRef = useRef<HTMLDivElement>(null);
+  const viewerFsRef = useRef<HTMLDivElement>(null);
+  const panRef = useRef({ active: false, startX: 0, startY: 0, scrollLeft: 0, scrollTop: 0 });
+  const hasMoved = useRef(false);
+  const [panning, setPanning] = useState(false);
 
-  // Viewer override (set when user clicks an item in the sequences list)
+  const makePanHandlers = (scrollRef: React.RefObject<HTMLDivElement>) => ({
+    onMouseDown: (e: React.MouseEvent) => {
+      const el = scrollRef.current;
+      if (!el) return;
+      hasMoved.current = false;
+      panRef.current = { active: true, startX: e.clientX, startY: e.clientY, scrollLeft: el.scrollLeft, scrollTop: el.scrollTop };
+      setPanning(true);
+    },
+    onMouseMove: (e: React.MouseEvent) => {
+      if (!panRef.current.active) return;
+      const el = scrollRef.current;
+      if (!el) return;
+      e.preventDefault();
+      const dx = e.clientX - panRef.current.startX;
+      const dy = e.clientY - panRef.current.startY;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) hasMoved.current = true;
+      el.scrollLeft = panRef.current.scrollLeft - dx;
+      el.scrollTop = panRef.current.scrollTop - dy;
+    },
+    onMouseUp: () => { panRef.current.active = false; setPanning(false); },
+    onMouseLeave: () => { panRef.current.active = false; setPanning(false); },
+  });
+
+  // Viewer override
   const [viewerFront, setViewerFront] = useState<string | null>(null);
   const [viewerBack, setViewerBack] = useState<string | null>(null);
+  const [viewerType, setViewerType] = useState<string | null>(null);
+
+  // Clear viewer when moving steps
+  useEffect(() => { setViewerFront(null); setViewerBack(null); setViewerType(null); }, [scanStep]);
 
   const [completing, setCompleting] = useState(false);
-  const [isBusy, setIsBusy] = useState(false);
   const [pickupPointCode, setPickupPointCode] = useState('');
   const [showStartModal, setShowStartModal] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   // ─── Helpers ──────────────────────────────────────────────────────────────
-
-  const makeMockImage = (doc: string, side: string) => {
-    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='1200' height='700'><rect width='100%' height='100%' fill='${side === 'Front' ? '#e7f0ff' : '#f3f4f6'}'/><rect x='40' y='40' width='1120' height='620' rx='16' fill='white' stroke='#94a3b8' stroke-width='3'/><text x='600' y='340' text-anchor='middle' font-family='Arial' font-size='40' fill='#1f2937'>${doc} ${side}</text><text x='600' y='390' text-anchor='middle' font-family='Arial' font-size='24' fill='#6b7280'>Developer Mock</text></svg>`;
-    return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
-  };
 
   const toImageSrc = (path?: string, fallback?: string) => {
     if (!path) return fallback;
@@ -180,20 +129,12 @@ export function ScanPage() {
     return getImageUrl(path);
   };
 
-  const base64ToFile = (base64: string, name: string): File | undefined => {
-    if (!base64) return undefined;
-    const mime = base64.match(/^data:(.*?);base64,/)?.[1] ?? 'image/jpeg';
-    const data = base64.includes(',') ? base64.split(',')[1] : base64;
-    const bytes = new Uint8Array(atob(data).split('').map(c => c.charCodeAt(0)));
-    return new File([bytes], name, { type: mime });
-  };
-
-  const clearCameraFiles = () => {
+  const clearCameraFiles = useCallback(() => {
     if (frontPreview) URL.revokeObjectURL(frontPreview);
     if (backPreview) URL.revokeObjectURL(backPreview);
     setFrontFile(null); setBackFile(null);
     setFrontPreview(null); setBackPreview(null);
-  };
+  }, [frontPreview, backPreview]);
 
   const openImageEditor = (file: File, target: EditableImageTarget) => {
     const titleMap: Record<EditableImageTarget, string> = {
@@ -213,6 +154,31 @@ export function ScanPage() {
     if (backPreview) URL.revokeObjectURL(backPreview);
     setBackFile(file); setBackPreview(previewUrl);
   };
+
+  // Use scanner logic hook
+  const scanner = useScannerLogic({
+    batchId: id,
+    activeSlipEntryId,
+    nextSlipScanOrder,
+    nextChqSeq,
+    mockScanEnabled,
+    isDeveloper: user?.isDeveloper,
+    rangerMicrEnabled,
+    rangerEndorsementEnabled,
+    rangerEndorsementUseImageName,
+    rangerEndorsementCustomText,
+    onCaptureSuccess: async () => {
+      setNextChqSeq(s => s + 1);
+      setViewerFront(null);
+      setViewerBack(null);
+      setViewerType(null);
+      await loadSession();
+    },
+    onClearCameraFiles: clearCameraFiles,
+    frontFile,
+    backFile,
+    openImageEditor,
+  });
 
   // ─── Session load ─────────────────────────────────────────────────────────
 
@@ -276,30 +242,13 @@ export function ScanPage() {
     init();
     return () => {
       releaseScanLock(id).catch(() => {});
-      rangerShutdown().catch(() => {});
-      flatbedDisconnect();
+      scanner.cleanup();
     };
   }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-connect flatbed scanner on mount
   useEffect(() => {
-    const autoInit = async () => {
-      setFlatbedStatus('connecting');
-      setFlatbedError('');
-      try {
-        applyFlatbedWsUrl(flatbedWsUrl);
-        if (!isFlatbedConnected()) await flatbedConnect();
-        const detected = await flatbedDetectScanners();
-        setDetectedScanners(detected.scanners);
-        const auto = await flatbedAutoSelect();
-        setSelectedScannerId(auto.scanner_id);
-        setFlatbedStatus('ready');
-      } catch (err: any) {
-        setFlatbedStatus('error');
-        setFlatbedError(err?.message ?? 'Could not connect to scanner desktop app');
-      }
-    };
-    autoInit();
+    scanner.autoInitScanner();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const applyResumeState = (s: ScanSessionDto, withSlip: boolean) => {
@@ -312,177 +261,17 @@ export function ScanPage() {
       setNextChqSeq(rs.nextChqSeq);
       const step = (rs.resumeStep as ScanStep) ?? 'SlipEntry';
       setScanStep(step);
-      if (step === 'ChequeScan') setScannerChoice('Ranger');
+      if (step === 'ChequeScan') scanner.setScannerChoice('Ranger');
     } else {
       setScanStep('SlipEntry');
       setShowSlipForm(true);
     }
   };
 
-  // ─── Feed controls ────────────────────────────────────────────────────────
-
-  const handleStartFeed = async (type: 'Cheque' | 'Slip') => {
-    setIsBusy(true);
-    try {
-      if (scannerChoice === 'Ranger') {
-        await rangerStartup(rangerWsUrl);
-        await rangerEnableOptions();
-        await rangerSetImagingOptions({ needImaging: true, needFrontGrayscale: true, needRearGrayscale: true });
-        await rangerStartFeeding(type === 'Slip' ? 2 : 0, 0);
-      } else {
-        await startFeed(id, type);
-      }
-      setFeedRunning(p => ({ ...p, [type]: true }));
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? `Failed to start ${type} feed`);
-    } finally {
-      setIsBusy(false);
-    }
-  };
-
-  const handleStopFeed = async (type: 'Cheque' | 'Slip') => {
-    setIsBusy(true);
-    try {
-      if (scannerChoice === 'Ranger') await rangerStopFeeding();
-      else await stopFeed(id, type);
-      setFeedRunning(p => ({ ...p, [type]: false }));
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? `Failed to stop ${type} feed`);
-    } finally {
-      setIsBusy(false);
-    }
-  };
-
-  const handleRangerStopAndCapture = async () => {
-    if (!activeSlipEntryId) return;
-    setIsBusy(true);
-    try {
-      await rangerStopFeeding();
-      setFeedRunning(p => ({ ...p, Cheque: false }));
-      await rangerPrepareToChangeOptions();
-      const capture = rangerGetCaptureData('Both');
-      const front = base64ToFile(capture.frontBase64, 'cheque-front.jpg');
-      const back = base64ToFile(capture.backBase64, 'cheque-back.jpg');
-      const result = await uploadMobileCheque(id, {
-        slipEntryId: activeSlipEntryId,
-        chqSeq: nextChqSeq,
-        imageFront: front,
-        imageBack: back,
-        micrRaw: capture.micrRaw || undefined,
-      });
-      setCurrentCheque(result);
-      setNextChqSeq(s => s + 1);
-      await loadSession();
-      toast.success('Cheque captured from Ranger');
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? 'Failed to stop/capture Ranger feed');
-    } finally {
-      setIsBusy(false);
-    }
-  };
-
-  // ─── Capture ──────────────────────────────────────────────────────────────
-
-  const handleCaptureSlipScan = async () => {
-    if (!activeSlipEntryId) return;
-
-    // Dev mock path — camera file was captured, upload it as a real entry
-    if (user?.isDeveloper && mockScanEnabled && frontFile) {
-      setIsBusy(true);
-      try {
-        const result = await uploadMobileSlipScan(id, { slipEntryId: activeSlipEntryId, scanOrder: nextSlipScanOrder, image: frontFile });
-        clearCameraFiles();
-        setCurrentSlipScan(result);
-        setNextSlipScanOrder(o => o + 1);
-        setViewerFront(null); setViewerBack(null);
-        await loadSession();
-        toast.success('Slip scan captured');
-      } catch (err: any) {
-        toast.error(err?.response?.data?.message ?? err?.message ?? 'Upload failed');
-      } finally {
-        setIsBusy(false);
-      }
-      return;
-    }
-
-    // Flatbed WS path — scanner must be ready, no server-side fallback
-    if (!isFlatbedConnected() || flatbedStatus !== 'ready' || !selectedScannerId) {
-      toast.error('Scanner not ready — check the scanner status above');
-      return;
-    }
-
-    setIsBusy(true);
-    try {
-      const scanResult = await flatbedScan(selectedScannerId, { resolution: flatbedResolution, mode: flatbedMode });
-      const mimeType = scanResult.format === 'PNG' ? 'image/png' : 'image/jpeg';
-      const ext = scanResult.format === 'PNG' ? 'png' : 'jpg';
-      const file = base64ToFile(`data:${mimeType};base64,${scanResult.image_base64}`, `slip-scan.${ext}`);
-      if (!file) throw new Error('Invalid image data from scanner');
-      const result = await uploadMobileSlipScan(id, { slipEntryId: activeSlipEntryId, scanOrder: nextSlipScanOrder, image: file });
-      setCurrentSlipScan(result);
-      setNextSlipScanOrder(o => o + 1);
-      setViewerFront(null); setViewerBack(null);
-      await loadSession();
-      toast.success('Slip scan captured');
-    } catch (err: any) {
-      if (!isFlatbedConnected()) {
-        setFlatbedStatus('error');
-        setFlatbedError('Scanner disconnected during scan — reconnect and retry');
-      }
-      toast.error(err?.message ?? 'Slip scan failed');
-    } finally {
-      setIsBusy(false);
-    }
-  };
-
-  const handleCaptureChecque = async () => {
-    if (!activeSlipEntryId) return;
-    setIsBusy(true);
-    try {
-      let result: ChequeItemDto;
-      if (user?.isDeveloper && mockScanEnabled && (frontFile || backFile)) {
-        result = await uploadMobileCheque(id, { slipEntryId: activeSlipEntryId, chqSeq: nextChqSeq, imageFront: frontFile ?? undefined, imageBack: backFile ?? undefined });
-        clearCameraFiles();
-      } else if (user?.isDeveloper && mockScanEnabled) {
-        result = await captureCheque(id, { slipEntryId: activeSlipEntryId, scannerType: 'Cheque' });
-        setMockPreview({ front: makeMockImage('Cheque', 'Front'), back: makeMockImage('Cheque', 'Back') });
-      } else {
-        await rangerPrepareToChangeOptions();
-        const capture = rangerGetCaptureData('Both');
-        const front = base64ToFile(capture.frontBase64, 'cheque-front.jpg');
-        const back = base64ToFile(capture.backBase64, 'cheque-back.jpg');
-        result = await uploadMobileCheque(id, { slipEntryId: activeSlipEntryId, chqSeq: nextChqSeq, imageFront: front, imageBack: back, micrRaw: capture.micrRaw || undefined });
-      }
-      setCurrentCheque(result);
-      setNextChqSeq(s => s + 1);
-      setViewerFront(null);
-      setViewerBack(null);
-      await loadSession();
-      toast.success('Cheque captured');
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? 'Cheque capture failed');
-    } finally {
-      setIsBusy(false);
-    }
-  };
-
-  const handleCompleteScan = async () => {
-    setCompleting(true);
-    try {
-      await completeScan(id);
-      toast.success('Scanning completed');
-      navigate('/');
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? 'Failed to complete scanning');
-    } finally {
-      setCompleting(false);
-    }
-  };
-
   // ─── Step transitions ─────────────────────────────────────────────────────
 
-  const moveToSlipScan = () => { setScanStep('SlipScan'); setScannerChoice(null); setScanRoundActive(false); };
-  const moveToChequeScan = () => { setScanStep('ChequeScan'); setScannerChoice('Ranger'); setScanRoundActive(false); };
+  const moveToSlipScan = () => { setScanStep('SlipScan'); scanner.setScannerChoice(null); scanner.setScanRoundActive(false); };
+  const moveToChequeScan = () => { setScanStep('ChequeScan'); scanner.setScannerChoice('Ranger'); scanner.setScanRoundActive(false); };
 
   const startNewSlip = () => {
     setNewSlipSaved(false);
@@ -491,55 +280,18 @@ export function ScanPage() {
     setNextSlipScanOrder(1);
     setNextChqSeq(1);
     setScanStep('SlipEntry');
-    setScanRoundActive(false);
-    setFeedRunning({ Cheque: false, Slip: false });
-    setCurrentSlipScan(null);
-    setCurrentCheque(null);
-    setMockPreview(null);
+    scanner.setScanRoundActive(false);
+    scanner.setFeedRunning({ Cheque: false, Slip: false });
+    scanner.setCurrentSlipScan(null);
+    scanner.setCurrentCheque(null);
+    scanner.setMockPreview(null);
     clearCameraFiles();
     setShowSlipForm(true);
   };
 
   const handleSaveSettings = () => {
-    applyFlatbedWsUrl(flatbedWsUrl);
+    scanner.handleSaveSettings();
     setShowScanSettings(false);
-    toast.success('Scanner settings saved');
-  };
-
-  const handleDetectScanners = async () => {
-    setFlatbedConnecting(true);
-    setFlatbedStatus('connecting');
-    setFlatbedError('');
-    try {
-      applyFlatbedWsUrl(flatbedWsUrl);
-      if (!isFlatbedConnected()) await flatbedConnect();
-      const result = await flatbedDetectScanners();
-      setDetectedScanners(result.scanners);
-      const auto = await flatbedAutoSelect();
-      setSelectedScannerId(auto.scanner_id);
-      setFlatbedStatus('ready');
-      toast.success(`Scanner ready: ${auto.scanner_id}`);
-    } catch (err: any) {
-      setFlatbedStatus('error');
-      setFlatbedError(err?.message ?? 'Scanner detection failed');
-      toast.error(err?.message ?? 'Scanner detection failed');
-    } finally {
-      setFlatbedConnecting(false);
-    }
-  };
-
-  const handleAutoSelectScanner = async () => {
-    setFlatbedConnecting(true);
-    try {
-      if (!isFlatbedConnected()) await flatbedConnect();
-      const result = await flatbedAutoSelect();
-      setSelectedScannerId(result.scanner_id);
-      toast.success(`Auto-selected: ${result.scanner_id}`);
-    } catch (err: any) {
-      toast.error(err?.message ?? 'Auto-select failed');
-    } finally {
-      setFlatbedConnecting(false);
-    }
   };
 
   // ─── Render ───────────────────────────────────────────────────────────────
@@ -566,14 +318,19 @@ export function ScanPage() {
   const isCurrentSlipScanDone = withSlip && slipScansForActive.length > 0;
   const canMoveToChequeScan = !withSlip || isCurrentSlipScanDone;
 
+  const isSlipView = viewerType === 'slip' || (viewerType === null && scanStep === 'SlipScan');
+
   const previewFront = viewerFront
-    ?? toImageSrc(currentCheque?.frontImagePath, mockPreview?.front)
-    ?? toImageSrc(currentSlipScan?.imagePath, mockPreview?.front);
+    ?? toImageSrc(scanner.currentCheque?.frontImagePath, scanner.mockPreview?.front)
+    ?? toImageSrc(scanner.currentSlipScan?.imagePath, scanner.mockPreview?.front);
   const previewBack = viewerBack
-    ?? toImageSrc(currentCheque?.backImagePath, mockPreview?.back);
+    ?? toImageSrc(scanner.currentCheque?.backImagePath, scanner.mockPreview?.back);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100dvh - 56px)', background: 'var(--bg)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', background: 'var(--bg)' }}>
+
+      {/* ── Scan viewport — fills screen; table below is scrolled to ─────── */}
+      <div style={{ height: 'calc(100dvh - 56px)', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
 
       {/* ── Action bar ─────────────────────────────────────────────────────── */}
       <div style={{
@@ -603,7 +360,7 @@ export function ScanPage() {
              batchDetails?.clearingType || 'Scan'}
           </Pill>
           {batchDetails?.scannerID && <Pill icon="print">{batchDetails.scannerID}</Pill>}
-          {activeSlipNo && <Pill icon="description">Slip {activeSlipNo}</Pill>}
+          {activeSlipNo && <Pill icon="description">Slip {activeGroup?.depositSlipNo || activeSlipNo}</Pill>}
           <Pill>
             {(() => {
               const n = session.totalSlipEntries;
@@ -633,14 +390,19 @@ export function ScanPage() {
         </button>
 
         {/* Complete */}
-        <button onClick={handleCompleteScan} disabled={completing} className="btn-primary" style={{ height: 32, padding: '0 14px', gap: 6, fontSize: 'var(--text-xs)' }}>
+        <button
+          onClick={() => scanner.handleCompleteScan(() => navigate('/'))}
+          disabled={scanner.isBusy || completing}
+          className="btn-primary"
+          style={{ height: 32, padding: '0 14px', gap: 6, fontSize: 'var(--text-xs)' }}
+        >
           <Icon name="check" size={14} />
-          {completing ? 'Completing…' : 'Complete scanning'}
+          {scanner.isBusy || completing ? 'Completing…' : 'Complete batch'}
         </button>
       </div>
 
       {/* ── Main layout ─────────────────────────────────────────────────────── */}
-      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 340px', minHeight: 0 }}>
+      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 480px', minHeight: 0 }}>
 
         {/* Left: cheque viewer ─────────────────────────────────────────────── */}
         <div style={{
@@ -669,74 +431,68 @@ export function ScanPage() {
               color: flipped ? 'var(--info)' : 'var(--fg-muted)',
               border: `1px solid ${flipped ? 'var(--info)' : 'var(--border)'}`,
             }}>
-              {scanStep === 'SlipScan' ? 'Slip' : flipped ? 'Back' : 'Front'}
+              {isSlipView ? 'Slip' : flipped ? 'Back' : 'Front'}
             </span>
           </div>
 
-          {/* Top-right: zoom + flip controls — always on top via zIndex */}
+          {/* Top-right: zoom + flip controls */}
           <div style={{ position: 'absolute', top: 12, right: 16, zIndex: 2, display: 'flex', gap: 2, background: 'var(--bg-raised)', borderRadius: 'var(--r-md)', border: '1px solid var(--border)', padding: 2 }}>
-            <IconBtn icon="zoom_out" tooltip="Zoom out" onClick={() => setZoom(z => Math.max(0.25, +(z - 0.15).toFixed(2)))} />
-            <IconBtn icon="zoom_in" tooltip="Zoom in" onClick={() => setZoom(z => Math.min(4, +(z + 0.15).toFixed(2)))} />
-            {scanStep !== 'SlipScan' && (
+            <IconBtn icon="zoom_out" tooltip="Zoom out" onClick={() => setZoom(z => Math.max(0.25, +(z - 0.25).toFixed(2)))} />
+            <IconBtn icon="zoom_in" tooltip="Zoom in" onClick={() => setZoom(z => Math.min(4, +(z + 0.25).toFixed(2)))} />
+            {!isSlipView && (
               <IconBtn icon="flip" tooltip="Flip (click image)" onClick={() => setFlipped(f => !f)} />
             )}
             <IconBtn icon="fullscreen" tooltip="Fullscreen" onClick={() => setIsFullscreen(true)} />
           </div>
 
-          {/* Scrollable image area — overflow:auto so zoom works without clipping controls */}
-          <div style={{
-            flex: 1,
-            overflow: 'auto',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: 48,
-            boxSizing: 'border-box',
-          }}>
-            {/* Flip card */}
+          {/* Scrollable image area */}
+          <div
+            ref={viewerRef}
+            {...makePanHandlers(viewerRef as React.RefObject<HTMLDivElement>)}
+            style={{
+              flex: 1,
+              overflow: 'auto',
+              display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+              padding: 40,
+              boxSizing: 'border-box',
+              cursor: panning ? 'grabbing' : 'grab',
+              userSelect: 'none',
+            }}
+          >
+            {/* Flip card — pixel-width so zoom works correctly */}
             <div style={{
-              perspective: '2000px',
-              width: `${zoom * 100}%`,
-              maxWidth: `${zoom * 900}px`,
-              aspectRatio: scanStep === 'SlipScan' ? '1.41 / 1' : '2.35 / 1',
+              width: `${Math.max(200, Math.round(640 * zoom))}px`,
               flexShrink: 0,
-              transition: 'width var(--dur) var(--ease)',
+              transition: 'width 0.15s ease',
             }}>
               <div
                 style={{
-                  position: 'relative', width: '100%', height: '100%',
+                  position: 'relative', width: '100%',
                   transformStyle: 'preserve-3d',
+                  perspective: '2000px',
                   transition: 'transform var(--dur-slow) var(--ease)',
                   transform: flipped ? 'rotateY(180deg)' : 'rotateY(0)',
-                  cursor: 'pointer',
+                  cursor: !isSlipView ? (panning ? 'grabbing' : 'pointer') : (panning ? 'grabbing' : 'default'),
                 }}
-                onClick={() => scanStep !== 'SlipScan' && setFlipped(f => !f)}
+                onClick={() => !isSlipView && !hasMoved.current && setFlipped(f => !f)}
               >
                 {/* Front face */}
-                <div style={{
-                  position: 'absolute', inset: 0, backfaceVisibility: 'hidden',
-                  background: 'var(--bg-raised)',
-                  border: '1px solid var(--border-strong)',
-                  boxShadow: 'var(--shadow-lg)',
-                  overflow: 'hidden',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
+                <div style={{ position: 'relative', width: '100%', backfaceVisibility: 'hidden' }}>
                   {previewFront
-                    ? <img src={previewFront} alt="Front" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                    : <ImagePlaceholder label={scanStep === 'SlipScan' ? 'SLIP IMAGE' : 'FRONT'} />}
+                    ? <img src={previewFront} alt="Front" style={{ display: 'block', width: '100%', height: 'auto', background: 'var(--bg-raised)', border: '1px solid var(--border)', borderRadius: '4px', boxShadow: 'var(--shadow-lg)' }} />
+                    : <ImagePlaceholder label={isSlipView ? 'SLIP IMAGE' : 'FRONT'} />}
                 </div>
 
                 {/* Back face */}
-                {scanStep !== 'SlipScan' && (
+                {!isSlipView && (
                   <div style={{
-                    position: 'absolute', inset: 0, backfaceVisibility: 'hidden',
+                    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                    backfaceVisibility: 'hidden',
                     transform: 'rotateY(180deg)',
-                    background: 'var(--bg-raised)',
-                    border: '1px solid var(--border-strong)',
-                    boxShadow: 'var(--shadow-lg)',
-                    overflow: 'hidden',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                   }}>
                     {previewBack
-                      ? <img src={previewBack} alt="Back" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                      ? <img src={previewBack} alt="Back" style={{ display: 'block', width: '100%', height: 'auto', background: 'var(--bg-raised)', border: '1px solid var(--border)', borderRadius: '4px', boxShadow: 'var(--shadow-lg)' }} />
                       : <ImagePlaceholder label="BACK" />}
                   </div>
                 )}
@@ -782,44 +538,44 @@ export function ScanPage() {
             </div>
           </div>
 
-          {/* ── Flatbed scanner status banner ──────────────────────────────── */}
-          {useFlatbedWs && flatbedStatus !== 'idle' && (
+          {/* ── Flatbed scanner status banner — only on SlipScan step ────── */}
+          {scanner.useFlatbedWs && scanner.flatbedStatus !== 'idle' && scanStep === 'SlipScan' && (
             <div style={{
               flexShrink: 0,
               display: 'flex', alignItems: 'flex-start', gap: 8,
               padding: '9px 14px',
               borderBottom: '1px solid var(--border)',
-              borderLeft: `3px solid ${flatbedStatus === 'error' ? 'var(--danger)' : flatbedStatus === 'ready' ? 'var(--success)' : 'var(--accent-400)'}`,
-              background: flatbedStatus === 'error' ? 'var(--danger-bg, #fff1f0)' : flatbedStatus === 'ready' ? 'var(--success-bg)' : 'var(--bg-subtle)',
+              borderLeft: `3px solid ${scanner.flatbedStatus === 'error' ? 'var(--danger)' : 'var(--border-strong)'}`,
+              background: scanner.flatbedStatus === 'error' ? 'var(--danger-bg, #fff1f0)' : 'var(--bg-raised)',
             }}>
               <span className="material-symbols-outlined" style={{
                 fontSize: 15, marginTop: 1, flexShrink: 0,
                 fontVariationSettings: `'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 15`,
-                color: flatbedStatus === 'error' ? 'var(--danger)' : flatbedStatus === 'ready' ? 'var(--success)' : 'var(--accent-500)',
-                animation: flatbedStatus === 'connecting' ? 'spin 1s linear infinite' : 'none',
+                color: scanner.flatbedStatus === 'error' ? 'var(--danger)' : 'var(--fg-muted)',
+                animation: scanner.flatbedStatus === 'connecting' ? 'spin 1s linear infinite' : 'none',
               }}>
-                {flatbedStatus === 'connecting' ? 'sync' : flatbedStatus === 'ready' ? 'check_circle' : 'error'}
+                {scanner.flatbedStatus === 'connecting' ? 'sync' : scanner.flatbedStatus === 'ready' ? 'scanner' : 'error'}
               </span>
               <div style={{ flex: 1, minWidth: 0 }}>
-                {flatbedStatus === 'connecting' && (
+                {scanner.flatbedStatus === 'connecting' && (
                   <span style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-muted)' }}>Connecting to scanner…</span>
                 )}
-                {flatbedStatus === 'ready' && (
-                  <span style={{ fontSize: 'var(--text-xs)', color: 'var(--success)', fontWeight: 500 }}>
-                    {selectedScannerId || 'Scanner ready'}
+                {scanner.flatbedStatus === 'ready' && (
+                  <span style={{ fontSize: 'var(--text-xs)', color: 'var(--fg)', fontWeight: 500 }}>
+                    {scanner.selectedScannerId || 'Scanner ready'}
                   </span>
                 )}
-                {flatbedStatus === 'error' && (
+                {scanner.flatbedStatus === 'error' && (
                   <>
                     <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--danger)' }}>Scanner not available</div>
-                    <div style={{ fontSize: 10, color: 'var(--danger)', marginTop: 2, wordBreak: 'break-word', opacity: 0.85 }}>{flatbedError}</div>
+                    <div style={{ fontSize: 10, color: 'var(--danger)', marginTop: 2, wordBreak: 'break-word', opacity: 0.85 }}>{scanner.flatbedError}</div>
                   </>
                 )}
               </div>
-              {flatbedStatus === 'error' && (
+              {scanner.flatbedStatus === 'error' && (
                 <button
-                  onClick={handleDetectScanners}
-                  disabled={flatbedConnecting}
+                  onClick={scanner.handleDetectScanners}
+                  disabled={scanner.flatbedConnecting}
                   className="btn-ghost"
                   style={{ fontSize: 'var(--text-xs)', height: 24, padding: '0 8px', flexShrink: 0, color: 'var(--danger)' }}
                 >
@@ -829,7 +585,7 @@ export function ScanPage() {
             </div>
           )}
 
-          {/* ── Scan controls (fixed, non-scrolling) ──────────────────────────── */}
+          {/* ── Scan controls ─────────────────────────────────────────────── */}
           <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 12, padding: '14px 16px', borderBottom: '1px solid var(--border)' }}>
 
             {/* SlipEntry step */}
@@ -854,41 +610,40 @@ export function ScanPage() {
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div>
                     <div style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-subtle)', textTransform: 'uppercase', letterSpacing: '.04em' }}>Slip scan</div>
-                    <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--fg)', marginTop: 2 }}>{activeSlipNo}</div>
+                    <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--fg)', marginTop: 2 }}>{activeGroup?.depositSlipNo || activeSlipNo}</div>
                   </div>
                   <span style={{
                     padding: '2px 8px', borderRadius: 'var(--r-full)',
-                    fontSize: 'var(--text-xs)', fontWeight: 500,
-                    background: slipScansForActive.length > 0 ? 'var(--success-bg)' : 'var(--bg-subtle)',
-                    color: slipScansForActive.length > 0 ? 'var(--success)' : 'var(--fg-muted)',
-                    border: `1px solid ${slipScansForActive.length > 0 ? 'var(--success)' : 'var(--border)'}`,
+                    fontSize: 10, fontWeight: 600,
+                    background: 'var(--bg-subtle)', border: '1px solid var(--border)',
+                    color: 'var(--fg-muted)', fontVariantNumeric: 'tabular-nums',
                   }}>
-                    {slipScansForActive.length} image{slipScansForActive.length !== 1 ? 's' : ''}
+                    {slipScansForActive.length} img
                   </span>
                 </div>
 
                 {slipScansForActive.length === 0 && (
-                  <div style={{ padding: '10px 12px', borderRadius: 'var(--r-md)', background: 'var(--warning-bg)', border: '1px solid var(--warning)', fontSize: 'var(--text-xs)', color: 'var(--warning)' }}>
+                  <div style={{ padding: '10px 12px', borderRadius: 'var(--r-md)', background: 'var(--bg-raised)', border: '1px solid var(--border)', fontSize: 'var(--text-xs)', color: 'var(--fg-muted)' }}>
                     Scan at least one slip image before moving to cheques.
                   </div>
                 )}
 
                 <ControlCard>
                   <div style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-subtle)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 8 }}>
-                    {useFlatbedWs ? 'Flatbed Scanner (WebSocket)' : 'Document Scanner'}
+                    {scanner.useFlatbedWs ? 'Flatbed Scanner (WebSocket)' : 'Document Scanner'}
                   </div>
                   <p style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-muted)', margin: '0 0 12px' }}>
                     Place the slip on the flatbed and press Scan.
                   </p>
                   <button
-                    onClick={handleCaptureSlipScan}
-                    disabled={isBusy || (flatbedStatus !== 'ready' && !(user?.isDeveloper && mockScanEnabled && !!frontFile))}
+                    onClick={scanner.handleCaptureSlipScan}
+                    disabled={scanner.isBusy || (scanner.flatbedStatus !== 'ready' && !(user?.isDeveloper && mockScanEnabled && !!frontFile))}
                     className="btn-primary"
                     style={{ width: '100%', justifyContent: 'center' }}
-                    title={flatbedStatus === 'error' ? 'Scanner not connected — see status above' : flatbedStatus === 'connecting' ? 'Connecting to scanner…' : undefined}
+                    title={scanner.flatbedStatus === 'error' ? 'Scanner not connected — see status above' : scanner.flatbedStatus === 'connecting' ? 'Connecting to scanner…' : undefined}
                   >
                     <Icon name="document_scanner" size={16} />
-                    {isBusy ? 'Scanning…' : flatbedStatus === 'connecting' ? 'Connecting…' : 'Scan Slip'}
+                    {scanner.isBusy ? 'Scanning…' : scanner.flatbedStatus === 'connecting' ? 'Connecting…' : 'Scan Slip'}
                   </button>
                 </ControlCard>
 
@@ -899,15 +654,15 @@ export function ScanPage() {
                       isMockMode={true}
                       onCaptureFront={file => openImageEditor(file, 'slip-front')}
                       frontPreview={frontPreview}
-                      disabled={isBusy}
+                      disabled={scanner.isBusy}
                     />
                     {frontFile && (
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
                         <button type="button" onClick={() => frontFile && openImageEditor(frontFile, 'slip-front')} className="btn-secondary" style={{ fontSize: 'var(--text-xs)' }}>
                           Edit image
                         </button>
-                        <button onClick={handleCaptureSlipScan} disabled={isBusy} className="btn-primary" style={{ fontSize: 'var(--text-xs)' }}>
-                          {isBusy ? 'Uploading…' : 'Upload'}
+                        <button onClick={scanner.handleCaptureSlipScan} disabled={scanner.isBusy} className="btn-primary" style={{ fontSize: 'var(--text-xs)' }}>
+                          {scanner.isBusy ? 'Uploading…' : 'Upload'}
                         </button>
                       </div>
                     )}
@@ -929,16 +684,15 @@ export function ScanPage() {
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div>
                     <div style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-subtle)', textTransform: 'uppercase', letterSpacing: '.04em' }}>Cheque scan</div>
-                    <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--fg)', marginTop: 2 }}>Slip {activeSlipNo}</div>
+                    <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--fg)', marginTop: 2 }}>Slip {activeGroup?.depositSlipNo || activeSlipNo}</div>
                   </div>
                   <span style={{
                     padding: '2px 8px', borderRadius: 'var(--r-full)',
-                    fontSize: 'var(--text-xs)', fontWeight: 500,
-                    background: chequesDoneForActive > 0 ? 'var(--success-bg)' : 'var(--bg-subtle)',
-                    color: chequesDoneForActive > 0 ? 'var(--success)' : 'var(--fg-muted)',
-                    border: `1px solid ${chequesDoneForActive > 0 ? 'var(--success)' : 'var(--border)'}`,
+                    fontSize: 10, fontWeight: 600,
+                    background: 'var(--bg-subtle)', border: '1px solid var(--border)',
+                    color: 'var(--fg-muted)', fontVariantNumeric: 'tabular-nums',
                   }}>
-                    {chequesDoneForActive} cheque{chequesDoneForActive !== 1 ? 's' : ''}
+                    {chequesDoneForActive} chq
                   </span>
                 </div>
 
@@ -950,12 +704,12 @@ export function ScanPage() {
                     Place cheques in the hopper. Start feed, then stop to capture.
                   </p>
                   <RangerFeedControl
-                    isRunning={feedRunning.Cheque}
+                    isRunning={scanner.feedRunning.Cheque}
                     scanType="Cheque"
-                    onStartFeed={() => { setScannerChoice('Ranger'); handleStartFeed('Cheque'); }}
-                    onStopFeed={handleRangerStopAndCapture}
+                    onStartFeed={() => { scanner.setScannerChoice('Ranger'); scanner.handleStartFeed('Cheque'); }}
+                    onStopFeed={scanner.handleRangerStopAndCapture}
                     isMockMode={false}
-                    disabled={isBusy}
+                    disabled={scanner.isBusy}
                   />
                 </ControlCard>
 
@@ -968,14 +722,14 @@ export function ScanPage() {
                       onCaptureBack={file => openImageEditor(file, 'cheque-back')}
                       frontPreview={frontPreview}
                       backPreview={backPreview}
-                      disabled={isBusy}
+                      disabled={scanner.isBusy}
                     />
                     {(frontFile || backFile) && (
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, marginTop: 8 }}>
                         <button type="button" onClick={() => frontFile && openImageEditor(frontFile, 'cheque-front')} disabled={!frontFile} className="btn-secondary" style={{ fontSize: 'var(--text-xs)' }}>Front</button>
                         <button type="button" onClick={() => backFile && openImageEditor(backFile, 'cheque-back')} disabled={!backFile} className="btn-secondary" style={{ fontSize: 'var(--text-xs)' }}>Back</button>
-                        <button onClick={handleCaptureChecque} disabled={isBusy} className="btn-primary" style={{ fontSize: 'var(--text-xs)' }}>
-                          {isBusy ? '…' : 'Upload'}
+                        <button onClick={scanner.handleCaptureCheque} disabled={scanner.isBusy} className="btn-primary" style={{ fontSize: 'var(--text-xs)' }}>
+                          {scanner.isBusy ? '…' : 'Upload'}
                         </button>
                       </div>
                     )}
@@ -983,16 +737,10 @@ export function ScanPage() {
                 )}
 
                 {chequesDoneForActive > 0 && (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                    <button onClick={startNewSlip} className="btn-secondary" style={{ justifyContent: 'center' }}>
-                      <Icon name="add" size={15} />
-                      New slip
-                    </button>
-                    <button onClick={handleCompleteScan} disabled={completing} className="btn-primary" style={{ justifyContent: 'center' }}>
-                      <Icon name="check" size={15} />
-                      {completing ? 'Completing…' : 'Complete'}
-                    </button>
-                  </div>
+                  <button onClick={startNewSlip} disabled={scanner.isBusy} className="btn-primary" style={{ width: '100%', justifyContent: 'center' }}>
+                    <Icon name="check" size={15} />
+                    Complete Slip
+                  </button>
                 )}
               </>
             )}
@@ -1011,7 +759,7 @@ export function ScanPage() {
             )}
           </div>
 
-          {/* ── Recent sequences ─────────────────────────────────────────────────── */}
+          {/* ── Recent sequences ──────────────────────────────────────────── */}
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             <div style={{ padding: '8px 16px', flexShrink: 0, borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--fg-subtle)', textTransform: 'uppercase', letterSpacing: '.04em' }}>
@@ -1033,7 +781,7 @@ export function ScanPage() {
                     setNewSlipSaved(false);
                   }}
                   onLockedSelect={() => toast.warning('Cannot return to this slip — a new slip entry was created')}
-                  onImageSelect={(front, back) => { setViewerFront(front); setViewerBack(back ?? null); }}
+                  onImageSelect={(front, back, type) => { setViewerFront(front); setViewerBack(back ?? null); setViewerType(type ?? null); setFlipped(false); }}
                 />
               ) : (
                 <div style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--fg-faint)', fontSize: 'var(--text-xs)' }}>
@@ -1044,6 +792,19 @@ export function ScanPage() {
           </div>
         </div>
       </div>
+      </div>{/* end scan viewport */}
+
+      {/* ── Scanned items table — scroll down to review ───────────────────── */}
+      <ScanItemsTable
+        session={session}
+        onImageSelect={(front, back, type) => {
+          setViewerFront(front);
+          setViewerBack(back ?? null);
+          setViewerType(type ?? null);
+          setFlipped(false);
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}
+      />
 
       {/* ── Fullscreen overlay ─────────────────────────────────────────────── */}
       {isFullscreen && (
@@ -1069,16 +830,16 @@ export function ScanPage() {
                 color: flipped ? '#60a5fa' : '#aaa',
                 border: `1px solid ${flipped ? '#60a5fa' : 'rgb(255 255 255 / 15%)'}`,
               }}>
-                {scanStep === 'SlipScan' ? 'Slip' : flipped ? 'Back' : 'Front'}
+                {isSlipView ? 'Slip' : flipped ? 'Back' : 'Front'}
               </span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'rgb(255 255 255 / 8%)', borderRadius: 'var(--r-md)', padding: 4 }}>
-              <IconBtn icon="zoom_out" tooltip="Zoom out" onClick={() => setZoom(z => Math.max(0.25, +(z - 0.15).toFixed(2)))} />
+              <IconBtn icon="zoom_out" tooltip="Zoom out" onClick={() => setZoom(z => Math.max(0.25, +(z - 0.25).toFixed(2)))} />
               <span style={{ fontSize: 'var(--text-xs)', color: '#aaa', minWidth: 36, textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}>
                 {Math.round(zoom * 100)}%
               </span>
-              <IconBtn icon="zoom_in" tooltip="Zoom in" onClick={() => setZoom(z => Math.min(4, +(z + 0.15).toFixed(2)))} />
-              {scanStep !== 'SlipScan' && (
+              <IconBtn icon="zoom_in" tooltip="Zoom in" onClick={() => setZoom(z => Math.min(4, +(z + 0.25).toFixed(2)))} />
+              {!isSlipView && (
                 <IconBtn icon="flip" tooltip="Flip" onClick={() => setFlipped(f => !f)} />
               )}
               <span style={{ width: 1, height: 18, background: 'rgb(255 255 255 / 20%)', margin: '0 4px' }} />
@@ -1087,43 +848,41 @@ export function ScanPage() {
           </div>
 
           {/* Fullscreen scrollable image area */}
-          <div style={{ flex: 1, overflow: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div
+            ref={viewerFsRef}
+            {...makePanHandlers(viewerFsRef as React.RefObject<HTMLDivElement>)}
+            style={{ flex: 1, overflow: 'auto', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 32, cursor: panning ? 'grabbing' : 'grab', userSelect: 'none' }}
+          >
             <div style={{
-              perspective: '2000px',
-              width: `${zoom * 90}%`,
-              maxWidth: `${zoom * 1200}px`,
-              aspectRatio: scanStep === 'SlipScan' ? '1.41 / 1' : '2.35 / 1',
+              width: `${Math.max(300, Math.round(900 * zoom))}px`,
               flexShrink: 0,
-              transition: 'width var(--dur) var(--ease)',
+              transition: 'width 0.15s ease',
             }}>
               <div
                 style={{
-                  position: 'relative', width: '100%', height: '100%',
+                  position: 'relative', width: '100%',
                   transformStyle: 'preserve-3d',
+                  perspective: '2000px',
                   transition: 'transform var(--dur-slow) var(--ease)',
                   transform: flipped ? 'rotateY(180deg)' : 'rotateY(0)',
-                  cursor: scanStep !== 'SlipScan' ? 'pointer' : 'default',
+                  cursor: !isSlipView ? (panning ? 'grabbing' : 'pointer') : (panning ? 'grabbing' : 'default'),
                 }}
-                onClick={() => scanStep !== 'SlipScan' && setFlipped(f => !f)}
+                onClick={() => !isSlipView && !hasMoved.current && setFlipped(f => !f)}
               >
-                <div style={{
-                  position: 'absolute', inset: 0, backfaceVisibility: 'hidden',
-                  background: '#111', overflow: 'hidden',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
+                <div style={{ position: 'relative', width: '100%', backfaceVisibility: 'hidden' }}>
                   {previewFront
-                    ? <img src={previewFront} alt="Front" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                    : <ImagePlaceholder label={scanStep === 'SlipScan' ? 'SLIP IMAGE' : 'FRONT'} />}
+                    ? <img src={previewFront} alt="Front" style={{ display: 'block', width: '100%', height: 'auto', background: '#111', border: '1px solid #333', borderRadius: 4 }} />
+                    : <ImagePlaceholder label={isSlipView ? 'SLIP IMAGE' : 'FRONT'} />}
                 </div>
-                {scanStep !== 'SlipScan' && (
+                {!isSlipView && (
                   <div style={{
-                    position: 'absolute', inset: 0, backfaceVisibility: 'hidden',
+                    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                    backfaceVisibility: 'hidden',
                     transform: 'rotateY(180deg)',
-                    background: '#111', overflow: 'hidden',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                   }}>
                     {previewBack
-                      ? <img src={previewBack} alt="Back" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                      ? <img src={previewBack} alt="Back" style={{ display: 'block', width: '100%', height: 'auto', background: '#111', border: '1px solid #333', borderRadius: 4 }} />
                       : <ImagePlaceholder label="BACK" />}
                   </div>
                 )}
@@ -1155,23 +914,31 @@ export function ScanPage() {
       {/* ── Scanner settings modal ─────────────────────────────────────────── */}
       {showScanSettings && (
         <ScannerSettingsModal
-          rangerWsUrl={rangerWsUrl}
-          flatbedWsUrl={flatbedWsUrl}
-          useFlatbedWs={useFlatbedWs}
+          rangerWsUrl={scanner.rangerWsUrl}
+          flatbedWsUrl={scanner.flatbedWsUrl}
+          useFlatbedWs={scanner.useFlatbedWs}
           isDeveloper={!!user?.isDeveloper}
-          flatbedConnecting={flatbedConnecting}
-          detectedScanners={detectedScanners}
-          selectedScannerId={selectedScannerId}
-          flatbedResolution={flatbedResolution}
-          flatbedMode={flatbedMode}
-          onRangerUrlChange={setRangerWsUrl}
-          onFlatbedUrlChange={setFlatbedWsUrl}
-          onFlatbedWsToggle={setUseFlatbedWs}
-          onDetectScanners={handleDetectScanners}
-          onAutoSelect={handleAutoSelectScanner}
-          onSelectScanner={setSelectedScannerId}
-          onResolutionChange={setFlatbedResolution}
-          onModeChange={setFlatbedMode}
+          flatbedConnecting={scanner.flatbedConnecting}
+          detectedScanners={scanner.detectedScanners}
+          selectedScannerId={scanner.selectedScannerId}
+          flatbedResolution={scanner.flatbedResolution}
+          flatbedMode={scanner.flatbedMode}
+          rangerMicrEnabled={rangerMicrEnabled}
+          rangerEndorsementEnabled={rangerEndorsementEnabled}
+          rangerEndorsementUseImageName={rangerEndorsementUseImageName}
+          rangerEndorsementCustomText={rangerEndorsementCustomText}
+          onRangerUrlChange={scanner.setRangerWsUrl}
+          onFlatbedUrlChange={scanner.setFlatbedWsUrl}
+          onFlatbedWsToggle={scanner.setUseFlatbedWs}
+          onDetectScanners={scanner.handleDetectScanners}
+          onAutoSelect={scanner.handleAutoSelectScanner}
+          onSelectScanner={scanner.setSelectedScannerId}
+          onResolutionChange={scanner.setFlatbedResolution}
+          onModeChange={scanner.setFlatbedMode}
+          onRangerMicrChange={setRangerMicrEnabled}
+          onRangerEndorsementChange={setRangerEndorsementEnabled}
+          onRangerEndorsementModeChange={setRangerEndorsementUseImageName}
+          onRangerEndorsementTextChange={setRangerEndorsementCustomText}
           onSave={handleSaveSettings}
           onClose={() => setShowScanSettings(false)}
         />
@@ -1192,10 +959,10 @@ export function ScanPage() {
             setNextChqSeq(1);
             if (withSlip) {
               moveToSlipScan();
-              toast.success(`Slip ${slip.slipNo} saved — scan slip images`);
+              toast.success(`Slip ${slip.depositSlipNo || slip.slipNo} saved — scan slip images`);
             } else {
               moveToChequeScan();
-              toast.success(`Slip ${slip.slipNo} saved — scan cheques`);
+              toast.success(`Slip ${slip.depositSlipNo || slip.slipNo} saved — scan cheques`);
             }
             loadSession();
           }}
@@ -1215,370 +982,6 @@ export function ScanPage() {
           }}
         />
       )}
-    </div>
-  );
-}
-
-// ── ImagePlaceholder ───────────────────────────────────────────────────────────
-
-function ImagePlaceholder({ label }: { label: string }) {
-  const isSlip = label === 'SLIP IMAGE';
-  return (
-    <div style={{
-      width: '88%', height: '82%',
-      border: '1.5px dashed var(--border-strong)',
-      borderRadius: 'var(--r-lg)',
-      display: 'flex', flexDirection: 'column',
-      alignItems: 'center', justifyContent: 'center',
-      gap: 10, color: 'var(--fg-faint)',
-      position: 'relative', overflow: 'hidden',
-      background: 'var(--bg-subtle)',
-    }}>
-      {/* Simulated document lines */}
-      {!isSlip && (
-        <>
-          <div style={{ position: 'absolute', top: '18%', left: '8%', width: '28%', height: 1, background: 'var(--border)' }} />
-          <div style={{ position: 'absolute', top: '30%', left: '8%', right: '8%', height: 1, background: 'var(--border-subtle)' }} />
-          <div style={{ position: 'absolute', top: '42%', left: '8%', width: '55%', height: 1, background: 'var(--border-subtle)' }} />
-          <div style={{ position: 'absolute', bottom: '18%', left: '6%', right: '6%', height: 20, borderRadius: 3, background: 'var(--border-subtle)', opacity: 0.6 }} />
-        </>
-      )}
-      {isSlip && (
-        <>
-          <div style={{ position: 'absolute', top: '20%', left: '8%', right: '8%', height: 1, background: 'var(--border-subtle)' }} />
-          <div style={{ position: 'absolute', top: '40%', left: '8%', width: '60%', height: 1, background: 'var(--border-subtle)' }} />
-          <div style={{ position: 'absolute', top: '55%', left: '8%', width: '40%', height: 1, background: 'var(--border-subtle)' }} />
-        </>
-      )}
-      <span className="material-symbols-outlined" style={{ fontSize: 36, fontVariationSettings: `'FILL' 0, 'wght' 200, 'GRAD' 0, 'opsz' 36`, zIndex: 1 }}>
-        {isSlip ? 'article' : 'credit_card'}
-      </span>
-      <span style={{ fontSize: 'var(--text-xs)', textTransform: 'uppercase', letterSpacing: '.1em', fontWeight: 500, zIndex: 1 }}>{label}</span>
-    </div>
-  );
-}
-
-// ── StepDot ────────────────────────────────────────────────────────────────────
-
-function StepDot({ active, done, label, n, disabled }: { active: boolean; done: boolean; label: string; n: number; disabled?: boolean }) {
-  const bg = done ? 'var(--success)' : active ? 'var(--accent-500)' : 'var(--border-strong)';
-  const color = done || active ? '#fff' : 'var(--fg-faint)';
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, opacity: disabled ? 0.35 : 1 }}>
-      <div style={{ width: 22, height: 22, borderRadius: '50%', background: bg, color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600, flexShrink: 0 }}>
-        {done ? '✓' : n}
-      </div>
-      <span style={{ fontSize: 10, color: active ? 'var(--fg)' : 'var(--fg-subtle)', whiteSpace: 'nowrap' }}>{label}</span>
-    </div>
-  );
-}
-
-// ── ControlCard ────────────────────────────────────────────────────────────────
-
-function ControlCard({ children, tone }: { children: ReactNode; tone?: 'warning' | 'default' }) {
-  const bg = tone === 'warning' ? 'var(--warning-bg)' : 'var(--bg-subtle)';
-  const border = tone === 'warning' ? 'var(--warning)' : 'var(--border)';
-  return (
-    <div style={{ padding: '14px 14px', borderRadius: 'var(--r-md)', background: bg, border: `1px solid ${border}` }}>
-      {children}
-    </div>
-  );
-}
-
-// ── DevMockSection ─────────────────────────────────────────────────────────────
-
-function DevMockSection({ title, children }: { title: string; children: ReactNode }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div style={{ border: '1px solid var(--warning)', borderRadius: 'var(--r-md)', background: 'var(--warning-bg)', overflow: 'hidden' }}>
-      <button
-        onClick={() => setOpen(o => !o)}
-        style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--warning)', fontSize: 'var(--text-xs)', fontWeight: 600, fontFamily: 'inherit' }}
-      >
-        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span className="material-symbols-outlined" style={{ fontSize: 14, fontVariationSettings: `'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 14` }}>code</span>
-          {title}
-        </span>
-        <span className="material-symbols-outlined" style={{ fontSize: 14, fontVariationSettings: `'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 14`, transition: 'transform var(--dur-fast) var(--ease)', transform: open ? 'rotate(180deg)' : 'none' }}>expand_more</span>
-      </button>
-      {open && <div style={{ padding: '0 12px 12px' }}>{children}</div>}
-    </div>
-  );
-}
-
-// ── SlipGroupList ──────────────────────────────────────────────────────────────
-
-function SlipGroupList({ groups, activeSlipEntryId, newSlipSaved, onSelect, onLockedSelect, onImageSelect }: {
-  groups: SlipEntryDto[];
-  activeSlipEntryId: number | null;
-  newSlipSaved: boolean;
-  onSelect: (g: SlipEntryDto) => void;
-  onLockedSelect: () => void;
-  onImageSelect: (front: string, back?: string) => void;
-}) {
-  return (
-    <div>
-      {groups.map(group => {
-        const isActive = group.slipEntryId === activeSlipEntryId;
-        const isLocked = newSlipSaved && !isActive;
-        return (
-          <SlipGroupRow
-            key={group.slipEntryId}
-            group={group}
-            isActive={isActive}
-            isLocked={isLocked}
-            onSelect={() => isLocked ? onLockedSelect() : onSelect(group)}
-            onImageSelect={onImageSelect}
-          />
-        );
-      })}
-    </div>
-  );
-}
-
-function SlipGroupRow({ group, isActive, isLocked, onSelect, onImageSelect }: {
-  group: SlipEntryDto; isActive: boolean; isLocked: boolean;
-  onSelect: () => void;
-  onImageSelect: (front: string, back?: string) => void;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const bg = isActive ? 'var(--accent-50)' : 'transparent';
-  const borderColor = isActive ? 'var(--accent-200)' : 'var(--border-subtle)';
-
-  return (
-    <div style={{ borderBottom: `1px solid ${borderColor}`, background: bg, opacity: isLocked ? 0.5 : 1 }}>
-      {/* Slip entry header row */}
-      <div
-        onClick={() => { if (!isLocked) { onSelect(); setExpanded(e => !e); } }}
-        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', cursor: isLocked ? 'not-allowed' : 'pointer' }}
-      >
-        <span className="material-symbols-outlined" style={{ fontSize: 14, fontVariationSettings: `'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 14`, color: isActive ? 'var(--accent-600)' : 'var(--fg-muted)', flexShrink: 0 }}>receipt</span>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: isActive ? 'var(--accent-700)' : 'var(--fg)', fontFamily: 'var(--font-mono)' }}>
-            {group.slipNo}
-          </div>
-          <div style={{ fontSize: 10, color: 'var(--fg-subtle)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {group.clientName || 'No client'} · ₹{group.slipAmount.toLocaleString('en-IN')}
-          </div>
-        </div>
-        <span className="material-symbols-outlined" style={{ fontSize: 12, fontVariationSettings: `'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 12`, color: 'var(--fg-faint)', flexShrink: 0, transition: 'transform var(--dur-fast) var(--ease)', transform: expanded ? 'rotate(180deg)' : 'none' }}>expand_more</span>
-      </div>
-
-      {/* Expanded: slip images + cheques */}
-      {expanded && (
-        <div style={{ borderTop: '1px solid var(--border-subtle)', paddingBottom: 4 }}>
-          {/* Slip scan images */}
-          {group.slipScans.length > 0 && (
-            <>
-              <div style={{ padding: '5px 12px 2px 30px', fontSize: 10, color: 'var(--fg-subtle)', textTransform: 'uppercase', letterSpacing: '.04em' }}>Slip images</div>
-              {group.slipScans.map((scan, idx) => (
-                <div
-                  key={idx}
-                  onClick={() => { if (scan.imagePath) onImageSelect(getImageUrl(scan.imagePath)); }}
-                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 12px 5px 30px', cursor: scan.imagePath ? 'pointer' : 'default', fontSize: 11, color: 'var(--fg)' }}
-                >
-                  <span className="material-symbols-outlined" style={{ fontSize: 12, fontVariationSettings: `'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 12`, color: 'var(--fg-muted)' }}>image</span>
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {scan.imagePath ? scan.imagePath.split(/[\\/]/).pop() : `Slip ${idx + 1}`}
-                  </span>
-                  {!scan.imagePath && <span style={{ color: 'var(--fg-faint)', fontSize: 10 }}>pending</span>}
-                </div>
-              ))}
-            </>
-          )}
-          {/* Cheques */}
-          {group.cheques.length > 0 && (
-            <>
-              <div style={{ padding: '5px 12px 2px 30px', fontSize: 10, color: 'var(--fg-subtle)', textTransform: 'uppercase', letterSpacing: '.04em' }}>Cheques</div>
-              {group.cheques.map(c => (
-                <div
-                  key={c.chequeItemId}
-                  onClick={() => {
-                    const front = c.frontImagePath ? getImageUrl(c.frontImagePath) : null;
-                    const back = c.backImagePath ? getImageUrl(c.backImagePath) : undefined;
-                    if (front) onImageSelect(front, back);
-                  }}
-                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 12px 5px 30px', cursor: (c.frontImagePath || c.backImagePath) ? 'pointer' : 'default', fontSize: 11, color: 'var(--fg)' }}
-                >
-                  <span className="material-symbols-outlined" style={{ fontSize: 12, fontVariationSettings: `'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 12`, color: 'var(--fg-muted)' }}>payments</span>
-                  <span style={{ fontFamily: 'var(--font-mono)' }}>#{String(c.chqSeq).padStart(2, '0')} {c.chqNo || '——'}</span>
-                  {c.rrState === 0 && <span style={{ color: 'var(--warning)', fontSize: 10, fontWeight: 600, marginLeft: 'auto' }}>⚠</span>}
-                  {c.rrState === 1 && <span style={{ color: 'var(--success)', fontSize: 10, marginLeft: 'auto' }}>✓</span>}
-                </div>
-              ))}
-            </>
-          )}
-          {group.slipScans.length === 0 && group.cheques.length === 0 && (
-            <div style={{ padding: '6px 12px 6px 30px', fontSize: 10, color: 'var(--fg-faint)' }}>No items yet</div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── ScannerSettingsModal ───────────────────────────────────────────────────────
-
-function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
-  return (
-    <div onClick={onToggle} style={{ width: 36, height: 20, borderRadius: 10, background: on ? 'var(--accent-500)' : 'var(--border-strong)', position: 'relative', cursor: 'pointer', transition: 'background var(--dur-fast) var(--ease)', flexShrink: 0 }}>
-      <div style={{ position: 'absolute', top: 3, left: on ? 19 : 3, width: 14, height: 14, borderRadius: '50%', background: '#fff', transition: 'left var(--dur-fast) var(--ease)', boxShadow: '0 1px 3px rgb(0 0 0 / 20%)' }} />
-    </div>
-  );
-}
-
-function ScannerSettingsModal({
-  rangerWsUrl, flatbedWsUrl, useFlatbedWs, isDeveloper, flatbedConnecting,
-  detectedScanners, selectedScannerId, flatbedResolution, flatbedMode,
-  onRangerUrlChange, onFlatbedUrlChange, onFlatbedWsToggle,
-  onDetectScanners, onAutoSelect, onSelectScanner,
-  onResolutionChange, onModeChange,
-  onSave, onClose,
-}: {
-  rangerWsUrl: string; flatbedWsUrl: string; useFlatbedWs: boolean;
-  isDeveloper: boolean; flatbedConnecting: boolean;
-  detectedScanners: FlatbedScanner[]; selectedScannerId: string;
-  flatbedResolution: number; flatbedMode: ScanSettings['mode'];
-  onRangerUrlChange: (v: string) => void; onFlatbedUrlChange: (v: string) => void;
-  onFlatbedWsToggle: (v: boolean) => void;
-  onDetectScanners: () => void; onAutoSelect: () => void;
-  onSelectScanner: (id: string) => void;
-  onResolutionChange: (v: number) => void; onModeChange: (v: ScanSettings['mode']) => void;
-  onSave: () => void; onClose: () => void;
-}) {
-  const uniqueScanners = Array.from(new Map(detectedScanners.map(s => [s.name, s])).values());
-
-  return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgb(0 0 0 / 50%)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 60, padding: 16 }}>
-      <div className="card" style={{ width: '100%', maxWidth: 500, maxHeight: 'calc(100dvh - 2rem)', display: 'flex', flexDirection: 'column', borderRadius: 'var(--r-xl)', boxShadow: 'var(--shadow-lg)', overflow: 'hidden' }}>
-
-        {/* Header */}
-        <div style={{ padding: '18px 22px 14px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-          <div>
-            <h2 style={{ margin: 0, fontSize: 'var(--text-md)', fontWeight: 600, color: 'var(--fg)' }}>Scanner Settings</h2>
-            <p style={{ margin: '3px 0 0', fontSize: 'var(--text-xs)', color: 'var(--fg-subtle)' }}>Configure WebSocket endpoints and scan parameters.</p>
-          </div>
-          <button onClick={onClose} style={{ width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--fg-muted)', borderRadius: 'var(--r-md)' }}>
-            <span className="material-symbols-outlined" style={{ fontSize: 18, fontVariationSettings: `'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 18` }}>close</span>
-          </button>
-        </div>
-
-        <div style={{ padding: 22, display: 'flex', flexDirection: 'column', gap: 22, overflowY: 'auto' }}>
-
-          {/* ── Ranger ── */}
-          <section>
-            <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--fg-subtle)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 10 }}>
-              Cheque Scanner (Ranger)
-            </div>
-            <label className="label" style={{ display: 'block', marginBottom: 6 }}>WebSocket URL</label>
-            <input className="input-field" value={rangerWsUrl} onChange={e => onRangerUrlChange(e.target.value)} placeholder="ws://127.0.0.1:9002" style={{ fontFamily: 'var(--font-mono)' }} />
-            <p style={{ margin: '5px 0 0', fontSize: 'var(--text-xs)', color: 'var(--fg-subtle)' }}>Ranger PICA cheque scanner — bulk feed mode. Will be wired when Ranger API is available.</p>
-          </section>
-
-          <div style={{ height: 1, background: 'var(--border-subtle)' }} />
-
-          {/* ── Flatbed ── */}
-          <section>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-              <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--fg-subtle)', textTransform: 'uppercase', letterSpacing: '.04em' }}>
-                Flatbed / Slip Scanner
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-muted)' }}>Enable WebSocket</span>
-                <Toggle on={useFlatbedWs} onToggle={() => onFlatbedWsToggle(!useFlatbedWs)} />
-              </div>
-            </div>
-
-            {/* URL */}
-            <label className="label" style={{ display: 'block', marginBottom: 6 }}>WebSocket URL</label>
-            <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-              <input
-                className="input-field"
-                value={flatbedWsUrl}
-                onChange={e => onFlatbedUrlChange(e.target.value)}
-                placeholder="ws://127.0.0.1:8765"
-                style={{ fontFamily: 'var(--font-mono)', flex: 1, opacity: useFlatbedWs ? 1 : 0.5 }}
-                disabled={!useFlatbedWs}
-              />
-              {useFlatbedWs && (
-                <button onClick={onDetectScanners} disabled={flatbedConnecting} className="btn-secondary" style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>
-                  {flatbedConnecting ? 'Detecting…' : 'Detect scanners'}
-                </button>
-              )}
-            </div>
-
-            {/* Scanner list */}
-            {useFlatbedWs && uniqueScanners.length > 0 && (
-              <div style={{ marginBottom: 12 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <label className="label">Select scanner</label>
-                  <button onClick={onAutoSelect} disabled={flatbedConnecting} className="btn-ghost" style={{ fontSize: 'var(--text-xs)', height: 26, padding: '0 8px' }}>
-                    Auto-select
-                  </button>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  {uniqueScanners.map(s => (
-                    <div
-                      key={s.name}
-                      onClick={() => onSelectScanner(s.name)}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 10,
-                        padding: '8px 12px', borderRadius: 'var(--r-md)', cursor: 'pointer',
-                        border: `1px solid ${selectedScannerId === s.name ? 'var(--accent-400)' : 'var(--border)'}`,
-                        background: selectedScannerId === s.name ? 'var(--accent-50)' : 'var(--bg)',
-                        transition: 'background var(--dur-fast) var(--ease)',
-                      }}
-                    >
-                      <span className="material-symbols-outlined" style={{ fontSize: 16, fontVariationSettings: `'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 16`, color: selectedScannerId === s.name ? 'var(--accent-600)' : 'var(--fg-muted)' }}>scanner</span>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 'var(--text-sm)', fontWeight: 500, color: 'var(--fg)' }}>{s.name}</div>
-                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-subtle)' }}>{s.source.toUpperCase()} · {s.transport}</div>
-                      </div>
-                      {selectedScannerId === s.name && (
-                        <span className="material-symbols-outlined" style={{ fontSize: 16, fontVariationSettings: `'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 16`, color: 'var(--accent-600)' }}>check_circle</span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Scan quality settings */}
-            {useFlatbedWs && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div>
-                  <label className="label" style={{ display: 'block', marginBottom: 6 }}>Resolution (DPI)</label>
-                  <select className="input-field" value={flatbedResolution} onChange={e => onResolutionChange(Number(e.target.value))}>
-                    <option value={150}>150 dpi</option>
-                    <option value={200}>200 dpi</option>
-                    <option value={300}>300 dpi</option>
-                    <option value={600}>600 dpi</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="label" style={{ display: 'block', marginBottom: 6 }}>Colour Mode</label>
-                  <select className="input-field" value={flatbedMode} onChange={e => onModeChange(e.target.value as ScanSettings['mode'])}>
-                    <option value="Gray">Grayscale</option>
-                    <option value="Color">Colour</option>
-                    <option value="Lineart">Lineart (B&W)</option>
-                  </select>
-                </div>
-              </div>
-            )}
-          </section>
-
-          {isDeveloper && (
-            <div style={{ padding: '10px 12px', borderRadius: 'var(--r-md)', background: 'var(--warning-bg)', border: '1px solid var(--warning)', fontSize: 'var(--text-xs)', color: 'var(--warning)' }}>
-              Developer mode active — mock scanning available in scan controls (enable in Settings page).
-            </div>
-          )}
-        </div>
-
-        <div style={{ padding: '14px 22px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 10, flexShrink: 0 }}>
-          <button onClick={onClose} className="btn-ghost">Cancel</button>
-          <button onClick={onSave} className="btn-primary">Save settings</button>
-        </div>
-      </div>
     </div>
   );
 }

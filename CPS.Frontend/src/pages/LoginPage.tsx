@@ -195,9 +195,9 @@ export function LoginPage() {
                   <input type="checkbox" checked={keepSignedIn} onChange={e => setKeepSignedIn(e.target.checked)} style={{ accentColor: 'var(--accent-500)' }} />
                   Keep me signed in
                 </label>
-                <a style={{ fontSize: 13, color: 'var(--accent-700)', cursor: 'pointer', textDecoration: 'none' }}>
+                <span style={{ fontSize: 13, color: 'var(--accent-700)', cursor: 'pointer', textDecoration: 'none' }}>
                   Forgot password?
-                </a>
+                </span>
               </div>
 
               {/* API error */}
@@ -240,10 +240,10 @@ export function LoginPage() {
                 <span className="material-symbols-outlined" style={{ fontSize: 14, lineHeight: 1 }}>info</span>
                 Demo: DEV001 / Dev@1234
               </span>
-              <a onClick={() => setShowForceLoginModal(true)}
+              <span onClick={() => setShowForceLoginModal(true)}
                 style={{ fontSize: 11, color: 'var(--accent-700)', cursor: 'pointer', textDecoration: 'none' }}>
                 Simulate force login →
-              </a>
+              </span>
             </div>
           </div>
 
