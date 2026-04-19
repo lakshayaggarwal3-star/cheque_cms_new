@@ -2,7 +2,7 @@
 // File        : LoginPage.tsx
 // Project     : CPS — Cheque Processing System
 // Module      : Auth
-// Description : Login page with EmployeeID/Username, password, EOD date, and force login.
+// Description : Login page matching CPS design system exactly.
 // Created     : 2026-04-14
 // =============================================================================
 
@@ -23,19 +23,22 @@ export function LoginPage() {
   const [error, setError] = useState('');
   const [showForceLoginModal, setShowForceLoginModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [keepSignedIn, setKeepSignedIn] = useState(true);
 
-  const { register, handleSubmit, formState: { errors } } = useForm<LoginForm>();
+  const { register, handleSubmit, getValues, formState: { errors } } = useForm<LoginForm>({
+    defaultValues: { loginId: 'DEV001', password: 'Dev@1234' },
+  });
 
   const onSubmit = async (data: LoginForm) => {
     setError('');
     setIsSubmitting(true);
     try {
-      const user = await login(data.loginId, data.password, showForceLoginModal);
+      const user = await login(data.loginId, data.password, false);
       setUser(user);
       navigate('/');
     } catch (err: any) {
       const msg = err?.response?.data?.message ?? err?.message ?? 'Login failed';
-      if (msg.includes('already logged in')) {
+      if (msg.toLowerCase().includes('already logged in') || msg.toLowerCase().includes('session')) {
         setShowForceLoginModal(true);
         setError('');
       } else {
@@ -47,120 +50,273 @@ export function LoginPage() {
     }
   };
 
+  const handleForceLogin = async () => {
+    const { loginId, password } = getValues();
+    setIsSubmitting(true);
+    try {
+      const user = await login(loginId, password, true);
+      setUser(user);
+      navigate('/');
+    } catch (err: any) {
+      const msg = err?.response?.data?.message ?? err?.message ?? 'Login failed';
+      setError(msg);
+      setShowForceLoginModal(false);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-900 to-blue-700 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
-        <div className="p-8">
-          <div className="text-center mb-8">
-            <div className="text-3xl font-bold text-blue-900">CPS</div>
-            <div className="text-gray-500 text-sm mt-1">Cheque Processing System</div>
-            <div className="text-gray-400 text-xs mt-1">Standard Chartered Bank</div>
-            <div className="mt-3 rounded-md bg-blue-50 border border-blue-100 px-3 py-2 text-xs text-blue-800">
-              Demo Login: <span className="font-semibold">DEV001 / Dev@1234</span>
+    <div style={{
+      minHeight: '100vh',
+      background: 'var(--bg)', color: 'var(--fg)',
+      fontFamily: 'var(--font-sans)',
+      position: 'relative', overflow: 'hidden',
+    }}>
+      {/* Radial gradient overlays */}
+      <div style={{
+        position: 'absolute', top: '-25%', right: '-15%',
+        width: 600, height: 600, pointerEvents: 'none',
+        background: 'radial-gradient(circle at center, rgb(217 119 87 / 12%), transparent 60%)',
+      }} />
+      <div style={{
+        position: 'absolute', bottom: '-30%', left: '-20%',
+        width: 700, height: 700, pointerEvents: 'none',
+        background: 'radial-gradient(circle at center, rgb(60 108 140 / 8%), transparent 60%)',
+      }} />
+
+      {/* Center container */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', padding: '24px 16px' }}>
+        <div style={{ width: '100%', maxWidth: 420, position: 'relative', zIndex: 1 }}>
+
+          {/* Logo + App name */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'center', marginBottom: 32 }}>
+            <div style={{
+              width: 36, height: 36, borderRadius: 10,
+              background: 'rgb(217 119 87 / 0.15)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+            }}>
+              <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--accent-500)', lineHeight: 1 }}>C</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1 }}>
+              <span style={{ fontSize: 20, fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--fg)' }}>CPS</span>
+              <span style={{ fontSize: 11, marginTop: 3, color: 'var(--fg-subtle)' }}>Cheque Processing System</span>
             </div>
           </div>
 
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Employee ID / Username
-              </label>
-              <input
-                {...register('loginId', { required: 'Login ID is required' })}
-                className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Enter Employee ID or Username"
-                autoComplete="username"
-              />
-              {errors.loginId && <p className="text-red-500 text-xs mt-1">{errors.loginId.message}</p>}
+          {/* Card */}
+          <div style={{
+            background: 'var(--bg-raised)', border: '1px solid var(--border)',
+            borderRadius: 14, boxShadow: 'var(--shadow-md)', padding: 32,
+          }}>
+            <div style={{ marginBottom: 24 }}>
+              <h1 style={{ margin: 0, fontSize: 24, fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--fg)' }}>
+                Welcome back
+              </h1>
+              <p style={{ margin: '6px 0 0', fontSize: 13, color: 'var(--fg-muted)' }}>
+                Sign in with your SCB employee credentials.
+              </p>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Password
-              </label>
-              <input
-                {...register('password', { required: 'Password is required', minLength: { value: 8, message: 'Min 8 characters' } })}
-                type="password"
-                className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Password"
-                autoComplete="current-password"
-              />
-              {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password.message}</p>}
-            </div>
+            <form onSubmit={handleSubmit(onSubmit)} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-            {error && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                <p className="text-red-700 text-sm">{error}</p>
+              {/* Employee ID */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <label style={{ fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--fg-muted)' }}>
+                  Employee ID
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <span className="material-symbols-outlined" style={{
+                    position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)',
+                    fontSize: 16, lineHeight: 1, pointerEvents: 'none', color: 'var(--fg-subtle)',
+                  }}>badge</span>
+                  <input
+                    {...register('loginId', { required: 'Login ID is required' })}
+                    placeholder="DEV001"
+                    autoComplete="username"
+                    style={{
+                      width: '100%', boxSizing: 'border-box',
+                      padding: '9px 12px 9px 32px',
+                      background: 'var(--bg-input)', color: 'var(--fg)',
+                      border: '1px solid var(--border-strong)',
+                      borderRadius: 10, fontSize: 13, fontFamily: 'inherit', outline: 'none',
+                      transition: 'border-color 120ms ease, box-shadow 120ms ease',
+                    }}
+                    onFocus={e => { e.currentTarget.style.borderColor = 'var(--accent-500)'; e.currentTarget.style.boxShadow = 'var(--shadow-focus)'; }}
+                    onBlur={e => { e.currentTarget.style.borderColor = 'var(--border-strong)'; e.currentTarget.style.boxShadow = 'none'; }}
+                  />
+                </div>
+                {errors.loginId && (
+                  <p style={{ margin: 0, fontSize: 11, display: 'flex', alignItems: 'center', gap: 4, color: 'var(--danger)' }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 14 }}>error</span>
+                    {errors.loginId.message}
+                  </p>
+                )}
               </div>
-            )}
 
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="w-full bg-blue-700 hover:bg-blue-800 disabled:opacity-50 text-white font-medium py-2.5 rounded-lg transition-colors text-sm"
-            >
-              {isSubmitting ? 'Signing in...' : 'Sign In'}
-            </button>
-          </form>
+              {/* Password */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <label style={{ fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--fg-muted)' }}>
+                  Password
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <span className="material-symbols-outlined" style={{
+                    position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)',
+                    fontSize: 16, lineHeight: 1, pointerEvents: 'none', color: 'var(--fg-subtle)',
+                  }}>lock</span>
+                  <input
+                    {...register('password', { required: 'Password is required' })}
+                    type="password"
+                    placeholder="••••••••"
+                    autoComplete="current-password"
+                    style={{
+                      width: '100%', boxSizing: 'border-box',
+                      padding: '9px 12px 9px 32px',
+                      background: 'var(--bg-input)', color: 'var(--fg)',
+                      border: '1px solid var(--border-strong)',
+                      borderRadius: 10, fontSize: 13, fontFamily: 'inherit', outline: 'none',
+                      transition: 'border-color 120ms ease, box-shadow 120ms ease',
+                    }}
+                    onFocus={e => { e.currentTarget.style.borderColor = 'var(--accent-500)'; e.currentTarget.style.boxShadow = 'var(--shadow-focus)'; }}
+                    onBlur={e => { e.currentTarget.style.borderColor = 'var(--border-strong)'; e.currentTarget.style.boxShadow = 'none'; }}
+                  />
+                </div>
+                {errors.password && (
+                  <p style={{ margin: 0, fontSize: 11, display: 'flex', alignItems: 'center', gap: 4, color: 'var(--danger)' }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 14 }}>error</span>
+                    {errors.password.message}
+                  </p>
+                )}
+              </div>
+
+              {/* Keep me signed in + Forgot password */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
+                <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, cursor: 'pointer', color: 'var(--fg-muted)' }}>
+                  <input type="checkbox" checked={keepSignedIn} onChange={e => setKeepSignedIn(e.target.checked)} style={{ accentColor: 'var(--accent-500)' }} />
+                  Keep me signed in
+                </label>
+                <a style={{ fontSize: 13, color: 'var(--accent-700)', cursor: 'pointer', textDecoration: 'none' }}>
+                  Forgot password?
+                </a>
+              </div>
+
+              {/* API error */}
+              {error && (
+                <div style={{ borderRadius: 8, padding: '10px 12px', display: 'flex', gap: 10, alignItems: 'flex-start', background: 'var(--danger-bg)', border: '1px solid var(--danger)' }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 18, marginTop: 1, color: 'var(--danger)', flexShrink: 0 }}>warning</span>
+                  <p style={{ margin: 0, fontSize: 13, color: 'var(--danger)' }}>{error}</p>
+                </div>
+              )}
+
+              {/* Sign in button */}
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                style={{
+                  marginTop: 4, width: '100%',
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  padding: '12px 20px', height: 44,
+                  background: 'var(--accent-500)', color: 'var(--fg-on-accent)',
+                  fontWeight: 500, fontSize: 15, borderRadius: 10,
+                  border: '1px solid var(--accent-600)',
+                  cursor: isSubmitting ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
+                  transition: 'background-color 120ms ease', opacity: isSubmitting ? 0.8 : 1,
+                }}
+                onMouseEnter={e => { if (!isSubmitting) (e.currentTarget as HTMLButtonElement).style.background = 'var(--accent-600)'; }}
+                onMouseLeave={e => { if (!isSubmitting) (e.currentTarget as HTMLButtonElement).style.background = 'var(--accent-500)'; }}
+              >
+                {isSubmitting ? 'Signing in…' : 'Sign in'}
+                {!isSubmitting && <span className="material-symbols-outlined" style={{ fontSize: 20, lineHeight: 1, fontWeight: 500 }}>arrow_forward</span>}
+              </button>
+            </form>
+
+            {/* Divider + Demo + Force login */}
+            <div style={{
+              marginTop: 24, paddingTop: 20,
+              borderTop: '1px solid var(--border-subtle)',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            }}>
+              <span style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 6, color: 'var(--fg-subtle)' }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 14, lineHeight: 1 }}>info</span>
+                Demo: DEV001 / Dev@1234
+              </span>
+              <a onClick={() => setShowForceLoginModal(true)}
+                style={{ fontSize: 11, color: 'var(--accent-700)', cursor: 'pointer', textDecoration: 'none' }}>
+                Simulate force login →
+              </a>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <p style={{ textAlign: 'center', marginTop: 24, fontSize: 11, color: 'var(--fg-subtle)' }}>
+            Standard Chartered Bank · Ahmedabad Processing Centre
+          </p>
         </div>
       </div>
 
       {/* Force Login Modal */}
       {showForceLoginModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
-            <div className="text-center mb-4">
-              <div className="mx-auto w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center mb-3">
-                <svg className="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
+        <div
+          style={{
+            position: 'fixed', inset: 0, background: 'rgb(31 30 29 / 40%)',
+            backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center',
+            justifyContent: 'center', padding: 16, zIndex: 50,
+          }}
+          onClick={() => setShowForceLoginModal(false)}
+        >
+          <div
+            style={{
+              maxWidth: 420, width: '100%', borderRadius: 14, padding: 24,
+              background: 'var(--bg-raised)', border: '1px solid var(--border)',
+              boxShadow: 'var(--shadow-md)',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, marginBottom: 16 }}>
+              <div style={{
+                width: 40, height: 40, borderRadius: 10, flexShrink: 0,
+                background: 'var(--warning-bg)', color: 'var(--warning)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 22, lineHeight: 1 }}>warning</span>
               </div>
-              <h3 className="text-lg font-bold text-gray-900 mb-2">Already Logged In</h3>
-              <p className="text-sm text-gray-600">
-                Your account is currently active on another device or browser session.
-              </p>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <h3 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: 'var(--fg)' }}>Session already active</h3>
+                <p style={{ margin: '6px 0 0', fontSize: 13, lineHeight: 1.55, color: 'var(--fg-muted)' }}>
+                  Your account is signed in on another device. Forcing login here will terminate that session; any unsaved work will be lost.
+                </p>
+              </div>
             </div>
-
-            <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 mb-4">
-              <p className="text-xs text-orange-800">
-                <strong>Warning:</strong> Forcing login will terminate the existing session. Any unsaved work in the other session will be lost.
-              </p>
-            </div>
-
-            <div className="space-y-3">
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
               <button
-                onClick={async () => {
-                  const loginId = (document.querySelector('input[name="loginId"]') as HTMLInputElement)?.value;
-                  const password = (document.querySelector('input[name="password"]') as HTMLInputElement)?.value;
-                  if (loginId && password) {
-                    setIsSubmitting(true);
-                    try {
-                      const user = await login(loginId, password, true);
-                      setUser(user);
-                      navigate('/');
-                    } catch (err: any) {
-                      const msg = err?.response?.data?.message ?? err?.message ?? 'Login failed';
-                      setError(msg);
-                      setShowForceLoginModal(false);
-                    } finally {
-                      setIsSubmitting(false);
-                    }
-                  }
+                onClick={() => setShowForceLoginModal(false)}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 8,
+                  padding: '9px 16px', height: 38, background: 'var(--bg-raised)',
+                  color: 'var(--fg)', border: '1px solid var(--border-strong)',
+                  borderRadius: 10, fontSize: 13, fontWeight: 500, fontFamily: 'inherit', cursor: 'pointer',
+                  transition: 'background-color 120ms ease',
                 }}
-                disabled={isSubmitting}
-                className="w-full bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white font-medium py-2.5 rounded-lg transition-colors text-sm"
-              >
-                {isSubmitting ? 'Logging in...' : 'Yes, Login Here'}
-              </button>
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'var(--bg-raised)')}
+              >Cancel</button>
               <button
-                onClick={() => {
-                  setShowForceLoginModal(false);
-                  setError('Login cancelled. User is still active on another session.');
-                }}
+                onClick={handleForceLogin}
                 disabled={isSubmitting}
-                className="w-full border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50 font-medium py-2.5 rounded-lg transition-colors text-sm"
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 8,
+                  padding: '9px 16px', height: 38,
+                  background: 'var(--accent-500)', color: 'var(--fg-on-accent)',
+                  borderRadius: 10, border: '1px solid var(--accent-600)',
+                  fontSize: 13, fontWeight: 500, fontFamily: 'inherit',
+                  cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                  transition: 'background-color 120ms ease', opacity: isSubmitting ? 0.8 : 1,
+                }}
+                onMouseEnter={e => { if (!isSubmitting) (e.currentTarget as HTMLButtonElement).style.background = 'var(--accent-600)'; }}
+                onMouseLeave={e => { if (!isSubmitting) (e.currentTarget as HTMLButtonElement).style.background = 'var(--accent-500)'; }}
               >
-                Cancel
+                <span className="material-symbols-outlined" style={{ fontSize: 16, lineHeight: 1 }}>login</span>
+                {isSubmitting ? 'Signing in…' : 'Force sign in'}
               </button>
             </div>
           </div>

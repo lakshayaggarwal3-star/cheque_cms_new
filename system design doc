@@ -1,0 +1,171 @@
+ ICON PACK
+Material Symbols Outlined (Google)
+
+Loaded via: https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined
+Style: Outlined (not filled, not rounded)
+Weight: 400 default, 500 on active/buttons
+Size: 20px standard, 16px in buttons/chips, 14px inline
+Location	Icon name
+Sidebar – Dashboard	dashboard
+Sidebar – New Batch	add_circle
+Sidebar – Scanning	document_scanner
+Sidebar – Reject Repair	build
+Sidebar – Users	group
+Sidebar – Masters	folder
+Sidebar – Settings	settings
+Sidebar – Logout	logout
+Top bar – Hamburger	menu
+Top bar – Notifications	notifications
+Top bar – Help	help
+Top bar – DEV chip	code
+Dashboard – Batch KPI	receipt_long
+Dashboard – Scanning KPI	hourglass_top
+Dashboard – RR KPI	build
+Dashboard – Completed KPI	task_alt
+Dashboard – Search	search
+Dashboard – Filters	tune
+Dashboard – Export	download
+Dashboard – New batch	add
+Dashboard – Row action	arrow_forward, check_circle
+Batch Create – Scan type	document_scanner, refresh
+Batch Create – Slip mode	receipt, receipt_long
+Batch Create – Submit	play_arrow
+Batch Create – Session	check
+Input – Employee ID	badge
+Input – Password	lock
+Input – Search	search
+Input – Date	calendar_today
+Input – Amount	currency_rupee
+Input – Select dropdown	expand_more
+Input – Info	info
+Scan – Back nav	arrow_back
+Scan – Batch chip	receipt_long, category, print, description, radio_button_checked
+Scan – Image controls	flip, zoom_in, zoom_out, fullscreen
+Scan – Navigate	chevron_left, chevron_right
+Scan – Actions	delete, flag, refresh, check, add, save
+Scan – Row status	check_circle, radio_button_checked, error
+RR – Status	error, radio_button_checked
+RR – Actions	skip_next, delete_outline, check
+Modal – Close	close
+Modal – Warning	warning
+Modal – Login	login
+Settings – Tabs	group, shield_person, business, tune
+Settings – Table	more_horiz, person_add, filter_list
+Toast	check_circle
+Empty state	folder_open, construction
+🔤 TYPOGRAPHY
+Primary font: Inter (Google Fonts)
+
+URL: https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700
+Weights used: 400 (body), 500 (labels, buttons, nav), 600 (headings, page titles), 700 (bold)
+Letter spacing: -0.01em on headings, -0.02em on large display titles, +0.04em on ALL-CAPS labels
+Monospace font: JetBrains Mono (Google Fonts)
+
+URL: https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500
+Used for: batch numbers, MICR fields, amounts, cheque numbers, employee IDs
+Type scale:
+
+Token	Size	Used for
+--text-xs	11px	ALL-CAPS field labels, chip text, table headers, hints
+--text-sm	13px	Body text, buttons, inputs, table cells, nav links
+--text-base	14px	Base body (html default)
+--text-md	15px	Section headings (h2), panel titles
+--text-lg	17px	Modal titles
+--text-xl	20px	App name in sidebar
+--text-2xl	24px	Page h1 titles (Dashboard, Create batch)
+--text-3xl	32px	KPI numbers (12, 3, 2, 7)
+--text-display	44px	Reserved
+Label convention: ALL CAPS + letter-spacing: 0.04em + weight 500 — used on every form field label and table column header.
+
+🎨 COLOR SYSTEM
+Accent (Claude coral)
+Token	Hex	Used for
+--accent-50	#fbf2ed	Soft button bg, active nav bg, accent chip bg
+--accent-100	#f6e1d4	Soft button hover, avatar bg
+--accent-500	#d97757	Primary button, focus ring source, active nav bar
+--accent-600	#c4613f	Primary button hover
+--accent-700	#9d4e33	Soft button text, nav active text, links
+Light theme backgrounds
+Token	Hex	Used for
+--bg	#faf9f5	App canvas (warm paper)
+--bg-raised	#ffffff	Cards, sidebar, top bar, modal
+--bg-subtle	#f3f1ea	Hover fills, segmented control bg
+--bg-input	#ffffff	Input backgrounds
+--bg-hover	rgba(31,30,29, 4%)	Row hover, ghost button hover
+--bg-active	rgba(31,30,29, 7%)	Active icon button
+Light theme text
+Token	Value	Used for
+--fg	#1f1e1d	Primary text
+--fg-muted	#5a564f	Secondary text, labels, nav links
+--fg-subtle	#8a857a	Hints, placeholders, tertiary
+--fg-faint	#b8b3a7	Dividers as dots, disabled
+Dark theme backgrounds
+Token	Hex
+--bg	#1c1b1a
+--bg-raised	#242321
+--bg-subtle	#2b2a27
+Semantic colors (light)
+State	Foreground	Background	Used for
+Success	#4a7c3a	#e9f0e1	Completed batch, check icons
+Warning	#b87333	#fbecd9	Pending scanning
+Danger	#b2413a	#f6e1df	RR pending, errors, required
+Info	#3c6c8c	#e2ecf3	Scanning in progress
+Borders
+Token	Hex	Used for
+--border	#e6e2d8	Cards, sidebar, top bar
+--border-strong	#d5d0c3	Input default border
+--border-subtle	#efebe0	Table row dividers
+📐 SPACING & RADIUS
+Corner radius
+Token	Value	Used for
+--r-sm	6px	Kbd badges, segmented buttons
+--r-md	10px	Buttons, inputs, nav items, cards inner
+--r-lg	14px	Cards, modals
+--r-xl	20px	Reserved
+--r-full	9999px	Chips/pills, status dots, avatar
+Shadows
+Token	Used for
+--shadow-xs	Cards at rest (1px bottom)
+--shadow-sm	Elevated inline elements
+--shadow-md	Elevated cards, modals
+--shadow-lg	Toast, dropdown overlays, login card
+--shadow-focus	0 0 0 3px rgb(217 119 87 / 25%) — input/button focus ring in coral
+🧩 COMPONENTS
+Component	Variants
+Button	primary (coral), secondary (border), ghost (transparent), soft (coral-tinted), danger, dangerGhost
+Button sizes	sm (30px h), md (38px h), lg (44px h)
+IconButton	36×36px square, hover bg fills
+Chip/Pill	neutral, info, success, warning, danger, accent, outline
+Input	Optional leading icon, focus ring, error state
+Select	Matches Input styling, custom expand_more chevron
+Field	Label (ALL-CAPS) + child input + hint/error below
+ReadStat	Label + value, mono option — used in prefilled batch strip
+Card	elevated prop → shadow-md vs default shadow-xs
+Segmented control	Pill-style toggle (Scan/Rescan, With/Without slip)
+Dot	6px colored circle for table row status
+Kbd	Monospace keyboard shortcut badge
+🏗️ LAYOUT
+Element	Detail
+Sidebar	232px expanded / 60px icon rail, sticky left
+Top bar	56px tall, sticky, hamburger + title + right actions
+Page padding	24px horizontal, 48px bottom
+Max content width	1280px centered (full-bleed on Scan/RR)
+Grid	CSS Grid throughout — KPIs 4-col, form 2-col, scan 2-pane
+Scan layout	1fr 360px — full-width image left, detail panel right
+RR layout	Same 1fr 380px pattern
+⚡ MOTION
+Token	Value
+--ease	cubic-bezier(.22,.61,.36,1) (smooth decelerate)
+--dur-fast	120ms — hover color changes
+--dur	200ms — sidebar, modal open
+--dur-slow	360ms — 3D cheque card flip
+Cheque flip: CSS perspective: 2000px + rotateY(180deg) on Y axis, backface-visibility: hidden on both faces.
+
+🔧 TWEAKS (in-page panel)
+Tweak	Options
+View	Login / Dashboard / Create batch / Scanning / RR / Settings
+Theme	Light / Dark
+Accent color	Color picker (generates full 50–900 scale dynamically)
+Density	Comfortable (row 44px) / Compact (row 36px)
+Sidebar	Auto (collapses on Scan/RR) / Open / Rail
+Font	Inter / System UI / Georgias

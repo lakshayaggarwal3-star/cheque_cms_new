@@ -10,6 +10,7 @@ import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { getMe } from './services/authService';
 import { useAuthStore } from './store/authStore';
+import { useTheme } from './hooks/useTheme';
 import { ToastProvider } from './components/ToastProvider';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { Layout } from './components/Layout';
@@ -26,6 +27,7 @@ import { UnauthorizedPage } from './pages/UnauthorizedPage';
 function AppRoutes() {
   const { setUser, clearUser } = useAuthStore();
   const [booting, setBooting] = useState(true);
+  useTheme();
 
   useEffect(() => {
     getMe()
