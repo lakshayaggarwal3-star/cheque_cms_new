@@ -272,7 +272,7 @@ function TopBar({ onToggle, title, subtitle, isDeveloper }: {
     <header style={{
       display: 'flex', alignItems: 'center', gap: 8,
       padding: '10px 20px', height: 56, boxSizing: 'border-box',
-      background: 'var(--bg)',
+      background: 'var(--bg-raised)',
       borderBottom: '1px solid var(--border)',
       position: 'sticky', top: 0, zIndex: 5, flexShrink: 0,
     }}>
@@ -355,7 +355,8 @@ export function Layout() {
 
   return (
     <div style={{
-      minHeight: '100vh',
+      height: '100vh',
+      overflow: 'hidden',
       background: 'var(--bg)',
       color: 'var(--fg)',
       display: 'flex',
@@ -382,10 +383,14 @@ export function Layout() {
           subtitle={pageInfo.subtitle}
           isDeveloper={user?.isDeveloper}
         />
-        <main style={{ flex: 1, overflow: 'auto' }}>
-          <div className="page-content" style={{ maxWidth: 1280, margin: '0 auto', padding: '24px 24px 48px' }}>
+        <main style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+          {location.pathname.startsWith('/scan') ? (
             <Outlet />
-          </div>
+          ) : (
+            <div className="page-content" style={{ maxWidth: 1280, margin: '0 auto', padding: '24px 24px 48px', width: '100%', boxSizing: 'border-box' }}>
+              <Outlet />
+            </div>
+          )}
         </main>
       </div>
     </div>

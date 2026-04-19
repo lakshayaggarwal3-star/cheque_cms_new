@@ -1,6 +1,10 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,400..700,0..1,-25..200&display=swap');
 @import './styles/theme.css';
 
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
