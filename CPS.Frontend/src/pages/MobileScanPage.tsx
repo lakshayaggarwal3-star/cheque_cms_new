@@ -30,9 +30,6 @@ export function MobileScanPage() {
   const [session, setSession] = useState<ScanSessionDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [showStartModal, setShowStartModal] = useState(false);
-  const [startStep, setStartStep] = useState<'scanType' | 'slipMode'>('scanType');
-  const [selectedScanType, setSelectedScanType] = useState<'Scan' | 'Rescan'>('Scan');
   const [scanTarget, setScanTarget] = useState<ScanTarget>('Slip');
   const [scanStep, setScanStep] = useState<MobileScanStep>('SlipScan');
   const [slipScansCount, setSlipScansCount] = useState(0);
@@ -105,9 +102,22 @@ export function MobileScanPage() {
         setActiveSlipId(latest.slipEntryId);
       }
 
+      // Auto-start scanning with settings from batch creation
       if (scanSession.batchStatus === BatchStatus.Created || scanSession.batchStatus === BatchStatus.ScanningPending) {
-        setShowStartModal(true);
-        setStartStep('scanType');
+        setBusy(true);
+        try {
+          const withSlip = scanSession.withSlip ?? false;
+          const scanType = scanSession.scanType ?? 'Scan';
+          await startScan(id, withSlip, scanType);
+          setSlipCreated(!withSlip);
+          setActiveSlipId(null);
+          setScanTarget(withSlip ? 'Slip' : 'Cheque');
+          if (withSlip) setShowSlipForm(true);
+        } catch (err: any) {
+          toast.error(err?.response?.data?.message ?? 'Failed to start scanning');
+        } finally {
+          setBusy(false);
+        }
       }
     } catch {
       toast.error('Failed to load mobile scan session');
@@ -132,11 +142,10 @@ export function MobileScanPage() {
     return () => { if (backPreview) URL.revokeObjectURL(backPreview); };
   }, [backPreview]);
 
-  const handleStart = async (withSlip: boolean) => {
+  const handleStart = async (withSlip: boolean, scanType: 'Scan' | 'Rescan' = 'Scan') => {
     setBusy(true);
     try {
-      await startScan(id, withSlip, selectedScanType);
-      setShowStartModal(false);
+      await startScan(id, withSlip, scanType);
       setSlipCreated(!withSlip);
       setActiveSlipId(null);
       setScanTarget(withSlip ? 'Slip' : 'Cheque');
@@ -441,48 +450,6 @@ export function MobileScanPage() {
         </div>
       </div>
 
-      {showStartModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6">
-            <h2 className="text-lg font-bold text-gray-900 mb-2">Start Mobile Scanning</h2>
-            {startStep === 'scanType' ? (
-              <div className="space-y-3">
-                <button
-                  onClick={() => { setSelectedScanType('Scan'); setStartStep('slipMode'); }}
-                  className="w-full bg-blue-700 text-white py-3 rounded-lg font-medium"
-                >
-                  Scan
-                </button>
-                <button
-                  onClick={() => { setSelectedScanType('Rescan'); setStartStep('slipMode'); }}
-                  className="w-full bg-indigo-700 text-white py-3 rounded-lg font-medium"
-                >
-                  Rescan
-                </button>
-                <button onClick={() => navigate('/')} className="w-full text-gray-500 text-sm py-2">Cancel</button>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <button
-                  onClick={() => handleStart(true)}
-                  disabled={busy}
-                  className="w-full bg-blue-700 text-white py-3 rounded-lg font-medium"
-                >
-                  With Slip
-                </button>
-                <button
-                  onClick={() => handleStart(false)}
-                  disabled={busy}
-                  className="w-full bg-gray-100 text-gray-800 py-3 rounded-lg font-medium"
-                >
-                  Without Slip
-                </button>
-                <button onClick={() => setStartStep('scanType')} className="w-full text-gray-500 text-sm py-2">Back</button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
       {showSlipForm && (
         <SlipFormModal
