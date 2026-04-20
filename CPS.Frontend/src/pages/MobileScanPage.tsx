@@ -15,7 +15,7 @@ import type { ChequeItemDto, SlipScanDto, ScanSessionDto } from '../types';
 import { BatchStatus } from '../types';
 import { getImageUrl } from '../utils/imageUtils';
 import { SlipFormModal } from '../components/SlipFormModal';
-import { CameraCapture } from '../components/CameraCapture';
+import { CameraCapturePro } from '../components/CameraCapturePro';
 import { ImageEditModalMobile } from '../components/ImageEditModalMobile';
 
 type ScanTarget = 'Slip' | 'Cheque';
@@ -42,6 +42,7 @@ export function MobileScanPage() {
   const [frontPreview, setFrontPreview] = useState<string | null>(null);
   const [backPreview, setBackPreview] = useState<string | null>(null);
   const [editorState, setEditorState] = useState<{ file: File; target: EditableImageTarget; title: string } | null>(null);
+  const [showCamera, setShowCamera] = useState(false);
   const [currentCheque, setCurrentCheque] = useState<ChequeItemDto | null>(null);
   const [currentSlipScan, setCurrentSlipScan] = useState<SlipScanDto | null>(null);
   const [micr, setMicr] = useState({ chqNo: '', micr1: '', micr2: '', micr3: '' });
@@ -308,15 +309,29 @@ export function MobileScanPage() {
             </p>
 
             <div className="mt-4">
-              <CameraCapture
-                mode={scanStep === 'SlipScan' ? 'slip' : 'cheque'}
-                isMockMode={false}
-                onCaptureFront={(file) => openImageEditor(file, scanStep === 'SlipScan' ? 'slip-front' : 'cheque-front')}
-                onCaptureBack={scanStep === 'ChequeScan' ? (file) => openImageEditor(file, 'cheque-back') : undefined}
-                frontPreview={frontPreview}
-                backPreview={scanStep === 'ChequeScan' ? backPreview : undefined}
+              <button
+                onClick={() => setShowCamera(true)}
                 disabled={busy}
-              />
+                style={{
+                  width: '100%',
+                  padding: '16px',
+                  background: 'var(--accent-500)',
+                  color: 'var(--fg-on-accent)',
+                  border: 'none',
+                  borderRadius: 'var(--r-lg)',
+                  fontSize: 'var(--text-md)',
+                  fontWeight: 600,
+                  cursor: busy ? 'not-allowed' : 'pointer',
+                  opacity: busy ? 0.5 : 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                }}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: 20 }}>camera_alt</span>
+                Open Camera
+              </button>
             </div>
 
             {(frontFile || backFile) && (
@@ -477,6 +492,28 @@ export function MobileScanPage() {
             setEditorState(null);
             toast.success('Edited image saved');
           }}
+        />
+      )}
+
+      {showCamera && (
+        <CameraCapturePro
+          mode={scanStep === 'SlipScan' ? 'slip' : 'cheque'}
+          onCapture={(file, position) => {
+            if (scanStep === 'SlipScan') {
+              setFrontFile(file);
+              setFrontPreview(URL.createObjectURL(file));
+            } else {
+              if (position === 'front') {
+                setFrontFile(file);
+                setFrontPreview(URL.createObjectURL(file));
+              } else {
+                setBackFile(file);
+                setBackPreview(URL.createObjectURL(file));
+              }
+            }
+            setShowCamera(false);
+          }}
+          onClose={() => setShowCamera(false)}
         />
       )}
     </div>
