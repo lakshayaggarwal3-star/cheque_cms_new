@@ -49,8 +49,8 @@ export function SlipGroupRow({ group, isActive, isLocked, onSelect, onImageSelec
   onImageSelect: (front: string, back?: string, type?: 'slip' | 'cheque') => void;
 }) {
   const [expanded, setExpanded] = useState(true);
-  const bg = isActive ? 'var(--accent-50)' : 'transparent';
-  const borderColor = isActive ? 'var(--accent-200)' : 'var(--border-subtle)';
+  const bg = isActive ? 'var(--bg-active)' : 'transparent';
+  const borderColor = isActive ? 'var(--border-strong)' : 'var(--border-subtle)';
 
   return (
     <div style={{ borderBottom: `1px solid ${borderColor}`, background: bg }}>
@@ -59,9 +59,9 @@ export function SlipGroupRow({ group, isActive, isLocked, onSelect, onImageSelec
         onClick={() => { if (!isLocked) onSelect(); setExpanded(e => !e); }}
         style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', cursor: 'pointer' }}
       >
-        <Icon name="receipt" size={14} style={{ color: isActive ? 'var(--accent-600)' : 'var(--fg-muted)', flexShrink: 0 }} />
+        <Icon name="receipt" size={14} style={{ color: isActive ? 'var(--accent-500)' : 'var(--fg-muted)', flexShrink: 0 }} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: isActive ? 'var(--accent-700)' : 'var(--fg)', fontFamily: 'var(--font-mono)' }}>
+          <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--fg)', fontFamily: 'var(--font-mono)' }}>
             {group.depositSlipNo || group.slipNo}
           </div>
           <div style={{ fontSize: 10, color: 'var(--fg-subtle)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

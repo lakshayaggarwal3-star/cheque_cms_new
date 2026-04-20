@@ -27,7 +27,7 @@ export function RangerFeedControl({
     <div style={{
       border: `1px solid ${isRunning ? 'var(--success, #16a34a)' : 'var(--border)'}`,
       borderRadius: 'var(--r-md)',
-      background: isRunning ? 'var(--success-bg, #f0fdf4)' : 'var(--bg-raised)',
+      background: isRunning ? 'var(--success-bg)' : 'var(--bg-raised)',
       padding: '12px 14px',
       transition: 'border-color 0.2s ease, background 0.2s ease',
     }}>

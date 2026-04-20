@@ -26,14 +26,14 @@ export function BatchCreatePage() {
   return (
     <div style={{ position: 'relative', minHeight: '100%' }}>
       {/* Breadcrumb + title */}
-      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--text-xs)', color: 'var(--fg-subtle)', marginBottom: 6 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 20, flexDirection: 'column' }}>
+        <div style={{ width: '100%' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--text-xs)', color: 'var(--fg-subtle)', marginBottom: 6, flexWrap: 'wrap' }}>
             <span onClick={() => navigate('/')} style={{ cursor: 'pointer', color: 'var(--fg-muted)', textDecoration: 'none' }}>Dashboard</span>
             <Icon name="chevron_right" size={14} />
             <span>New batch</span>
           </div>
-          <h1 style={{ margin: 0, fontSize: 'var(--text-2xl)', fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--fg)' }}>
+          <h1 style={{ margin: 0, fontSize: 'clamp(1.5rem, 5vw, 2rem)', fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--fg)' }}>
             Create batch
           </h1>
           <p style={{ margin: '4px 0 0', fontSize: 'var(--text-sm)', color: 'var(--fg-muted)' }}>
@@ -41,10 +41,10 @@ export function BatchCreatePage() {
           </p>
         </div>
 
-        {/* Entry mode — Top right alignment */}
+        {/* Entry mode — Full width on mobile, top right on desktop */}
         {form.hasBothRoles && (
-          <div>
-            <div style={{ fontSize: 'var(--text-xs)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--fg-muted)', marginBottom: 6, textAlign: 'right' }}>
+          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+            <div style={{ fontSize: 'var(--text-xs)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--fg-muted)', marginBottom: 6 }}>
               Entry mode (Dev)
             </div>
             <Segmented
@@ -67,8 +67,8 @@ export function BatchCreatePage() {
       }}>
         {/* Prefilled Stats Row */}
         <div style={{
-          display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
-          gap: 16, marginBottom: 16, paddingBottom: 16, borderBottom: '1px solid var(--border-subtle)', alignItems: 'center'
+          display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+          gap: 12, marginBottom: 16, paddingBottom: 16, borderBottom: '1px solid var(--border-subtle)', alignItems: 'center'
         }}>
           <ReadStat label="Location Name" value={form.user?.locationName ?? '—'} />
           <ReadStat label="Location Code" value={form.locationDetails?.locationCode ?? '—'} mono />
@@ -79,7 +79,7 @@ export function BatchCreatePage() {
         </div>
 
         {/* Global Configuration Row */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, maxWidth: 500 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }}>
           <div>
             <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--fg-muted)', display: 'block', marginBottom: 6 }}>
               Clearing type <span style={{ color: 'var(--danger)' }}>*</span>
@@ -132,7 +132,7 @@ export function BatchCreatePage() {
         <div style={{
           background: 'var(--bg-subtle)', border: '1px solid var(--border-strong)',
           borderRadius: 'var(--r-md)', padding: '16px', marginBottom: 16,
-          display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 16
+          display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16
         }}>
           <div>
             <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--fg-muted)', display: 'block', marginBottom: 4 }}>
@@ -206,7 +206,7 @@ export function BatchCreatePage() {
           )}
 
           {(form.showHiddenFields || form.entryMode === 'mobile') && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, maxWidth: 640 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
               <div>
                 <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--fg-muted)', display: 'block', marginBottom: 4 }}>
                   Total Slips <span style={{ color: 'var(--danger)' }}>*</span>
@@ -243,68 +243,78 @@ export function BatchCreatePage() {
 
         {/* Scan Options Midsection */}
         <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: 20 }}>
-          <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--fg-muted)', display: 'block', marginBottom: 10 }}>
+          <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--fg-muted)', display: 'block', marginBottom: 12 }}>
             Scan options
           </label>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
-            <Segmented
-              options={[
-                { id: 'Scan',   label: 'Scan',   icon: 'document_scanner' },
-                { id: 'Rescan', label: 'Rescan', icon: 'refresh' },
-              ]}
-              value={form.scanType}
-              onChange={v => form.setScanType(v as 'Scan' | 'Rescan')}
-            />
-            <span style={{ width: 1, height: 24, background: 'var(--border)', margin: '0 4px' }} />
-            <Segmented
-              options={[
-                { id: 'with',    label: 'With slip',    icon: 'receipt' },
-                { id: 'without', label: 'Without slip', icon: 'receipt_long' },
-              ]}
-              value={form.withSlip}
-              onChange={v => form.setWithSlip(v as 'with' | 'without')}
-              disabled={form.entryMode === 'mobile'}
-            />
-            <span style={{ width: 1, height: 24, background: 'var(--border)', margin: '0 4px' }} />
-            <div style={{ display: 'flex', alignItems: 'center' }}>
-              <label style={{
-                display: 'flex', alignItems: 'center', gap: 8, height: 38, boxSizing: 'border-box',
-                fontSize: 'var(--text-sm)', color: 'var(--fg-muted)', cursor: 'pointer',
-                padding: '0 12px', background: 'var(--bg-subtle)',
-                borderRadius: form.pdc ? 'var(--r-md) 0 0 var(--r-md)' : 'var(--r-md)',
-                border: '1px solid var(--border)',
-                borderRight: form.pdc ? 'none' : '1px solid var(--border)'
-              }}>
-                <input
-                  type="checkbox"
-                  checked={form.pdc}
-                  onChange={e => form.setPdc(e.target.checked)}
-                  style={{ accentColor: 'var(--accent-500)', width: 15, height: 15 }}
-                />
-                PDC
-              </label>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-muted)', marginBottom: 6, fontWeight: 500 }}>Type</div>
+              <Segmented
+                options={[
+                  { id: 'Scan',   label: 'Scan',   icon: 'document_scanner' },
+                  { id: 'Rescan', label: 'Rescan', icon: 'refresh' },
+                ]}
+                value={form.scanType}
+                onChange={v => form.setScanType(v as 'Scan' | 'Rescan')}
+              />
+            </div>
 
-              {form.pdc && (
-                <input
-                  type="date"
-                  value={form.pdcDate}
-                  title="Select PDC Date"
-                  onChange={e => form.setPdcDate(e.target.value)}
-                  style={{
-                    padding: '0 10px', height: 38, boxSizing: 'border-box',
-                    background: 'var(--bg-subtle)', color: 'var(--fg)',
-                    border: '1px solid var(--border)', borderRadius: '0 var(--r-md) var(--r-md) 0', 
-                    fontSize: 'var(--text-sm)', outline: 'none'
-                  }}
+            {form.entryMode !== 'mobile' && (
+              <div>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-muted)', marginBottom: 6, fontWeight: 500 }}>Slip Mode</div>
+                <Segmented
+                  options={[
+                    { id: 'with',    label: 'With slip',    icon: 'receipt' },
+                    { id: 'without', label: 'Without slip', icon: 'receipt_long' },
+                  ]}
+                  value={form.withSlip}
+                  onChange={v => form.setWithSlip(v as 'with' | 'without')}
                 />
-              )}
+              </div>
+            )}
+
+            <div>
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-muted)', marginBottom: 6, fontWeight: 500 }}>PDC (if applicable)</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <label style={{
+                  display: 'flex', alignItems: 'center', gap: 8, height: 38, boxSizing: 'border-box',
+                  fontSize: 'var(--text-sm)', color: 'var(--fg-muted)', cursor: 'pointer',
+                  padding: '0 12px', background: 'var(--bg-subtle)',
+                  borderRadius: form.pdc ? 'var(--r-md) 0 0 var(--r-md)' : 'var(--r-md)',
+                  border: '1px solid var(--border)',
+                  borderRight: form.pdc ? 'none' : '1px solid var(--border)', flex: form.pdc ? 0 : 1
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={form.pdc}
+                    onChange={e => form.setPdc(e.target.checked)}
+                    style={{ accentColor: 'var(--accent-500)', width: 15, height: 15 }}
+                  />
+                  {form.pdc ? 'PDC' : 'Enable PDC'}
+                </label>
+
+                {form.pdc && (
+                  <input
+                    type="date"
+                    value={form.pdcDate}
+                    title="Select PDC Date"
+                    onChange={e => form.setPdcDate(e.target.value)}
+                    style={{
+                      padding: '0 10px', height: 38, boxSizing: 'border-box',
+                      background: 'var(--bg-subtle)', color: 'var(--fg)',
+                      border: '1px solid var(--border)', borderRadius: '0 var(--r-md) var(--r-md) 0',
+                      fontSize: 'var(--text-sm)', outline: 'none', flex: 1, minWidth: 0
+                    }}
+                  />
+                )}
+              </div>
             </div>
           </div>
         </div>
       </div>
 
       {/* Footer */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
         <button
           type="button"
           onClick={() => navigate('/')}
@@ -316,6 +326,7 @@ export function BatchCreatePage() {
             border: '1px solid var(--border-strong)', borderRadius: 'var(--r-md)',
             fontSize: 'var(--text-sm)', fontWeight: 500, fontFamily: 'var(--font-sans)',
             cursor: form.submitting ? 'not-allowed' : 'pointer', opacity: form.submitting ? 0.5 : 1,
+            flex: '0 1 auto', minWidth: 'auto'
           }}
         >
           Cancel
@@ -330,10 +341,11 @@ export function BatchCreatePage() {
             border: '1px solid var(--accent-600)', borderRadius: 'var(--r-md)',
             fontSize: 'var(--text-sm)', fontWeight: 500, fontFamily: 'var(--font-sans)',
             cursor: form.submitting ? 'not-allowed' : 'pointer', opacity: form.submitting ? 0.7 : 1,
+            flex: '0 1 auto', minWidth: 'auto'
           }}
         >
           <Icon name="play_arrow" size={18} style={{ color: 'inherit' }} />
-          {form.submitting ? 'Creating and Storing...' : 'Create & start scanning'}
+          {form.submitting ? 'Creating...' : 'Create & start'}
         </button>
         </div>
       </form>

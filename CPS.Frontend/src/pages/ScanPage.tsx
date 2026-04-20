@@ -274,6 +274,14 @@ export function ScanPage() {
   const moveToChequeScan = () => { setScanStep('ChequeScan'); scanner.setScannerChoice('Ranger'); scanner.setScanRoundActive(false); };
 
   const startNewSlip = () => {
+    // Block if current slip has nothing scanned yet
+    if (activeSlipEntryId !== null && activeGroup) {
+      const hasScans = (activeGroup.slipScans?.length ?? 0) > 0 || (activeGroup.cheques?.length ?? 0) > 0;
+      if (!hasScans) {
+        toast.warning('Scan at least one item for the current slip before creating a new one.');
+        return;
+      }
+    }
     setNewSlipSaved(false);
     setActiveSlipEntryId(null);
     setActiveSlipNo('');
@@ -522,7 +530,7 @@ export function ScanPage() {
         </div>
 
         {/* Right: scan controls ─────────────────────────────────────────────── */}
-        <div style={{ display: 'flex', flexDirection: 'column', background: '#fff', minWidth: 0, overflowY: 'auto' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', background: 'var(--bg-raised)', minWidth: 0, overflowY: 'auto' }}>
 
           {/* Step header */}
           <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>

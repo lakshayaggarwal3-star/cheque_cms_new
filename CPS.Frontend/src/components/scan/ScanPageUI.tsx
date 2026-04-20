@@ -129,7 +129,7 @@ export function ImagePlaceholder({ label }: { label: string }) {
 
       {/* Floating Center Label */}
       <div style={{ 
-        zIndex: 2, background: 'rgba(255,255,255,0.7)', padding: '12px 24px', 
+        zIndex: 2, background: 'var(--bg-raised)', padding: '12px 24px',
         borderRadius: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
         backdropFilter: 'blur(3px)', WebkitBackdropFilter: 'blur(3px)', color: 'var(--fg-muted)', border: '1px solid var(--border-subtle)'
       }}>

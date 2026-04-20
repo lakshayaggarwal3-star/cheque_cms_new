@@ -142,8 +142,8 @@ const FOOTER_LINKS: NavLink[] = [
 const PAGE_TITLES: Record<string, { title: string; subtitle: string }> = {
   '/':               { title: 'Dashboard',     subtitle: 'Overview & batch queue' },
   '/batch/create':   { title: 'New Batch',     subtitle: 'Create & dispatch to scanner' },
-  '/scan':           { title: 'Scanning',      subtitle: 'Capture cheques · MICR read' },
-  '/rr':             { title: 'Reject Repair', subtitle: 'Review & correct flagged items' },
+  '/scan':           { title: 'Scanning Queue', subtitle: 'Batches pending scan' },
+  '/rr':             { title: 'Reject Repair', subtitle: 'Batches pending repair' },
   '/admin/users':    { title: 'Users',         subtitle: 'Manage operators & roles' },
   '/admin/masters':  { title: 'Masters',       subtitle: 'Clients, banks, sort codes' },
   '/admin/settings': { title: 'Settings',      subtitle: 'Application preferences' },

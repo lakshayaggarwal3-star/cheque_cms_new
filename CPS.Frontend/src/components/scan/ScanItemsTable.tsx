@@ -228,7 +228,9 @@ function SlipScanRow({ scan, idx, group, onImageSelect, onRescan, onDelete }: {
         {group.clientName || '—'}
       </td>
 
-      <td style={{ padding: '8px 8px', color: 'var(--fg-faint)' }}>—</td>
+      <td style={{ padding: '8px 8px', color: 'var(--fg-faint)', fontFamily: 'var(--font-mono)', fontSize: 10 }}>
+        {scan.imagePath ? scan.imagePath.split(/[\\/]/).pop() : '—'}
+      </td>
 
       <td style={{ padding: '8px 8px', color: 'var(--fg)' }}>
         ₹{group.slipAmount.toLocaleString('en-IN')}
@@ -372,46 +374,37 @@ function ActionButtons({ onRescan, onDelete }: {
 }) {
   return (
     <div style={{ display: 'flex', gap: 4 }}>
-      <ActionBtn
-        icon="replay"
-        tooltip={onRescan ? 'Rescan' : 'Rescan not available'}
-        onClick={onRescan}
-        disabled={!onRescan}
-        color="var(--accent-600)"
-      />
-      <ActionBtn
-        icon="delete"
-        tooltip="Delete"
-        onClick={onDelete}
-        color="var(--danger)"
-      />
+      <ActionBtn icon="replay" label="Rescan" onClick={onRescan} disabled={!onRescan} color="var(--accent-600)" />
+      <ActionBtn icon="delete" label="Delete" onClick={onDelete} color="var(--danger)" />
     </div>
   );
 }
 
-function ActionBtn({ icon, tooltip, onClick, disabled, color }: {
-  icon: string; tooltip?: string; onClick?: () => void;
+function ActionBtn({ icon, label, onClick, disabled, color }: {
+  icon: string; label: string; onClick?: () => void;
   disabled?: boolean; color?: string;
 }) {
   return (
     <button
       type="button"
-      title={tooltip}
+      title={label}
       onClick={onClick}
       disabled={disabled}
       style={{
-        width: 28, height: 28,
-        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        height: 26, padding: '0 8px',
+        display: 'inline-flex', alignItems: 'center', gap: 4,
         background: 'transparent',
         border: '1px solid var(--border)',
         borderRadius: 'var(--r-sm)',
         cursor: disabled ? 'not-allowed' : 'pointer',
         color: disabled ? 'var(--fg-faint)' : (color ?? 'var(--fg-muted)'),
+        fontSize: 10, fontWeight: 500, fontFamily: 'var(--font-sans)',
         transition: 'background 0.1s, border-color 0.1s',
-        flexShrink: 0,
+        flexShrink: 0, whiteSpace: 'nowrap',
       }}
     >
-      <Icon name={icon} size={14} />
+      <Icon name={icon} size={12} />
+      {label}
     </button>
   );
 }

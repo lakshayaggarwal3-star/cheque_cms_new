@@ -19,6 +19,8 @@ import { DashboardPage } from './pages/DashboardPage';
 import { BatchCreatePage } from './pages/BatchCreatePage';
 import { ScanRouterPage } from './pages/ScanRouterPage';
 import { RRPage } from './pages/RRPage';
+import { ScanListPage } from './pages/ScanListPage';
+import { RRListPage } from './pages/RRListPage';
 import { UserManagementPage } from './pages/UserManagementPage';
 import { MastersPage } from './pages/MasterUploadPage';
 import { SettingsPage } from './pages/SettingsPage';
@@ -54,12 +56,14 @@ function AppRoutes() {
       <Route element={<ProtectedRoute />}>
         <Route element={<Layout />}>
           <Route path="/" element={<DashboardPage />} />
+          <Route path="/rr" element={<RRListPage />} />
           <Route path="/rr/:batchId" element={<RRPage />} />
 
           {/* Scanner / Admin / Developer */}
           <Route element={<ProtectedRoute roles={['Scanner', 'MobileScanner', 'Admin', 'Developer']} />}>
             <Route path="/batch/create" element={<BatchCreatePage />} />
             <Route path="/batch/:batchId/details" element={<BatchCreatePage />} />
+            <Route path="/scan" element={<ScanListPage />} />
             <Route path="/scan/:batchId" element={<ScanRouterPage />} />
           </Route>
 

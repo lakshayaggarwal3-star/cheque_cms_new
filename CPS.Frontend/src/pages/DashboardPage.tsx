@@ -79,7 +79,7 @@ function getAction(b: BatchDto): { label: string; path: string } | null {
   switch (b.batchStatus) {
     case BatchStatus.Created:            return { label: 'Start',    path: `/batch/${b.batchID}/details` };
     case BatchStatus.ScanningInProgress:
-    case BatchStatus.ScanningPending:    return { label: 'Continue', path: `/batch/${b.batchID}/details` };
+    case BatchStatus.ScanningPending:    return { label: 'Continue', path: `/scan/${b.batchID}` };
     case BatchStatus.RRPending:          return { label: 'Repair',   path: `/rr/${b.batchID}` };
     default:                             return null;
   }
