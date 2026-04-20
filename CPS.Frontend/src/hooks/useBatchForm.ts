@@ -123,8 +123,8 @@ export function useBatchForm() {
         totalSlips:       0,
         totalAmount:      0,
         entryMode:        entryMode,
-        summRefNo:        entryMode === 'mobile' ? summRefNo : undefined,
-        pif:              entryMode === 'mobile' ? pif : undefined,
+        summRefNo:        summRefNo || undefined,
+        pif:              pif || undefined,
       });
 
       // Update secondary fields including optional ones
@@ -135,8 +135,8 @@ export function useBatchForm() {
         pdcDate: pdc ? pdcDate : undefined,
         scanType,
         withSlip: withSlip === 'with',
-        summRefNo: entryMode === 'mobile' ? summRefNo : batch.summRefNo,
-        pif: entryMode === 'mobile' ? pif : batch.pif,
+        summRefNo: summRefNo || batch.summRefNo,
+        pif: pif || batch.pif,
       });
 
       toast.success(`Batch ${batch.batchNo} created`);
