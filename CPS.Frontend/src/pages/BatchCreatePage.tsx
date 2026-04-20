@@ -41,16 +41,16 @@ export function BatchCreatePage() {
           </p>
         </div>
 
-        {/* Entry mode — Full width on mobile, top right on desktop */}
+        {/* Scanning mode — Full width on mobile, top right on desktop */}
         {form.hasBothRoles && (
           <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
             <div style={{ fontSize: 'var(--text-xs)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--fg-muted)', marginBottom: 6 }}>
-              Entry mode (Dev)
+              Scanning method
             </div>
             <Segmented
               options={[
-                { id: 'scanner', label: 'Scanner',        icon: 'document_scanner' },
-                { id: 'mobile',  label: 'Mobile scanner', icon: 'smartphone' },
+                { id: 'scanner', label: 'Scanner device',     icon: 'document_scanner' },
+                { id: 'mobile',  label: 'Mobile device',      icon: 'smartphone' },
               ]}
               value={form.entryMode}
               onChange={v => form.setEntryMode(v as 'scanner' | 'mobile')}
