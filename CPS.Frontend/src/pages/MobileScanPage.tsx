@@ -16,7 +16,7 @@ import { BatchStatus } from '../types';
 import { getImageUrl } from '../utils/imageUtils';
 import { SlipFormModal } from '../components/SlipFormModal';
 import { CameraCapture } from '../components/CameraCapture';
-import { ImageEditModal } from '../components/ImageEditModal';
+import { ImageEditModalMobile } from '../components/ImageEditModalMobile';
 
 type ScanTarget = 'Slip' | 'Cheque';
 type MobileScanStep = 'SlipScan' | 'ChequeScan';
@@ -468,7 +468,7 @@ export function MobileScanPage() {
       )}
 
       {editorState && (
-        <ImageEditModal
+        <ImageEditModalMobile
           file={editorState.file}
           title={editorState.title}
           onClose={() => setEditorState(null)}

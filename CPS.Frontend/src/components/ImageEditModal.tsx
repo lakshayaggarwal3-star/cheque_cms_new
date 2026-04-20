@@ -2,8 +2,9 @@
 // File        : ImageEditModal.tsx
 // Project     : CPS — Cheque Processing System
 // Module      : Shared Components
-// Description : Image crop/adjust editor modal (brightness, contrast, rotate, pan).
+// Description : Mouse-optimized image editor for desktop scanner (sliders + controls)
 // Created     : 2026-04-17
+// Updated     : 2026-04-20 (desktop-only version)
 // =============================================================================
 
 import { useEffect, useMemo, useState } from 'react';
