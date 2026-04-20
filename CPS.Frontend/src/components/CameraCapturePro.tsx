@@ -2,11 +2,11 @@
 // File        : CameraCapturePro.tsx
 // Project     : CPS — Cheque Processing System
 // Module      : Shared Components
-// Description : Professional camera capture with zoom, brightness, menu options
+// Description : Camera capture with live preview, pinch zoom, brightness, gallery fallback
 // Created     : 2026-04-20
 // =============================================================================
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 
 interface CameraCapturProProps {
   mode: 'slip' | 'cheque';
@@ -14,371 +14,385 @@ interface CameraCapturProProps {
   onClose: () => void;
 }
 
+type CameraState = 'starting' | 'live' | 'error' | 'gallery';
+
 export function CameraCapturePro({ mode, onCapture, onClose }: CameraCapturProProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const galleryRef = useRef<HTMLInputElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  const [cameraState, setCameraState] = useState<CameraState>('starting');
   const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
-  const [selectedCamera, setSelectedCamera] = useState<string>('');
-  const [stream, setStream] = useState<MediaStream | null>(null);
-  const [zoom, setZoom] = useState(1);
+  const [activeCameraId, setActiveCameraId] = useState<string>('');
+  const [useFront, setUseFront] = useState(false);
   const [brightness, setBrightness] = useState(100);
-  const [showMenu, setShowMenu] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
-  const [offset, setOffset] = useState({ x: 0, y: 0 });
-  const dragStartRef = useRef({ x: 0, y: 0, offsetX: 0, offsetY: 0 });
+  const [zoom, setZoom] = useState(1);
   const [position, setPosition] = useState<'front' | 'back'>('front');
+  const [showSettings, setShowSettings] = useState(false);
+  const [capturing, setCapturing] = useState(false);
 
-  useEffect(() => {
-    const getCameras = async () => {
-      try {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const videoDevices = devices.filter(d => d.kind === 'videoinput');
-        setCameras(videoDevices);
-        if (videoDevices.length > 0) {
-          setSelectedCamera(videoDevices[0].deviceId);
-        }
-      } catch (err) {
-        console.error('Failed to enumerate devices:', err);
-      }
-    };
+  // Pinch zoom tracking
+  const pinchRef = useRef<{ startDist: number; startZoom: number } | null>(null);
 
-    getCameras();
+  const stopStream = useCallback(() => {
+    streamRef.current?.getTracks().forEach(t => t.stop());
+    streamRef.current = null;
   }, []);
 
-  useEffect(() => {
-    const startCamera = async () => {
-      try {
-        if (stream) {
-          stream.getTracks().forEach(t => t.stop());
-        }
-        const mediaStream = await navigator.mediaDevices.getUserMedia({
-          video: { deviceId: selectedCamera ? { exact: selectedCamera } : undefined }
-        });
-        setStream(mediaStream);
-        if (videoRef.current) {
-          videoRef.current.srcObject = mediaStream;
-        }
-      } catch (err) {
-        console.error('Failed to start camera:', err);
-      }
-    };
-
-    if (selectedCamera) {
-      startCamera();
-    }
-
-    return () => {
-      if (stream) {
-        stream.getTracks().forEach(t => t.stop());
-      }
-    };
-  }, [selectedCamera]);
-
-  const handleCapture = () => {
-    if (videoRef.current && canvasRef.current) {
-      const ctx = canvasRef.current.getContext('2d');
-      if (ctx) {
-        canvasRef.current.width = videoRef.current.videoWidth;
-        canvasRef.current.height = videoRef.current.videoHeight;
-        ctx.filter = `brightness(${brightness}%)`;
-        ctx.drawImage(videoRef.current, 0, 0);
-        canvasRef.current.toBlob(blob => {
-          if (blob) {
-            const file = new File([blob], `${position}-${Date.now()}.jpg`, { type: 'image/jpeg' });
-            onCapture(file, position);
-            setShowMenu(false);
-          }
-        }, 'image/jpeg', 0.95);
-      }
-    }
-  };
-
-  const handleTouchStart = (e: React.TouchEvent) => {
-    if (e.touches.length === 1) {
-      setIsDragging(true);
-      dragStartRef.current = {
-        x: e.touches[0].clientX,
-        y: e.touches[0].clientY,
-        offsetX: offset.x,
-        offsetY: offset.y,
+  const startCamera = useCallback(async (deviceId?: string, facingMode?: string) => {
+    stopStream();
+    setCameraState('starting');
+    try {
+      const constraints: MediaStreamConstraints = {
+        video: deviceId
+          ? { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+          : { facingMode: facingMode ?? 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
+        audio: false,
       };
-    } else if (e.touches.length === 2) {
-      // Pinch zoom start - store initial distance
-      const touch1 = e.touches[0];
-      const touch2 = e.touches[1];
-      const dist = Math.hypot(
-        touch2.clientX - touch1.clientX,
-        touch2.clientY - touch1.clientY
-      );
-      dragStartRef.current.x = dist;
-    }
-  };
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (e.touches.length === 1 && isDragging) {
-      const dx = e.touches[0].clientX - dragStartRef.current.x;
-      const dy = e.touches[0].clientY - dragStartRef.current.y;
-      setOffset({
-        x: dragStartRef.current.offsetX + dx,
-        y: dragStartRef.current.offsetY + dy,
-      });
-    } else if (e.touches.length === 2) {
-      // Pinch zoom
-      const touch1 = e.touches[0];
-      const touch2 = e.touches[1];
-      const dist = Math.hypot(
-        touch2.clientX - touch1.clientX,
-        touch2.clientY - touch1.clientY
-      );
-      const prevDist = dragStartRef.current.x;
-      if (prevDist > 0) {
-        const newZoom = Math.max(1, Math.min(3, zoom * (dist / prevDist)));
-        setZoom(newZoom);
-        dragStartRef.current.x = dist;
+      const ms = await navigator.mediaDevices.getUserMedia(constraints);
+      streamRef.current = ms;
+      if (videoRef.current) {
+        videoRef.current.srcObject = ms;
+        await videoRef.current.play();
       }
+      setCameraState('live');
+
+      // Enumerate cameras after getting permission
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const vids = devices.filter(d => d.kind === 'videoinput');
+      setCameras(vids);
+      const track = ms.getVideoTracks()[0];
+      const settings = track.getSettings();
+      setActiveCameraId(settings.deviceId ?? '');
+    } catch {
+      setCameraState('error');
     }
+  }, [stopStream]);
+
+  useEffect(() => {
+    startCamera();
+    return stopStream;
+  }, [startCamera, stopStream]);
+
+  useEffect(() => {
+    return () => stopStream();
+  }, [stopStream]);
+
+  // Switch camera
+  const switchCamera = async (deviceId: string) => {
+    setActiveCameraId(deviceId);
+    setShowSettings(false);
+    await startCamera(deviceId);
   };
 
-  const handleTouchEnd = () => {
-    setIsDragging(false);
+  // Flip front/back
+  const flipCamera = async () => {
+    const next = !useFront;
+    setUseFront(next);
+    setShowSettings(false);
+    await startCamera(undefined, next ? 'user' : 'environment');
   };
+
+  // Capture frame from video
+  const capturePhoto = () => {
+    if (!videoRef.current || !canvasRef.current || capturing) return;
+    setCapturing(true);
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    canvas.width = video.videoWidth || 1280;
+    canvas.height = video.videoHeight || 720;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.filter = `brightness(${brightness}%)`;
+    ctx.drawImage(video, 0, 0);
+    canvas.toBlob(blob => {
+      setCapturing(false);
+      if (!blob) return;
+      const file = new File([blob], `capture-${Date.now()}.jpg`, { type: 'image/jpeg' });
+      onCapture(file, position);
+    }, 'image/jpeg', 0.92);
+  };
+
+  // Gallery fallback
+  const openGallery = () => galleryRef.current?.click();
+  const onGalleryFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (f) onCapture(f, position);
+    e.target.value = '';
+  };
+
+  // Pinch zoom handlers
+  const onTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      const dist = getTouchDist(e.touches);
+      pinchRef.current = { startDist: dist, startZoom: zoom };
+    }
+  };
+  const onTouchMove = (e: React.TouchEvent) => {
+    if (e.touches.length === 2 && pinchRef.current) {
+      e.preventDefault();
+      const dist = getTouchDist(e.touches);
+      const ratio = dist / pinchRef.current.startDist;
+      const next = Math.min(3, Math.max(1, pinchRef.current.startZoom * ratio));
+      setZoom(next);
+    }
+  };
+  const onTouchEnd = () => { pinchRef.current = null; };
+
+  const frameAspect = mode === 'slip' ? '210 / 297' : '85.6 / 54';
 
   return (
     <div style={{
-      position: 'fixed',
-      inset: 0,
-      zIndex: 70,
-      background: '#000',
-      display: 'flex',
-      flexDirection: 'column',
+      position: 'fixed', inset: 0, zIndex: 80, background: '#000',
+      display: 'flex', flexDirection: 'column', userSelect: 'none',
     }}>
-      {/* Camera video */}
+      {/* ── TOP HEADER ── */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '12px 16px', background: 'rgba(0,0,0,0.6)',
+        backdropFilter: 'blur(8px)', flexShrink: 0,
+      }}>
+        <button onClick={onClose} style={btnStyle}>
+          <span className="material-symbols-outlined" style={{ fontSize: 22 }}>arrow_back</span>
+        </button>
+
+        <div style={{ color: '#fff', fontWeight: 600, fontSize: 15, textAlign: 'center' }}>
+          {mode === 'slip' ? 'Scan Slip' : `Scan Cheque — ${position === 'front' ? 'Front' : 'Back'}`}
+        </div>
+
+        <button onClick={() => setShowSettings(s => !s)} style={btnStyle}>
+          <span className="material-symbols-outlined" style={{ fontSize: 22 }}>tune</span>
+        </button>
+      </div>
+
+      {/* ── CAMERA / ERROR AREA ── */}
       <div
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-        style={{
-          flex: 1,
-          position: 'relative',
-          overflow: 'hidden',
-          touchAction: 'none',
-        }}
+        style={{ flex: 1, position: 'relative', overflow: 'hidden', background: '#111' }}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
       >
+        {/* Video */}
         <video
           ref={videoRef}
           autoPlay
           playsInline
+          muted
           style={{
-            width: '100%',
-            height: '100%',
+            position: 'absolute', inset: 0,
+            width: '100%', height: '100%',
             objectFit: 'cover',
-            transform: `scale(${zoom}) translate(${offset.x}px, ${offset.y}px)`,
+            transform: `scale(${zoom})`,
             filter: `brightness(${brightness}%)`,
-            transition: isDragging ? 'none' : 'transform 0.1s ease',
+            display: cameraState === 'live' ? 'block' : 'none',
           }}
         />
 
-        {/* Dashed frame guide */}
-        <div style={{
-          position: 'absolute',
-          inset: '10%',
-          border: '2px dashed rgba(255,255,255,0.3)',
-          borderRadius: 12,
-          pointerEvents: 'none',
-        }} />
-
-        {/* Corner menu button */}
-        <button
-          onClick={() => setShowMenu(!showMenu)}
-          style={{
-            position: 'absolute',
-            top: 16,
-            right: 16,
-            width: 44,
-            height: 44,
-            background: 'rgba(0,0,0,0.6)',
-            border: '1px solid rgba(255,255,255,0.2)',
-            borderRadius: '50%',
-            color: '#fff',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: 20,
-            backdropFilter: 'blur(4px)',
-          }}
-        >
-          ⋮
-        </button>
-      </div>
-
-      {/* Bottom controls */}
-      <div style={{
-        background: 'rgba(0,0,0,0.8)',
-        padding: '12px 16px',
-        display: 'flex',
-        gap: 8,
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        backdropFilter: 'blur(10px)',
-      }}>
-        <button
-          onClick={onClose}
-          style={{
-            padding: '8px 16px',
-            background: 'rgba(255,255,255,0.1)',
-            border: '1px solid rgba(255,255,255,0.2)',
-            color: '#fff',
-            borderRadius: 'var(--r-md)',
-            cursor: 'pointer',
-            fontSize: 'var(--text-sm)',
-          }}
-        >
-          Close
-        </button>
-
-        <button
-          onClick={handleCapture}
-          style={{
-            width: 56,
-            height: 56,
-            borderRadius: '50%',
-            background: '#3b82f6',
-            border: '3px solid #fff',
-            cursor: 'pointer',
-            boxShadow: '0 4px 16px rgba(59, 130, 246, 0.4)',
-          }}
-        />
-      </div>
-
-      {/* Menu panel */}
-      {showMenu && (
-        <div style={{
-          position: 'absolute',
-          top: 70,
-          right: 16,
-          background: 'var(--bg-raised)',
-          border: '1px solid var(--border)',
-          borderRadius: 'var(--r-lg)',
-          padding: 12,
-          width: 280,
-          zIndex: 71,
-          maxHeight: '60vh',
-          overflowY: 'auto',
-        }}>
-          {/* Camera selection */}
-          {cameras.length > 0 && (
-            <div style={{ marginBottom: 12 }}>
-              <label style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-muted)', fontWeight: 600 }}>
-                Camera
-              </label>
-              <select
-                value={selectedCamera}
-                onChange={(e) => setSelectedCamera(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '8px',
-                  marginTop: 4,
-                  borderRadius: 'var(--r-md)',
-                  border: '1px solid var(--border)',
-                  background: 'var(--bg-input)',
-                  color: 'var(--fg)',
-                  fontSize: 'var(--text-sm)',
-                }}
-              >
-                {cameras.map(cam => (
-                  <option key={cam.deviceId} value={cam.deviceId}>
-                    {cam.label || `Camera ${cameras.indexOf(cam) + 1}`}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* Zoom */}
-          <div style={{ marginBottom: 12 }}>
-            <label style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-muted)', fontWeight: 600 }}>
-              Zoom: {zoom.toFixed(1)}x
-            </label>
-            <input
-              type="range"
-              min="1"
-              max="3"
-              step="0.1"
-              value={zoom}
-              onChange={(e) => setZoom(Number(e.target.value))}
-              style={{
-                width: '100%',
-                marginTop: 4,
-                accentColor: 'var(--accent-500)',
-              }}
-            />
+        {/* Starting spinner */}
+        {cameraState === 'starting' && (
+          <div style={centerFlex}>
+            <div style={{ color: '#fff', fontSize: 14, opacity: 0.7 }}>Starting camera…</div>
           </div>
+        )}
+
+        {/* Error */}
+        {cameraState === 'error' && (
+          <div style={{ ...centerFlex, flexDirection: 'column', gap: 16, padding: 24 }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 48, color: '#f87171' }}>no_photography</span>
+            <div style={{ color: '#fff', fontSize: 15, fontWeight: 600, textAlign: 'center' }}>
+              Camera not available
+            </div>
+            <div style={{ color: '#9ca3af', fontSize: 13, textAlign: 'center' }}>
+              Allow camera access in your browser settings, or upload from your gallery.
+            </div>
+            <button
+              onClick={openGallery}
+              style={{
+                marginTop: 8, padding: '12px 24px',
+                background: '#3b82f6', color: '#fff',
+                border: 'none', borderRadius: 12, fontSize: 15, fontWeight: 600,
+                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8,
+              }}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: 20 }}>photo_library</span>
+              Upload from Gallery
+            </button>
+          </div>
+        )}
+
+        {/* Document frame overlay (when live) */}
+        {cameraState === 'live' && (
+          <div style={{
+            position: 'absolute', inset: 0, display: 'flex',
+            alignItems: 'center', justifyContent: 'center', pointerEvents: 'none',
+          }}>
+            <div style={{
+              aspectRatio: frameAspect,
+              maxWidth: '85%', maxHeight: '80%',
+              border: '2px solid rgba(255,255,255,0.5)',
+              borderRadius: 10,
+              boxShadow: '0 0 0 9999px rgba(0,0,0,0.35)',
+              position: 'relative',
+            }}>
+              {/* Corner dots */}
+              {[['0 auto auto 0'],['0 0 auto auto'],['auto auto 0 0'],['auto 0 0 auto']].map((inset, i) => (
+                <div key={i} style={{
+                  position: 'absolute', width: 16, height: 16, inset: inset.join(' '),
+                  borderTop: i < 2 ? '3px solid #3b82f6' : 'none',
+                  borderBottom: i >= 2 ? '3px solid #3b82f6' : 'none',
+                  borderLeft: i % 2 === 0 ? '3px solid #3b82f6' : 'none',
+                  borderRight: i % 2 === 1 ? '3px solid #3b82f6' : 'none',
+                }} />
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── BOTTOM BAR ── */}
+      <div style={{
+        background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)',
+        padding: '16px 24px 28px',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        flexShrink: 0, gap: 16,
+      }}>
+        {/* Gallery button */}
+        <button onClick={openGallery} style={{ ...btnStyle, width: 48, height: 48 }}>
+          <span className="material-symbols-outlined" style={{ fontSize: 24 }}>photo_library</span>
+        </button>
+
+        {/* Capture shutter — center */}
+        <button
+          onClick={capturePhoto}
+          disabled={cameraState !== 'live' || capturing}
+          style={{
+            width: 68, height: 68,
+            borderRadius: '50%',
+            background: capturing ? '#9ca3af' : '#fff',
+            border: '4px solid rgba(255,255,255,0.4)',
+            boxShadow: '0 0 0 2px #3b82f6, 0 4px 16px rgba(0,0,0,0.4)',
+            cursor: cameraState !== 'live' ? 'not-allowed' : 'pointer',
+            flexShrink: 0, transition: 'background 0.1s',
+          }}
+        />
+
+        {/* Flip camera button */}
+        <button onClick={flipCamera} style={{ ...btnStyle, width: 48, height: 48 }}>
+          <span className="material-symbols-outlined" style={{ fontSize: 24 }}>flip_camera_android</span>
+        </button>
+      </div>
+
+      {/* ── SETTINGS SHEET ── */}
+      {showSettings && (
+        <div style={{
+          position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 90,
+          background: 'rgba(15,15,15,0.97)',
+          backdropFilter: 'blur(12px)',
+          borderRadius: '20px 20px 0 0',
+          padding: '8px 20px 40px',
+          maxHeight: '60vh', overflowY: 'auto',
+        }}>
+          {/* Handle */}
+          <div style={{ width: 36, height: 4, background: '#444', borderRadius: 2, margin: '8px auto 20px' }} />
 
           {/* Brightness */}
-          <div style={{ marginBottom: 12 }}>
-            <label style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-muted)', fontWeight: 600 }}>
-              Brightness: {brightness}%
-            </label>
-            <input
-              type="range"
-              min="50"
-              max="150"
-              step="5"
-              value={brightness}
-              onChange={(e) => setBrightness(Number(e.target.value))}
-              style={{
-                width: '100%',
-                marginTop: 4,
-                accentColor: 'var(--accent-500)',
-              }}
-            />
-          </div>
+          <SettingRow icon="light_mode" label={`Brightness ${brightness}%`}>
+            <input type="range" min={60} max={160} step={5} value={brightness}
+              onChange={e => setBrightness(+e.target.value)}
+              style={{ width: '100%', accentColor: '#3b82f6', marginTop: 6 }} />
+          </SettingRow>
 
-          {/* Position selection (for cheque) */}
-          {mode === 'cheque' && (
-            <div style={{ marginBottom: 12 }}>
-              <label style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-muted)', fontWeight: 600 }}>
-                Position
-              </label>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 6 }}>
-                <button
-                  onClick={() => setPosition('front')}
-                  style={{
-                    padding: '8px',
-                    background: position === 'front' ? 'var(--accent-500)' : 'var(--bg)',
-                    color: position === 'front' ? 'var(--fg-on-accent)' : 'var(--fg)',
-                    border: `1px solid ${position === 'front' ? 'var(--accent-600)' : 'var(--border)'}`,
-                    borderRadius: 'var(--r-md)',
-                    cursor: 'pointer',
-                    fontSize: 'var(--text-sm)',
-                    fontWeight: 500,
-                  }}
-                >
-                  Front
-                </button>
-                <button
-                  onClick={() => setPosition('back')}
-                  style={{
-                    padding: '8px',
-                    background: position === 'back' ? 'var(--accent-500)' : 'var(--bg)',
-                    color: position === 'back' ? 'var(--fg-on-accent)' : 'var(--fg)',
-                    border: `1px solid ${position === 'back' ? 'var(--accent-600)' : 'var(--border)'}`,
-                    borderRadius: 'var(--r-md)',
-                    cursor: 'pointer',
-                    fontSize: 'var(--text-sm)',
-                    fontWeight: 500,
-                  }}
-                >
-                  Back
-                </button>
+          {/* Zoom */}
+          <SettingRow icon="zoom_in" label={`Zoom ${zoom.toFixed(1)}×`}>
+            <input type="range" min={1} max={3} step={0.1} value={zoom}
+              onChange={e => setZoom(+e.target.value)}
+              style={{ width: '100%', accentColor: '#3b82f6', marginTop: 6 }} />
+          </SettingRow>
+
+          {/* Camera select (if multiple) */}
+          {cameras.length > 1 && (
+            <SettingRow icon="camera_alt" label="Camera">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+                {cameras.map((cam, i) => (
+                  <button key={cam.deviceId} onClick={() => switchCamera(cam.deviceId)}
+                    style={{
+                      padding: '10px 12px', borderRadius: 10, textAlign: 'left', cursor: 'pointer',
+                      background: cam.deviceId === activeCameraId ? '#3b82f6' : 'rgba(255,255,255,0.06)',
+                      color: '#fff', border: 'none', fontSize: 13, fontWeight: 500,
+                    }}>
+                    {cam.label || `Camera ${i + 1}`}
+                  </button>
+                ))}
               </div>
-            </div>
+            </SettingRow>
           )}
+
+          {/* Front/back for cheque */}
+          {mode === 'cheque' && (
+            <SettingRow icon="flip" label="Cheque side">
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
+                {(['front', 'back'] as const).map(p => (
+                  <button key={p} onClick={() => { setPosition(p); setShowSettings(false); }}
+                    style={{
+                      padding: '10px', borderRadius: 10, cursor: 'pointer',
+                      background: position === p ? '#3b82f6' : 'rgba(255,255,255,0.08)',
+                      color: '#fff', border: 'none', fontSize: 14, fontWeight: 600,
+                      textTransform: 'capitalize',
+                    }}>{p}</button>
+                ))}
+              </div>
+            </SettingRow>
+          )}
+
+          <button onClick={() => setShowSettings(false)} style={{
+            width: '100%', marginTop: 12, padding: '12px',
+            background: 'rgba(255,255,255,0.08)', color: '#fff',
+            border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, cursor: 'pointer',
+          }}>Done</button>
         </div>
       )}
 
+      {/* Hidden canvas + gallery input */}
       <canvas ref={canvasRef} style={{ display: 'none' }} />
+      <input ref={galleryRef} type="file" accept="image/*" capture={undefined}
+        style={{ display: 'none' }} onChange={onGalleryFile} />
     </div>
   );
 }
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function getTouchDist(touches: React.TouchList) {
+  return Math.hypot(
+    touches[1].clientX - touches[0].clientX,
+    touches[1].clientY - touches[0].clientY
+  );
+}
+
+function SettingRow({ icon, label, children }: { icon: string; label: string; children: React.ReactNode }) {
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+        <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#9ca3af' }}>{icon}</span>
+        <span style={{ color: '#e5e7eb', fontSize: 13, fontWeight: 600 }}>{label}</span>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+const btnStyle: React.CSSProperties = {
+  width: 44, height: 44, borderRadius: '50%',
+  background: 'rgba(255,255,255,0.12)',
+  border: '1px solid rgba(255,255,255,0.15)',
+  color: '#fff', cursor: 'pointer',
+  display: 'flex', alignItems: 'center', justifyContent: 'center',
+  backdropFilter: 'blur(4px)', flexShrink: 0,
+};
+
+const centerFlex: React.CSSProperties = {
+  position: 'absolute', inset: 0,
+  display: 'flex', alignItems: 'center', justifyContent: 'center',
+};
