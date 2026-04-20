@@ -19,6 +19,7 @@ interface MobileScannerModalProps {
 export function MobileScannerModal({ hasBothRoles, submitting, onClose, onSubmit }: MobileScannerModalProps) {
   const [modalSumm, setModalSumm] = useState('');
   const [modalPif, setModalPif] = useState('');
+  const [pifManuallyEdited, setPifManuallyEdited] = useState(false);
   const [modalSlips, setModalSlips] = useState('');
   const [modalAmount, setModalAmount] = useState('');
   const [modalErrors, setModalErrors] = useState<Record<string, string>>({});
@@ -78,7 +79,15 @@ export function MobileScannerModal({ hasBothRoles, submitting, onClose, onSubmit
             <input
               autoFocus
               value={modalSumm}
-              onChange={e => { setModalSumm(e.target.value); setModalErrors(prev => ({ ...prev, summ: '' })); }}
+              onChange={e => {
+                const val = e.target.value;
+                setModalSumm(val);
+                // Auto-fill PIF if user hasn't manually edited it yet
+                if (!pifManuallyEdited) {
+                  setModalPif(val);
+                }
+                setModalErrors(prev => ({ ...prev, summ: '' }));
+              }}
               style={{
                 width: '100%', boxSizing: 'border-box', padding: '9px 12px',
                 background: 'var(--bg-input)',
@@ -93,10 +102,16 @@ export function MobileScannerModal({ hasBothRoles, submitting, onClose, onSubmit
           <div style={{ gridColumn: '1 / -1' }}>
             <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--fg-muted)', display: 'block', marginBottom: 6 }}>
               PIF No <span style={{ color: 'var(--danger)' }}>*</span>
+              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-muted)', fontWeight: 400, marginLeft: 8 }}>(or edit if different)</span>
             </label>
             <input
               value={modalPif}
-              onChange={e => { setModalPif(e.target.value); setModalErrors(prev => ({ ...prev, pif: '' })); }}
+              onChange={e => {
+                setModalPif(e.target.value);
+                // Mark as manually edited once user changes it
+                setPifManuallyEdited(true);
+                setModalErrors(prev => ({ ...prev, pif: '' }));
+              }}
               style={{
                 width: '100%', boxSizing: 'border-box', padding: '9px 12px',
                 background: 'var(--bg-input)',

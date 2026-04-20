@@ -79,7 +79,8 @@ export function useBatchForm() {
 
   const handleModalFill = useCallback((data: { summ: string; pif: string; slips: string; amount: string }) => {
     setSummRefNo(data.summ);
-    setPif(data.pif);
+    // In mobile mode: auto-fill PIF same as summRefNo initially
+    setPif(data.pif || data.summ);
     setTotalSlips(data.slips);
     setTotalAmount(data.amount);
     setShowMobileModal(false);
