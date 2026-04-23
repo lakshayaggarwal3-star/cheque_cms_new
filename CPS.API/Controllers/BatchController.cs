@@ -16,7 +16,7 @@ namespace CPS.API.Controllers;
 
 [ApiController]
 [Route("api/batch")]
-[Authorize]
+[Authorize(Roles = "Scanner,MobileScanner,Maker,Checker,Admin,Developer")]
 public class BatchController : ControllerBase
 {
     private readonly IBatchService _batchService;
@@ -43,6 +43,13 @@ public class BatchController : ControllerBase
     public async Task<IActionResult> GetById(long id)
     {
         var result = await _batchService.GetBatchAsync(id);
+        return Ok(ApiResponse<BatchDto>.Ok(result));
+    }
+
+    [HttpGet("by-number/{batchNo}")]
+    public async Task<IActionResult> GetByNumber(string batchNo)
+    {
+        var result = await _batchService.GetBatchByNumberAsync(batchNo);
         return Ok(ApiResponse<BatchDto>.Ok(result));
     }
 

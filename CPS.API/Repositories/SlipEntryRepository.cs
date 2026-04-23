@@ -160,7 +160,7 @@ public class SlipEntryRepository : ISlipEntryRepository
             // Extract batch daily seq from BatchNo — last 3 digits are the daily sequence
             var batch = await _db.Batches.AsNoTracking().FirstAsync(b => b.BatchID == batchId);
             var batchNo = batch.BatchNo ?? string.Empty;
-            // BatchNo format: {PIFPrefix}{DDMMYYYY}{3-digit-seq} e.g. AHM14042026001
+            // BatchNo format: {PIFPrefix}{yyyyMMdd}{3-digit-seq} e.g. AHM20260414001
             var batchDailySeq = batchNo.Length >= 3
                 ? batchNo[^3..]  // last 3 chars
                 : batchNo.PadLeft(3, '0');

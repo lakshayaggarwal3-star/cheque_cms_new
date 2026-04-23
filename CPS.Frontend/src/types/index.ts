@@ -36,7 +36,7 @@ export enum BatchStatus {
 export const BatchStatusLabels: Record<number, string> = {
   0: 'Created — Scanning Not Started',
   1: 'Scanning In Progress',
-  2: 'Scanning Pending',
+  2: 'Pending Batches',
   3: 'Scanning Completed',
   4: 'RR Pending',
   5: 'RR Completed',
@@ -72,6 +72,7 @@ export interface BatchDto {
   locationID: number;
   locationName: string;
   locationCode: string;
+  clusterCode?: string;
   scannerMappingID?: number;
   scannerID?: string;
   pickupPointCode?: string;
@@ -150,7 +151,6 @@ export interface ChequeItemDto {
   scanMICR1?: string;
   scanMICR2?: string;
   scanMICR3?: string;
-  scanAmount?: number;
   // RR MICR — set during repair
   rrmicr1?: string;
   rrmicr2?: string;
@@ -160,6 +160,8 @@ export interface ChequeItemDto {
   rrState: number;
   frontImagePath?: string;
   backImagePath?: string;
+  frontImageTiffPath?: string;
+  backImageTiffPath?: string;
   scanStatus: string;
   scanError?: string;
   retryCount: number;
@@ -207,6 +209,7 @@ export interface ScanSessionDto {
   totalSlipEntries: number;
   totalAmount: number;
   slipGroups: SlipEntryDto[];
+  slipScans?: SlipScanDto[];
   resumeState: ScanResumeStateDto;
 }
 
@@ -252,6 +255,7 @@ export interface UserDto {
   roleMaker: boolean;
   roleChecker: boolean;
   roleAdmin: boolean;
+  roleImageViewer: boolean;
   isDeveloper: boolean;
   defaultLocationID?: number;
   defaultLocationName?: string;
@@ -266,4 +270,8 @@ export interface ClientAutoFillDto {
   pickupPointDesc?: string;
   rcmsCode?: string;
   status?: string; // 'A' = Active, 'X' = Inactive
+  globalClientID?: number;
+  globalCode?: string;
+  isPriority?: boolean;
 }
+

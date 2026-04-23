@@ -20,11 +20,15 @@ public interface IScanService
     // Slip scan image operations
     Task<SlipScanDto> CaptureSlipScanAsync(long batchId, CaptureSlipScanRequest request, int userId);
     Task<SlipScanDto> UploadMobileSlipScanAsync(long batchId, MobileUploadSlipScanRequest request, int userId);
+    Task<List<SlipScanDto>> UploadBulkSlipScansAsync(long batchId, BulkSlipUploadRequest request, int userId);
+
 
     // Cheque operations
     Task<ChequeItemDto> CaptureChequeAsync(long batchId, CaptureChequeRequest request, int userId);
     Task<ChequeItemDto> SaveChequeItemAsync(SaveChequeItemRequest request, int userId);
     Task<ChequeItemDto> UploadMobileChequeAsync(long batchId, MobileUploadChequeRequest request, int userId);
+
+    Task UpdateSlipStatusAsync(long batchId, int slipEntryId, CPS.API.Models.SlipStatus status, int userId);
 
     Task CompleteScanAsync(long batchId, int userId);
     Task ReleaseLockAsync(long batchId, int userId);

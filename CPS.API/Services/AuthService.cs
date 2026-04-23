@@ -148,6 +148,7 @@ public class AuthService : IAuthService
         if (user.RoleMaker) roles.Add("Maker");
         if (user.RoleChecker) roles.Add("Checker");
         if (user.RoleAdmin) roles.Add("Admin");
+        if (user.RoleImageViewer) roles.Add("ImageViewer");
         if (user.IsDeveloper) roles.Add("Developer");
         return roles;
     }

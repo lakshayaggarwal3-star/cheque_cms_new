@@ -41,6 +41,7 @@ export interface CreateUserRequest {
   roleMaker: boolean;
   roleChecker: boolean;
   roleAdmin: boolean;
+  roleImageViewer: boolean;
   isDeveloper: boolean;
 }
 
@@ -53,6 +54,7 @@ export interface UpdateUserRequest {
   roleMaker: boolean;
   roleChecker: boolean;
   roleAdmin: boolean;
+  roleImageViewer: boolean;
   isDeveloper: boolean;
 }
 

@@ -13,7 +13,6 @@ using Microsoft.AspNetCore.Mvc;
 namespace CPS.API.Controllers;
 
 [ApiController]
-[Authorize]
 public class ImagesController : ControllerBase
 {
     private readonly IImageStorageConfig _imageConfig;
@@ -28,6 +27,26 @@ public class ImagesController : ControllerBase
     [HttpGet("/api/images/{*relativePath}")]
     public IActionResult GetImage(string relativePath)
     {
+        // Manual Auth Check to support Redirects for direct browser access
+        if (!User.Identity?.IsAuthenticated ?? true)
+        {
+            var accept = Request.Headers["Accept"].ToString();
+            if (accept.Contains("text/html"))
+            {
+                // Direct browser access — redirect to login
+                var returnUrl = Uri.EscapeDataString(Request.Path + Request.QueryString);
+                return Redirect($"/login?returnUrl={returnUrl}");
+            }
+            return Unauthorized();
+        }
+
+        // Role check
+        var authorizedRoles = new[] { "Scanner", "MobileScanner", "Maker", "Checker", "Admin", "Developer", "ImageViewer" };
+        if (!authorizedRoles.Any(r => User.IsInRole(r)))
+        {
+            return Forbid();
+        }
+
         if (string.IsNullOrWhiteSpace(relativePath))
             return BadRequest();
 
@@ -50,6 +69,14 @@ public class ImagesController : ControllerBase
 
         if (!System.IO.File.Exists(fullPath))
             return NotFound();
+
+        // Log access for audit
+        var userId = User.FindFirst("userId")?.Value;
+        _logger.LogInformation("Image Accessed: {Path} by UserId={UserId}", relativePath, userId);
+
+        // Security headers: Prevent caching of sensitive cheque data
+        Response.Headers.Append("Cache-Control", "no-store, no-cache, must-revalidate");
+        Response.Headers.Append("Pragma", "no-cache");
 
         return PhysicalFile(fullPath, "image/jpeg");
     }

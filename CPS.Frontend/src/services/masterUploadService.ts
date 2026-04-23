@@ -2,7 +2,7 @@
 // File        : masterUploadService.ts
 // Project     : CPS — Cheque Processing System
 // Module      : Masters
-// Description : API calls for masters grid, preview, upload, and bulk apply.
+// Description : API calls for masters grid, preview, upload, bulk apply, and global clients.
 // Created     : 2026-04-14
 // =============================================================================
 
@@ -47,6 +47,19 @@ export interface ClientMasterDto {
   pickupPointDesc?: string;
   rcmsCode?: string;
   status?: string;
+  globalClientID?: number;
+  globalCode?: string;
+  globalName?: string;
+  isPriority?: boolean;
+}
+
+export interface GlobalClientDto {
+  globalClientID: number;
+  globalCode: string;
+  globalName: string;
+  isPriority: boolean;
+  isActive: boolean;
+  linkedClientCount: number;
 }
 
 export interface MasterUploadLogDto {
@@ -62,6 +75,8 @@ export interface MasterUploadLogDto {
 }
 
 export type MasterType = 'location' | 'client';
+
+// ── Master upload / preview / apply ──────────────────────────────────────────
 
 export async function uploadMaster(type: MasterType, file: File): Promise<UploadResultDto> {
   const form = new FormData();
@@ -95,12 +110,75 @@ export async function getUploadHistory(page = 1, pageSize = 20): Promise<PagedRe
   return extractData<PagedResult<MasterUploadLogDto>>(res);
 }
 
-export async function getLocationMasterData(page = 1, pageSize = 20): Promise<PagedResult<LocationDto>> {
-  const res = await apiClient.get('/locations', { params: { page, pageSize } });
+// ── Data fetch ────────────────────────────────────────────────────────────────
+
+export async function getLocationMasterData(page = 1, pageSize = 20, query = ''): Promise<PagedResult<LocationDto>> {
+  const res = await apiClient.get('/locations', { params: { page, pageSize, q: query || undefined } });
   return extractData<PagedResult<LocationDto>>(res);
 }
 
-export async function getClientMasterData(page = 1, pageSize = 20): Promise<PagedResult<ClientMasterDto>> {
-  const res = await apiClient.get('/clients', { params: { q: '', page, pageSize } });
+export async function updateLocationRecord(id: number, data: Partial<LocationDto>): Promise<void> {
+  await apiClient.put(`/locations/${id}`, data);
+}
+
+
+export async function getClientMasterData(
+  page = 1,
+  pageSize = 20,
+  query = '',
+  globalClientId?: number,
+  isPriority?: boolean,
+  cityCode?: string,
+  clientName?: string,
+  rcmsCode?: string
+): Promise<PagedResult<ClientMasterDto>> {
+  const res = await apiClient.get('/clients', {
+    params: {
+      q: query || undefined,
+      page,
+      pageSize,
+      globalClientId: globalClientId ?? undefined,
+      isPriority: isPriority !== undefined ? isPriority : undefined,
+      cityCode: cityCode || undefined,
+      clientName: clientName || undefined,
+      rcmsCode: rcmsCode || undefined
+    },
+  });
   return extractData<PagedResult<ClientMasterDto>>(res);
+}
+
+
+export async function updateClientRecord(clientId: number, data: Partial<ClientMasterDto>): Promise<ClientMasterDto> {
+  const res = await apiClient.put(`/clients/${clientId}`, data);
+  return extractData<ClientMasterDto>(res);
+}
+
+// ── Global Client CRUD ────────────────────────────────────────────────────────
+
+export async function getGlobalClients(): Promise<GlobalClientDto[]> {
+  const res = await apiClient.get('/clients/global');
+  return extractData<GlobalClientDto[]>(res);
+}
+
+export async function createGlobalClient(data: {
+  globalCode: string;
+  globalName: string;
+  isPriority: boolean;
+}): Promise<GlobalClientDto> {
+  const res = await apiClient.post('/clients/global', data);
+  return extractData<GlobalClientDto>(res);
+}
+
+export async function updateGlobalClient(
+  id: number,
+  data: { globalName: string; isPriority: boolean; isActive: boolean },
+): Promise<void> {
+  await apiClient.put(`/clients/global/${id}`, data);
+}
+
+export async function linkClientsToGlobal(globalClientId: number, clientIds: number[]): Promise<void> {
+  await apiClient.post(`/clients/global/${globalClientId}/link`, { globalClientID: globalClientId, clientIDs: clientIds });
+}
+export async function deleteGlobalClient(id: number): Promise<void> {
+  await apiClient.delete(`/clients/global/${id}`);
 }

@@ -25,6 +25,11 @@ export async function getBatch(id: number): Promise<BatchDto> {
   return extractData<BatchDto>(res);
 }
 
+export async function getBatchByNumber(batchNo: string): Promise<BatchDto> {
+  const res = await apiClient.get(`/batch/by-number/${batchNo}`);
+  return extractData<BatchDto>(res);
+}
+
 export async function createBatch(data: {
   locationID: number;
   scannerMappingID: number;

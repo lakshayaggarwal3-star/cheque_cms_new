@@ -28,7 +28,8 @@ public enum RRState
 public enum SlipStatus
 {
     Open = 0,
-    Complete = 1
+    Complete = 1,
+    SlipScanned = 2
 }
 
 public enum ScanStatus

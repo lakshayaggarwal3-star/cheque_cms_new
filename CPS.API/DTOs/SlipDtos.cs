@@ -78,7 +78,6 @@ public class ChequeItemDto
     public string? ScanMICR1 { get; set; }
     public string? ScanMICR2 { get; set; }
     public string? ScanMICR3 { get; set; }
-    public decimal? ScanAmount { get; set; }
 
     // RR MICR (after repair)
     public string? RRMICR1 { get; set; }
@@ -90,6 +89,8 @@ public class ChequeItemDto
 
     public string? FrontImagePath { get; set; }
     public string? BackImagePath { get; set; }
+    public string? FrontImageTiffPath { get; set; }
+    public string? BackImageTiffPath { get; set; }
     public string ScanStatus { get; set; } = string.Empty;
     public string? ScanError { get; set; }
     public int RetryCount { get; set; }

@@ -60,6 +60,16 @@ public class ScanService : IScanService
             TotalSlipEntries = slipGroups.Count,
             TotalAmount = slipGroups.Sum(s => s.SlipAmount),
             SlipGroups = slipGroups.Select(SlipService.MapToDto).ToList(),
+            SlipScans = slipGroups.SelectMany(s => s.SlipScans).Where(ss => !ss.IsDeleted).Select(ss => new SlipScanDto
+            {
+                SlipScanId = ss.SlipScanId,
+                SlipEntryId = ss.SlipEntryId,
+                ScanOrder = ss.ScanOrder,
+                ImagePath = ss.ImagePath,
+                ScanStatus = ss.ScanStatus,
+                ScanError = ss.ScanError,
+                RetryCount = ss.RetryCount
+            }).ToList(),
             ResumeState = resumeState
         };
     }
@@ -116,7 +126,8 @@ public class ScanService : IScanService
     {
         var (batch, useMock) = await GetLockedBatchContextAsync(batchId, userId);
 
-        var captured = await _scanner.CaptureSlipAsync(useMock);
+        var frontFileName = $"{batch.BatchNo}_{request.ScanOrder:D3}SF";
+        var captured = await _scanner.CaptureSlipAsync(useMock, frontFileName);
 
         return await SaveSlipScanAsync(new SaveSlipScanRequest
         {
@@ -135,7 +146,9 @@ public class ScanService : IScanService
         if (request.Image == null || request.Image.Length == 0)
             throw new ValidationException("Slip scan image is required.");
 
-        var imagePath = await SaveMobileImageAsync(batch.BatchNo, request.Image, $"slip_{request.ScanOrder}");
+        var fileName = $"{batch.BatchNo}_{request.ScanOrder:D3}SF";
+        var folder = request.ScannerType == "Mobile-Camera" ? "mobile" : "scanner";
+        var imagePath = await SaveMobileImageAsync(batch.BatchNo, request.Image, fileName, folder);
 
         return await SaveSlipScanAsync(new SaveSlipScanRequest
         {
@@ -143,9 +156,56 @@ public class ScanService : IScanService
             SlipEntryId = request.SlipEntryId,
             ScanOrder = request.ScanOrder,
             ImagePath = imagePath,
-            ScannerType = "Mobile-Camera"
+            ScannerType = request.ScannerType
         }, userId);
     }
+
+    public async Task<List<SlipScanDto>> UploadBulkSlipScansAsync(long batchId, BulkSlipUploadRequest request, int userId)
+    {
+        var (batch, _) = await GetLockedBatchContextAsync(batchId, userId);
+
+        if (request.Images == null || request.Images.Count == 0)
+            throw new ValidationException("At least one slip image is required.");
+
+        var slipGroups = await _slipRepo.GetByBatchAsync(batchId);
+        var results = new List<SlipScanDto>();
+
+        for (int i = 0; i < request.Images.Count; i++)
+        {
+            var image = request.Images[i];
+            
+            // Save the physical file once per batch
+            var tempFileName = $"{batch.BatchNo}_GLB_{i+1:D2}";
+            var imagePath = await SaveMobileImageAsync(batch.BatchNo, image, tempFileName, "upload");
+
+            // Associate this image with EVERY slip in the batch
+            foreach (var slip in slipGroups)
+            {
+                var existingScans = slip.SlipScans.Where(s => !s.IsDeleted).Count();
+                var scanOrder = existingScans + 1;
+
+                var saved = await SaveSlipScanAsync(new SaveSlipScanRequest
+                {
+                    BatchId = batchId,
+                    SlipEntryId = slip.SlipEntryId,
+                    ScanOrder = scanOrder,
+                    ImagePath = imagePath,
+                    ScannerType = request.ScannerType
+                }, userId);
+
+                // Only return the DTO for the requested slip to avoid UI confusion in the response,
+                // but they are all saved.
+                if (slip.SlipEntryId == request.SlipEntryId)
+                {
+                    results.Add(saved);
+                }
+            }
+        }
+
+        return results;
+    }
+
+
 
     private async Task<SlipScanDto> SaveSlipScanAsync(SaveSlipScanRequest request, int userId)
     {
@@ -173,10 +233,13 @@ public class ScanService : IScanService
     {
         var (batch, useMock) = await GetLockedBatchContextAsync(batchId, userId);
 
-        var captured = await _scanner.CaptureChequeAsync(useMock);
-
         var seqNo = await _slipRepo.GetNextBatchSeqNoAsync(batchId);
         var chqSeq = await _slipRepo.GetNextChqSeqAsync(request.SlipEntryId);
+
+        var frontFileName = $"{batch.BatchNo}_{seqNo:D3}CF";
+        var backFileName = $"{batch.BatchNo}_{seqNo:D3}CR";
+
+        var captured = await _scanner.CaptureChequeAsync(useMock, frontFileName, backFileName);
 
         return await SaveChequeItemAsync(new SaveChequeItemRequest
         {
@@ -202,8 +265,15 @@ public class ScanService : IScanService
         if (request.ImageFront == null && request.ImageBack == null)
             throw new ValidationException("At least one cheque image is required.");
 
-        var frontPath = await SaveMobileImageAsync(batch.BatchNo, request.ImageFront, "front");
-        var backPath = await SaveMobileImageAsync(batch.BatchNo, request.ImageBack, "back");
+        var seqNo = await _slipRepo.GetNextBatchSeqNoAsync(batchId);
+        var frontFileName = $"{batch.BatchNo}_{seqNo:D3}CF";
+        var backFileName = $"{batch.BatchNo}_{seqNo:D3}CR";
+        var folder = request.ScannerType == "Mobile-Camera" ? "mobile" : "scanner";
+
+        var frontPath = await SaveMobileImageAsync(batch.BatchNo, request.ImageFront, frontFileName, folder);
+        var backPath = await SaveMobileImageAsync(batch.BatchNo, request.ImageBack, backFileName, folder);
+        var frontTiffPath = await SaveMobileImageAsync(batch.BatchNo, request.ImageFrontTiff, $"{frontFileName}_T", folder);
+        var backTiffPath = await SaveMobileImageAsync(batch.BatchNo, request.ImageBackTiff, $"{backFileName}_T", folder);
 
         return await SaveChequeItemAsync(new SaveChequeItemRequest
         {
@@ -215,10 +285,11 @@ public class ScanService : IScanService
             ScanMICR1 = request.ScanMICR1,
             ScanMICR2 = request.ScanMICR2,
             ScanMICR3 = request.ScanMICR3,
-            ScanAmount = request.ScanAmount,
             FrontImagePath = frontPath,
             BackImagePath = backPath,
-            ScannerType = "Mobile-Camera",
+            FrontImageTiffPath = frontTiffPath,
+            BackImageTiffPath = backTiffPath,
+            ScannerType = request.ScannerType,
             ScanType = batch.ScanType
         }, userId);
     }
@@ -246,9 +317,10 @@ public class ScanService : IScanService
             ScanMICR1 = request.ScanMICR1?.Trim(),
             ScanMICR2 = request.ScanMICR2?.Trim(),
             ScanMICR3 = request.ScanMICR3?.Trim(),
-            ScanAmount = request.ScanAmount,
             FrontImagePath = request.FrontImagePath,
             BackImagePath = request.BackImagePath,
+            FrontImageTiffPath = request.FrontImageTiffPath,
+            BackImageTiffPath = request.BackImageTiffPath,
             ScannerType = request.ScannerType,
             ScanType = request.ScanType,
             RRState = (int)RRState.NeedsReview,
@@ -265,6 +337,26 @@ public class ScanService : IScanService
     }
 
     // ─── Complete / Release ───────────────────────────────────────────────────
+
+    public async Task UpdateSlipStatusAsync(long batchId, int slipEntryId, SlipStatus status, int userId)
+    {
+        var (batch, _) = await GetLockedBatchContextAsync(batchId, userId);
+
+        var slipGroups = await _slipRepo.GetByBatchAsync(batchId);
+        var slip = slipGroups.FirstOrDefault(s => s.SlipEntryId == slipEntryId)
+            ?? throw new NotFoundException($"Slip {slipEntryId} not found in this batch.");
+
+        slip.SlipStatus = (int)status;
+        slip.UpdatedBy = userId;
+        slip.UpdatedAt = DateTime.UtcNow;
+
+        if (status == SlipStatus.Complete)
+        {
+            slip.EntryCompletedAt = DateTime.UtcNow;
+        }
+
+        await _slipRepo.UpdateAsync(slip);
+    }
 
     public async Task CompleteScanAsync(long batchId, int userId)
     {
@@ -288,10 +380,10 @@ public class ScanService : IScanService
             var slipScans = slip.SlipScans.Where(s => !s.IsDeleted).ToList();
             var cheques = slip.ChequeItems.Where(c => !c.IsDeleted).ToList();
 
-            // If WithSlip mode, each slip must have at least one slip scan
-            if (withSlip && !slipScans.Any())
+            // Every slip must have at least one slip scan image (either scanned or manually uploaded)
+            if (!slipScans.Any())
             {
-                incompleteSlips.Add($"Slip {slip.SlipNo}: Missing slip scan image");
+                incompleteSlips.Add($"Slip {slip.SlipNo}: Missing slip image (please upload/scan)");
             }
 
             // Each slip must have at least one cheque
@@ -381,28 +473,24 @@ public class ScanService : IScanService
         if (!slipGroups.Any())
             return new ScanResumeStateDto { ResumeStep = "SlipEntry" };
 
-        // Find the last slip entry — it's the one most likely to be incomplete
+        var allCheques = slipGroups.SelectMany(g => g.ChequeItems).Where(c => !c.IsDeleted).ToList();
+        var nextGlobalChqSeq = allCheques.Any() ? allCheques.Max(c => c.SeqNo) + 1 : 1;
+
         var last = slipGroups.Last();
-
-        var hasIncompleteEntry = last.SlipStatus == (int)SlipStatus.Open;
         var slipScans = last.SlipScans.Where(s => !s.IsDeleted).ToList();
-        var cheques = last.ChequeItems.Where(c => !c.IsDeleted).ToList();
 
-        // If in WithSlip mode and no slip images yet → resume at SlipScan step
-        if (withSlip && !slipScans.Any() && hasIncompleteEntry)
+        if (last.SlipStatus == (int)SlipStatus.Open)
         {
             return new ScanResumeStateDto
             {
                 ActiveSlipEntryId = last.SlipEntryId,
                 ActiveSlipNo = last.SlipNo,
-                ResumeStep = "SlipScan",
-                NextSlipScanOrder = 1,
-                NextChqSeq = 1
+                ResumeStep = withSlip ? "SlipScan" : "ChequeScan",
+                NextSlipScanOrder = slipScans.Count + 1,
+                NextChqSeq = nextGlobalChqSeq
             };
         }
-
-        // If no cheques yet → resume at ChequeScan
-        if (!cheques.Any())
+        else if (last.SlipStatus == (int)SlipStatus.SlipScanned)
         {
             return new ScanResumeStateDto
             {
@@ -410,19 +498,12 @@ public class ScanService : IScanService
                 ActiveSlipNo = last.SlipNo,
                 ResumeStep = "ChequeScan",
                 NextSlipScanOrder = slipScans.Count + 1,
-                NextChqSeq = 1
+                NextChqSeq = nextGlobalChqSeq
             };
         }
 
-        // Slip has cheques — either still scanning cheques or ready for next slip
-        return new ScanResumeStateDto
-        {
-            ActiveSlipEntryId = last.SlipEntryId,
-            ActiveSlipNo = last.SlipNo,
-            ResumeStep = "ChequeScan",
-            NextSlipScanOrder = slipScans.Count + 1,
-            NextChqSeq = cheques.Max(c => c.ChqSeq) + 1
-        };
+        // Complated -> ready for next slip
+        return new ScanResumeStateDto { ResumeStep = "SlipEntry", NextChqSeq = nextGlobalChqSeq };
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -444,15 +525,15 @@ public class ScanService : IScanService
         return (batch, user.IsDeveloper);
     }
 
-    private async Task<string?> SaveMobileImageAsync(string batchNo, IFormFile? file, string label)
+    private async Task<string?> SaveMobileImageAsync(string batchNo, IFormFile? file, string exactFileName, string folderName = "mobile")
     {
         if (file == null || file.Length <= 0) return null;
 
         var ext = Path.GetExtension(file.FileName);
         if (string.IsNullOrWhiteSpace(ext)) ext = ".jpg";
 
-        var fileName = $"{DateTime.UtcNow:yyyyMMdd_HHmmss}_{label}_{Guid.NewGuid():N}{ext}";
-        var relativePath = Path.Combine("mobile", DateTime.UtcNow.ToString("yyyyMMdd"), batchNo, fileName)
+        var fileName = $"{exactFileName}{ext}";
+        var relativePath = Path.Combine(folderName, DateTime.UtcNow.ToString("yyyyMMdd"), batchNo, fileName)
             .Replace('\\', '/');
         var absolutePath = Path.Combine(
             _imageStorageConfig.BasePath,
@@ -487,7 +568,6 @@ public class ScanService : IScanService
         ScanMICR1 = c.ScanMICR1,
         ScanMICR2 = c.ScanMICR2,
         ScanMICR3 = c.ScanMICR3,
-        ScanAmount = c.ScanAmount,
         RRMICR1 = c.RRMICR1,
         RRMICR2 = c.RRMICR2,
         RRMICR3 = c.RRMICR3,
@@ -496,6 +576,8 @@ public class ScanService : IScanService
         RRState = c.RRState,
         FrontImagePath = c.FrontImagePath,
         BackImagePath = c.BackImagePath,
+        FrontImageTiffPath = c.FrontImageTiffPath,
+        BackImageTiffPath = c.BackImageTiffPath,
         ScanStatus = c.ScanStatus,
         ScanError = c.ScanError,
         RetryCount = c.RetryCount

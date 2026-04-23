@@ -26,6 +26,7 @@ public class BatchRepository : IBatchRepository
     public async Task<Batch?> GetByNoAsync(string batchNo) =>
         await _db.Batches
             .Include(b => b.Location)
+            .Include(b => b.Scanner)
             .FirstOrDefaultAsync(b => b.BatchNo == batchNo && !b.IsDeleted);
 
     public async Task<List<Batch>> GetListAsync(int? locationId, DateOnly? date, int? status, int page, int pageSize)

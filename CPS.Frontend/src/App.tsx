@@ -16,6 +16,7 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import { Layout } from './components/Layout';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
+import { AllBatchesPage } from './pages/AllBatchesPage';
 import { BatchCreatePage } from './pages/BatchCreatePage';
 import { ScanRouterPage } from './pages/ScanRouterPage';
 import { RRPage } from './pages/RRPage';
@@ -52,10 +53,11 @@ function AppRoutes() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/unauthorized" element={<UnauthorizedPage />} />
 
-      {/* Protected — require any authenticated user */}
-      <Route element={<ProtectedRoute />}>
+      {/* Protected — require any operational role (Excludes ImageViewer) */}
+      <Route element={<ProtectedRoute roles={['Scanner', 'MobileScanner', 'Maker', 'Checker', 'Admin', 'Developer']} />}>
         <Route element={<Layout />}>
           <Route path="/" element={<DashboardPage />} />
+          <Route path="/all-batches" element={<AllBatchesPage />} />
           <Route path="/rr" element={<RRListPage />} />
           <Route path="/rr/:batchId" element={<RRPage />} />
 
@@ -64,7 +66,7 @@ function AppRoutes() {
             <Route path="/batch/create" element={<BatchCreatePage />} />
             <Route path="/batch/:batchId/details" element={<BatchCreatePage />} />
             <Route path="/scan" element={<ScanListPage />} />
-            <Route path="/scan/:batchId" element={<ScanRouterPage />} />
+            <Route path="/scan/:batchNo" element={<ScanRouterPage />} />
           </Route>
 
           {/* Admin / Developer only */}

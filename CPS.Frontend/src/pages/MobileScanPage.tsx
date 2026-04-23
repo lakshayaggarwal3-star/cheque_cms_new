@@ -7,9 +7,9 @@
 // Updated     : 2026-04-20
 // =============================================================================
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { getBatch } from '../services/batchService';
+import { getBatchByNumber } from '../services/batchService';
 import { completeScan, getScanSession, startScan, uploadMobileCheque, uploadMobileSlipScan } from '../services/scanService';
 import { toast } from '../store/toastStore';
 import type { ScanSessionDto } from '../types';
@@ -30,9 +30,9 @@ type Step =
 type EditTarget = 'slip' | 'cheque-front' | 'cheque-back';
 
 export function MobileScanPage() {
-  const { batchId } = useParams<{ batchId: string }>();
+  const { batchNo } = useParams<{ batchNo: string }>();
   const navigate = useNavigate();
-  const id = Number(batchId);
+  const [id, setId] = useState<number>(0);
 
   const [session, setSession] = useState<ScanSessionDto | null>(null);
   const [loading, setLoading] = useState(true);
@@ -71,43 +71,53 @@ export function MobileScanPage() {
 
   // ── Load session ─────────────────────────────────────────────────────────────
 
-  const loadSession = useCallback(async () => {
-    try {
-      const [scanSession, batch] = await Promise.all([getScanSession(id), getBatch(id)]);
-      setSession(scanSession);
-      setPickupPointCode(batch.pickupPointCode ?? '');
-
-      // Resume — find latest active slip
-      if (scanSession.slipGroups?.length) {
-        const latest = scanSession.slipGroups[scanSession.slipGroups.length - 1];
-        setActiveSlipId(latest.slipEntryId);
-        setActiveSlipNo(latest.depositSlipNo ?? latest.slipNo ?? '');
+  useEffect(() => {
+    const init = async () => {
+      if (!batchNo) {
+        toast.error('Batch number not found');
+        setLoading(false);
+        return;
       }
+      try {
+        const batch = await getBatchByNumber(batchNo);
+        const batchId = batch.batchID;
+        setId(batchId);
 
-      // Auto-start if not started yet
-      if (scanSession.batchStatus === BatchStatus.Created || scanSession.batchStatus === BatchStatus.ScanningPending) {
-        setBusy(true);
-        try {
-          await startScan(id, scanSession.withSlip ?? false, scanSession.scanType ?? 'Scan');
-          setStep(scanSession.withSlip ? 'slip-entry' : 'cheque-front');
-          if (scanSession.withSlip) setShowSlipForm(true);
-        } catch (e: any) {
-          toast.error(e?.response?.data?.message ?? 'Failed to start scan');
-        } finally {
-          setBusy(false);
+        const scanSession = await getScanSession(batchId);
+        setSession(scanSession);
+        setPickupPointCode(batch.pickupPointCode ?? '');
+
+        // Resume — find latest active slip
+        if (scanSession.slipGroups?.length) {
+          const latest = scanSession.slipGroups[scanSession.slipGroups.length - 1];
+          setActiveSlipId(latest.slipEntryId);
+          setActiveSlipNo(latest.depositSlipNo ?? latest.slipNo ?? '');
         }
-      } else {
-        // Already in progress
-        setStep(scanSession.withSlip ? 'slip-done' : 'cheque-front');
-      }
-    } catch {
-      toast.error('Failed to load scan session');
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
 
-  useEffect(() => { loadSession(); }, [loadSession]);
+        // Auto-start if not started yet
+        if (scanSession.batchStatus === BatchStatus.Created || scanSession.batchStatus === BatchStatus.ScanningPending) {
+          setBusy(true);
+          try {
+            await startScan(batchId, scanSession.withSlip ?? false, scanSession.scanType ?? 'Scan');
+            setStep(scanSession.withSlip ? 'slip-entry' : 'cheque-front');
+            if (scanSession.withSlip) setShowSlipForm(true);
+          } catch (e: any) {
+            toast.error(e?.response?.data?.message ?? 'Failed to start scan');
+          } finally {
+            setBusy(false);
+          }
+        } else {
+          // Already in progress
+          setStep(scanSession.withSlip ? 'slip-done' : 'cheque-front');
+        }
+      } catch {
+        toast.error('Failed to load scan session');
+      } finally {
+        setLoading(false);
+      }
+    };
+    init();
+  }, [batchNo]);
   useEffect(() => () => { if (slipPreview) URL.revokeObjectURL(slipPreview); }, [slipPreview]);
   useEffect(() => () => { if (frontPreview) URL.revokeObjectURL(frontPreview); }, [frontPreview]);
   useEffect(() => () => { if (backPreview) URL.revokeObjectURL(backPreview); }, [backPreview]);
@@ -149,7 +159,10 @@ export function MobileScanPage() {
       toast.success('Slip image saved');
       setSlipFile(null);
       setSlipPreview(null);
-      await loadSession();
+      if (id > 0) {
+        const fresh = await getScanSession(id);
+        setSession(fresh);
+      }
       setStep('slip-done');
     } catch (e: any) {
       toast.error(e?.response?.data?.message ?? 'Upload failed');
@@ -179,7 +192,10 @@ export function MobileScanPage() {
       setFrontFile(null); setFrontPreview(null);
       setBackFile(null); setBackPreview(null);
       setMicr({ chqNo: '', micr1: '', micr2: '', micr3: '' });
-      await loadSession();
+      if (id > 0) {
+        const fresh = await getScanSession(id);
+        setSession(fresh);
+      }
       setStep('cheque-front');
     } catch (e: any) {
       toast.error(e?.response?.data?.message ?? 'Upload failed');
@@ -496,7 +512,9 @@ export function MobileScanPage() {
             setShowSlipForm(false);
             setActiveSlipId(slip.slipEntryId);
             setActiveSlipNo(slip.depositSlipNo ?? slip.slipNo ?? '');
-            loadSession();
+            if (id > 0) {
+              getScanSession(id).then(fresh => setSession(fresh)).catch(() => {});
+            }
             toast.success('Slip entry saved');
             setStep('slip-capture');
           }}

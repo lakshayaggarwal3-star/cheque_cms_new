@@ -16,6 +16,7 @@ public interface IBatchService
     Task<BatchDto> UpdateBatchAsync(long batchId, UpdateBatchRequest request, int userId);
     Task<PagedResult<BatchDto>> GetBatchListAsync(int? locationId, DateOnly? date, int? status, int page, int pageSize);
     Task<BatchDto> GetBatchAsync(long batchId);
+    Task<BatchDto> GetBatchByNumberAsync(string batchNo);
     Task<DashboardSummary> GetDashboardAsync(int locationId, DateOnly date);
     Task UpdateStatusAsync(long batchId, UpdateBatchStatusRequest request, int userId);
 }

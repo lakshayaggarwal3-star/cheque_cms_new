@@ -24,7 +24,6 @@ public class RRItemDto
     public string? ScanMICR1 { get; set; }
     public string? ScanMICR2 { get; set; }
     public string? ScanMICR3 { get; set; }
-    public decimal? ScanAmount { get; set; }
 
     // RR MICR (editable during repair)
     public string? RRMICR1 { get; set; }

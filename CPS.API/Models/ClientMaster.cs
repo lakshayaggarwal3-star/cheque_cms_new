@@ -7,6 +7,7 @@
 // =============================================================================
 
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace CPS.API.Models;
 
@@ -50,9 +51,26 @@ public class ClientMaster
 
     public DateOnly? StatusDate { get; set; }
 
+    // ── Global Client linkage ────────────────────────────────────────────────
+
+    /// <summary>FK to GlobalClient. Nullable — not all clients belong to a global group yet.</summary>
+    public int? GlobalClientID { get; set; }
+
+    [ForeignKey(nameof(GlobalClientID))]
+    public GlobalClient? GlobalClient { get; set; }
+
+    /// <summary>
+    /// Denormalised copy of GlobalClient.IsPriority for fast lookup without a join.
+    /// Must be kept in sync whenever GlobalClientID changes.
+    /// </summary>
+    public bool IsPriority { get; set; } = false;
+
+    // ── Audit ────────────────────────────────────────────────────────────────
+
     public int? CreatedBy { get; set; }
     public DateTime? CreatedAt { get; set; }
     public int? UpdatedBy { get; set; }
     public DateTime? UpdatedAt { get; set; }
     public bool IsDeleted { get; set; } = false;
 }
+

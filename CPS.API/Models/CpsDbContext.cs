@@ -15,10 +15,13 @@ public class CpsDbContext : DbContext
     public CpsDbContext(DbContextOptions<CpsDbContext> options) : base(options) { }
 
     public DbSet<UserMaster> Users { get; set; }
+    public DbSet<Role> Roles { get; set; }
+    public DbSet<UserRole> UserRoles { get; set; }
     public DbSet<UserLocationHistory> UserLocationHistories { get; set; }
     public DbSet<Location> Locations { get; set; }
     public DbSet<LocationScanner> LocationScanners { get; set; }
     public DbSet<LocationFinance> LocationFinances { get; set; }
+    public DbSet<GlobalClient> GlobalClients { get; set; }
     public DbSet<ClientMaster> Clients { get; set; }
     public DbSet<BatchSequence> BatchSequences { get; set; }
     public DbSet<BatchSlipSequence> BatchSlipSequences { get; set; }
@@ -40,6 +43,10 @@ public class CpsDbContext : DbContext
         modelBuilder.Entity<UserMaster>()
             .HasIndex(u => u.Username).IsUnique();
 
+        // UserRole
+        modelBuilder.Entity<UserRole>()
+            .HasIndex(ur => new { ur.UserID, ur.RoleID }).IsUnique();
+
         // Location
         modelBuilder.Entity<Location>()
             .HasIndex(l => l.LocationCode).IsUnique();
@@ -52,11 +59,26 @@ public class CpsDbContext : DbContext
         modelBuilder.Entity<UserLocationHistory>()
             .HasIndex(h => new { h.UserID, h.AssignedDate });
 
+        // GlobalClient: unique GlobalCode
+        modelBuilder.Entity<GlobalClient>()
+            .HasIndex(g => g.GlobalCode).IsUnique();
+
+        // ClientMaster: FK to GlobalClient (no cascade delete — protect client data)
+        modelBuilder.Entity<ClientMaster>()
+            .HasOne(c => c.GlobalClient)
+            .WithMany(g => g.Clients)
+            .HasForeignKey(c => c.GlobalClientID)
+            .OnDelete(DeleteBehavior.SetNull);
+
         // ClientMaster: indexes for searching
         modelBuilder.Entity<ClientMaster>()
             .HasIndex(c => c.RCMSCode);
         modelBuilder.Entity<ClientMaster>()
             .HasIndex(c => c.CityCode);
+        modelBuilder.Entity<ClientMaster>()
+            .HasIndex(c => c.GlobalClientID);
+        modelBuilder.Entity<ClientMaster>()
+            .HasIndex(c => c.IsPriority);
 
         // BatchSequence: unique per date+location+scanner
         modelBuilder.Entity<BatchSequence>()
@@ -111,8 +133,6 @@ public class CpsDbContext : DbContext
             .HasIndex(c => new { c.BatchId, c.SeqNo });
         modelBuilder.Entity<ChequeItem>()
             .HasIndex(c => new { c.SlipEntryId, c.ChqSeq });
-        modelBuilder.Entity<ChequeItem>()
-            .Property(c => c.ScanAmount).HasColumnType("decimal(15,3)");
         modelBuilder.Entity<ChequeItem>()
             .Property(c => c.RRAmount).HasColumnType("decimal(15,3)");
 

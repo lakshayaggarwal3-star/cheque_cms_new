@@ -297,6 +297,10 @@ namespace CPS.API.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
+                    b.Property<string>("BackImageTiffPath")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
                     b.Property<long>("BatchId")
                         .HasColumnType("bigint");
 
@@ -314,6 +318,10 @@ namespace CPS.API.Migrations
                         .HasColumnType("int");
 
                     b.Property<string>("FrontImagePath")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("FrontImageTiffPath")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
@@ -360,9 +368,6 @@ namespace CPS.API.Migrations
                         .IsRequired()
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("rowversion");
-
-                    b.Property<decimal?>("ScanAmount")
-                        .HasColumnType("decimal(15,3)");
 
                     b.Property<string>("ScanError")
                         .HasMaxLength(500)
@@ -462,7 +467,13 @@ namespace CPS.API.Migrations
                     b.Property<int?>("CreatedBy")
                         .HasColumnType("int");
 
+                    b.Property<int?>("GlobalClientID")
+                        .HasColumnType("int");
+
                     b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsPriority")
                         .HasColumnType("bit");
 
                     b.Property<string>("PickupPointCode")
@@ -494,9 +505,57 @@ namespace CPS.API.Migrations
 
                     b.HasIndex("CityCode");
 
+                    b.HasIndex("GlobalClientID");
+
+                    b.HasIndex("IsPriority");
+
                     b.HasIndex("RCMSCode");
 
                     b.ToTable("Clients");
+                });
+
+            modelBuilder.Entity("CPS.API.Models.GlobalClient", b =>
+                {
+                    b.Property<int>("GlobalClientID")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("GlobalClientID"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<string>("GlobalCode")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("GlobalName")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsPriority")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("GlobalClientID");
+
+                    b.HasIndex("GlobalCode")
+                        .IsUnique();
+
+                    b.ToTable("GlobalClients");
                 });
 
             modelBuilder.Entity("CPS.API.Models.Location", b =>
@@ -706,6 +765,28 @@ namespace CPS.API.Migrations
                     b.HasKey("UploadID");
 
                     b.ToTable("MasterUploadLogs");
+                });
+
+            modelBuilder.Entity("CPS.API.Models.Role", b =>
+                {
+                    b.Property<int>("RoleID")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("RoleID"));
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<string>("RoleName")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("RoleID");
+
+                    b.ToTable("Roles");
                 });
 
             modelBuilder.Entity("CPS.API.Models.SlipEntry", b =>
@@ -947,6 +1028,9 @@ namespace CPS.API.Migrations
                     b.Property<bool>("RoleChecker")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("RoleImageViewer")
+                        .HasColumnType("bit");
+
                     b.Property<bool>("RoleMaker")
                         .HasColumnType("bit");
 
@@ -981,6 +1065,30 @@ namespace CPS.API.Migrations
                         .IsUnique();
 
                     b.ToTable("Users");
+                });
+
+            modelBuilder.Entity("CPS.API.Models.UserRole", b =>
+                {
+                    b.Property<int>("UserRoleID")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("UserRoleID"));
+
+                    b.Property<int>("RoleID")
+                        .HasColumnType("int");
+
+                    b.Property<int>("UserID")
+                        .HasColumnType("int");
+
+                    b.HasKey("UserRoleID");
+
+                    b.HasIndex("RoleID");
+
+                    b.HasIndex("UserID", "RoleID")
+                        .IsUnique();
+
+                    b.ToTable("UserRoles");
                 });
 
             modelBuilder.Entity("CPS.API.Models.Batch", b =>
@@ -1039,12 +1147,22 @@ namespace CPS.API.Migrations
                     b.HasOne("CPS.API.Models.SlipEntry", "SlipEntry")
                         .WithMany("ChequeItems")
                         .HasForeignKey("SlipEntryId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
                     b.Navigation("Batch");
 
                     b.Navigation("SlipEntry");
+                });
+
+            modelBuilder.Entity("CPS.API.Models.ClientMaster", b =>
+                {
+                    b.HasOne("CPS.API.Models.GlobalClient", "GlobalClient")
+                        .WithMany("Clients")
+                        .HasForeignKey("GlobalClientID")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("GlobalClient");
                 });
 
             modelBuilder.Entity("CPS.API.Models.LocationFinance", b =>
@@ -1085,7 +1203,7 @@ namespace CPS.API.Migrations
                     b.HasOne("CPS.API.Models.SlipEntry", "SlipEntry")
                         .WithMany("SlipScans")
                         .HasForeignKey("SlipEntryId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
                     b.Navigation("SlipEntry");
@@ -1119,11 +1237,35 @@ namespace CPS.API.Migrations
                     b.Navigation("DefaultLocation");
                 });
 
+            modelBuilder.Entity("CPS.API.Models.UserRole", b =>
+                {
+                    b.HasOne("CPS.API.Models.Role", "Role")
+                        .WithMany("UserRoles")
+                        .HasForeignKey("RoleID")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("CPS.API.Models.UserMaster", "User")
+                        .WithMany("UserRoles")
+                        .HasForeignKey("UserID")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Role");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("CPS.API.Models.Batch", b =>
                 {
                     b.Navigation("ChequeItems");
 
                     b.Navigation("SlipEntries");
+                });
+
+            modelBuilder.Entity("CPS.API.Models.GlobalClient", b =>
+                {
+                    b.Navigation("Clients");
                 });
 
             modelBuilder.Entity("CPS.API.Models.Location", b =>
@@ -1133,11 +1275,21 @@ namespace CPS.API.Migrations
                     b.Navigation("Scanners");
                 });
 
+            modelBuilder.Entity("CPS.API.Models.Role", b =>
+                {
+                    b.Navigation("UserRoles");
+                });
+
             modelBuilder.Entity("CPS.API.Models.SlipEntry", b =>
                 {
                     b.Navigation("ChequeItems");
 
                     b.Navigation("SlipScans");
+                });
+
+            modelBuilder.Entity("CPS.API.Models.UserMaster", b =>
+                {
+                    b.Navigation("UserRoles");
                 });
 #pragma warning restore 612, 618
         }

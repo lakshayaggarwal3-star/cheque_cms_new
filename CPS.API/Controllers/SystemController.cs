@@ -80,7 +80,6 @@ public class SystemController : ControllerBase
                 diskSpaceFreeGB = Math.Round(freeBytes / (1024.0 * 1024 * 1024), 2),
                 diskWarning,
                 scannerServiceOnline = scannerOnline,
-                imageBasePath = _imageConfig.BasePath,
                 timestamp = DateTime.UtcNow
             }
         });
@@ -96,6 +95,7 @@ public class SystemController : ControllerBase
             new() { Key = "roleMaker", Name = "Maker", Description = "Maker data entry role." },
             new() { Key = "roleChecker", Name = "Checker", Description = "Checker authorization role." },
             new() { Key = "roleAdmin", Name = "Admin", Description = "System administrator role." },
+            new() { Key = "roleImageViewer", Name = "ImageViewer", Description = "Restricted role for viewing cheque images only." },
             new() { Key = "isDeveloper", Name = "Developer", Description = "Developer tools and bypass capabilities." }
         };
 

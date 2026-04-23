@@ -292,7 +292,9 @@ public class MasterUploadService
                     ["PickupPointDesc"] = row.Cell(9).GetString().Trim(),
                     ["RCMSCode"] = row.Cell(10).GetString().Trim(),
                     ["Status"] = row.Cell(11).GetString().Trim().ToUpperInvariant(),
-                    ["StatusDate"] = row.Cell(12).GetString().Trim()
+                    ["StatusDate"] = row.Cell(12).GetString().Trim(),
+                    ["GlobalCode"] = row.Cell(13).GetString().Trim(),
+                    ["IsPriority"] = row.Cell(14).GetString().Trim()
                 }
             };
             result.Rows.Add(item);
@@ -308,6 +310,7 @@ public class MasterUploadService
         result.ValidRows = Math.Max(0, result.Rows.Count - result.ErrorRows);
         return result;
     }
+
 
     public async Task<UploadResultDto> ApplyLocationRowsAsync(List<MasterDataRowDto> rows, int userId)
     {
@@ -439,6 +442,8 @@ public class MasterUploadService
                 var cityCode = Get(values, "CityCode");
                 var clientName = Get(values, "ClientName");
                 var rcmsCode = Get(values, "RCMSCode");
+                var globalCode = Get(values, "GlobalCode");
+                var isPriorityStr = Get(values, "IsPriority");
                 var status = Get(values, "Status").ToUpperInvariant();
 
                 if (string.IsNullOrWhiteSpace(cityCode) || string.IsNullOrWhiteSpace(clientName))
@@ -447,18 +452,47 @@ public class MasterUploadService
                     result.ErrorRows++;
                     continue;
                 }
-                if (!string.IsNullOrWhiteSpace(status) && status != "A" && status != "X")
+
+                int? globalId = null;
+                bool isPriority = isPriorityStr.Equals("true", StringComparison.OrdinalIgnoreCase) || isPriorityStr.Equals("1");
+
+                if (!string.IsNullOrWhiteSpace(globalCode))
                 {
-                    errors.Add(new UploadErrorDto { RowNumber = rowNum, Field = "Status", Message = "Status must be A or X." });
-                    result.ErrorRows++;
-                    continue;
+                    var global = await _db.GlobalClients.FirstOrDefaultAsync(g => g.GlobalCode.ToUpper() == globalCode.ToUpper());
+                    if (global == null)
+                    {
+                        global = new GlobalClient
+                        {
+                            GlobalCode = globalCode.ToUpper(),
+                            GlobalName = clientName,
+                            IsPriority = isPriority,
+                            CreatedAt = DateTime.UtcNow,
+                            UpdatedAt = DateTime.UtcNow
+                        };
+                        _db.GlobalClients.Add(global);
+                        await _db.SaveChangesAsync();
+                    }
+                    else if (isPriority != global.IsPriority)
+                    {
+                        global.IsPriority = isPriority;
+                        global.UpdatedAt = DateTime.UtcNow;
+                        await _db.SaveChangesAsync();
+
+                        // Sync existing clients in this group
+                        var groupClients = await _db.Clients.Where(c => c.GlobalClientID == global.GlobalClientID && !c.IsDeleted).ToListAsync();
+                        foreach (var gc in groupClients)
+                        {
+                            gc.IsPriority = isPriority;
+                        }
+                    }
+                    globalId = global.GlobalClientID;
+
                 }
 
                 DateOnly? statusDate = null;
                 if (DateOnly.TryParse(Get(values, "StatusDate"), out var sd))
                     statusDate = sd;
 
-                // Always insert new record — multiple clients with same code/city are allowed
                 _db.Clients.Add(new ClientMaster
                 {
                     CityCode = cityCode,
@@ -473,6 +507,8 @@ public class MasterUploadService
                     RCMSCode = rcmsCode,
                     Status = !string.IsNullOrWhiteSpace(status) ? status : "A",
                     StatusDate = statusDate,
+                    GlobalClientID = globalId,
+                    IsPriority = isPriority,
                     CreatedBy = userId,
                     CreatedAt = DateTime.UtcNow,
                     UpdatedBy = userId,
@@ -497,6 +533,7 @@ public class MasterUploadService
         await LogUploadAsync("Client", "MasterSectionBulkApply", userId, result);
         return result;
     }
+
 
     private static void ValidateFile(IFormFile file)
     {

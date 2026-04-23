@@ -49,9 +49,6 @@ public class ChequeItem
     [MaxLength(5)]
     public string? ScanMICR3 { get; set; }
 
-    [Column(TypeName = "decimal(15,3)")]
-    public decimal? ScanAmount { get; set; }
-
     // --- RR MICR (set during Review & Repair, stored separately) ---
     [MaxLength(15)]
     public string? RRMICR1 { get; set; }
@@ -79,6 +76,12 @@ public class ChequeItem
 
     [MaxLength(500)]
     public string? BackImagePath { get; set; }
+
+    [MaxLength(500)]
+    public string? FrontImageTiffPath { get; set; }
+
+    [MaxLength(500)]
+    public string? BackImageTiffPath { get; set; }
 
     // Pending / Captured / Failed / RetryPending
     [MaxLength(20)]

@@ -89,7 +89,9 @@ public class MasterUploadController : ControllerBase
         else if (type.ToLower() == "client")
         {
             var headers = new[] { "CITY_CODE", "NAME", "ADDRESS1", "ADDRESS2", "ADDRESS3",
-                "ADDRESS4", "ADDRESS5", "PICKUP_POINT_CODE", "PICKUPPOINT_DESCRIPTION", "RCMS_CODE", "STATUS", "STATUS_DATE" };
+                "ADDRESS4", "ADDRESS5", "PICKUP_POINT_CODE", "PICKUPPOINT_DESCRIPTION", "RCMS_CODE", "STATUS", "STATUS_DATE", 
+                "GLOBAL_CLIENT_CODE", "IS_PRIORITY" };
+
             for (int i = 0; i < headers.Length; i++)
             {
                 ws.Cell(1, i + 1).Value = headers[i];

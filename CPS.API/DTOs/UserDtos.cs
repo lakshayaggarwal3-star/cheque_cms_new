@@ -20,6 +20,7 @@ public class CreateUserRequest
     public bool RoleMaker { get; set; }
     public bool RoleChecker { get; set; }
     public bool RoleAdmin { get; set; }
+    public bool RoleImageViewer { get; set; }
     public bool IsDeveloper { get; set; }
 }
 
@@ -33,6 +34,7 @@ public class UpdateUserRequest
     public bool RoleMaker { get; set; }
     public bool RoleChecker { get; set; }
     public bool RoleAdmin { get; set; }
+    public bool RoleImageViewer { get; set; }
     public bool IsDeveloper { get; set; }
 }
 
@@ -60,6 +62,7 @@ public class UserDto
     public bool RoleMaker { get; set; }
     public bool RoleChecker { get; set; }
     public bool RoleAdmin { get; set; }
+    public bool RoleImageViewer { get; set; }
     public bool IsDeveloper { get; set; }
     public int? DefaultLocationID { get; set; }
     public string? DefaultLocationName { get; set; }

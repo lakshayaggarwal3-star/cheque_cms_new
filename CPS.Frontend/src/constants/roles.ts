@@ -57,6 +57,12 @@ export const ROLES: RoleDefinition[] = [
     elevated: true,
   },
   {
+    key: 'roleImageViewer',
+    label: 'Image Viewer',
+    description: 'Restricted role for viewing and reviewing cheque images only.',
+    badgeClass: 'bg-emerald-100 text-emerald-700',
+  },
+  {
     key: 'isDeveloper',
     label: 'Developer',
     description: 'Admin + mock scan, force status, skip validation.',

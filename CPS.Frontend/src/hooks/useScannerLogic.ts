@@ -6,7 +6,7 @@
 // Created     : 2026-04-19
 // =============================================================================
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   captureCheque, completeScan, startFeed, stopFeed,
   uploadMobileCheque, uploadMobileSlipScan,
@@ -16,6 +16,8 @@ import {
   rangerEnableOptions, rangerGetCaptureData, rangerPrepareToChangeOptions,
   rangerSetEndorsementOptions, rangerSetImagingOptions, rangerShutdown,
   rangerStartFeeding, rangerStartup, rangerStopFeeding,
+  RangerTransportState, subscribeToRangerState, getRangerState,
+  setRangerEndorsementProvider, subscribeToRangerItems
 } from '../services/rangerWebService';
 import {
   flatbedConnect, flatbedDetectScanners, flatbedAutoSelect, flatbedScan,
@@ -28,6 +30,7 @@ type EditableImageTarget = 'slip-front' | 'cheque-front' | 'cheque-back';
 
 interface UseScannerLogicProps {
   batchId: number;
+  batchNo: string;
   activeSlipEntryId: number | null;
   nextSlipScanOrder: number;
   nextChqSeq: number;
@@ -42,10 +45,12 @@ interface UseScannerLogicProps {
   rangerEndorsementEnabled?: boolean;
   rangerEndorsementUseImageName?: boolean;
   rangerEndorsementCustomText?: string;
+  rangerEndorsementBatchName?: string;
 }
 
 export function useScannerLogic({
   batchId,
+  batchNo,
   activeSlipEntryId,
   nextSlipScanOrder,
   nextChqSeq,
@@ -60,11 +65,13 @@ export function useScannerLogic({
   rangerEndorsementEnabled = false,
   rangerEndorsementUseImageName = true,
   rangerEndorsementCustomText = '',
+  rangerEndorsementBatchName = '',
 }: UseScannerLogicProps) {
   // Scanner state
-  const [scannerChoice, setScannerChoice] = useState<'Ranger' | 'Document' | null>(null);
+  const [scannerChoice, setScannerChoice] = useState<'Ranger' | 'Document' | null>('Ranger');
   const [scanRoundActive, setScanRoundActive] = useState(false);
   const [feedRunning, setFeedRunning] = useState<{ Cheque: boolean; Slip: boolean }>({ Cheque: false, Slip: false });
+  const [rangerState, setRangerState] = useState<RangerTransportState>(getRangerState());
 
   // Preview
   const [mockPreview, setMockPreview] = useState<{ front: string; back: string } | null>(null);
@@ -79,11 +86,120 @@ export function useScannerLogic({
   const [detectedScanners, setDetectedScanners] = useState<FlatbedScanner[]>([]);
   const [selectedScannerId, setSelectedScannerId] = useState('');
   const [flatbedResolution, setFlatbedResolution] = useState(300);
-  const [flatbedMode, setFlatbedMode] = useState<ScanSettings['mode']>('Lineart');
+  const [flatbedMode, setFlatbedMode] = useState<ScanSettings['mode']>('Color');
+  const [flatbedFormat, setFlatbedFormat] = useState<ScanSettings['format']>('JPEG');
   const [flatbedStatus, setFlatbedStatus] = useState<'idle' | 'connecting' | 'ready' | 'error'>('idle');
   const [flatbedError, setFlatbedError] = useState('');
 
   const [isBusy, setIsBusy] = useState(false);
+
+  // Sync Ranger state
+  useEffect(() => {
+    const unsubState = subscribeToRangerState((state) => {
+      setRangerState(state);
+      
+      // Auto-update feedRunning based on hardware state
+      if (state === RangerTransportState.TransportFeeding) {
+        setFeedRunning({ Cheque: true, Slip: true });
+      } else if (
+        state === RangerTransportState.TransportReadyToFeed || 
+        state === RangerTransportState.TransportShutDown ||
+        state === RangerTransportState.TransportChangeOptions
+      ) {
+        setFeedRunning({ Cheque: false, Slip: false });
+      }
+    });
+    
+    // Set endorsement provider for dynamic endorsement (BatchName ImageName)
+    setRangerEndorsementProvider(() => {
+      const bName = rangerEndorsementBatchName || batchNo;
+      // Use Ranger CSN macro for automatic sequencing: <CSN:start,inc,max>
+      // This is more reliable for bulk scanning.
+      const startSeq = String(nextChqSeq).padStart(4, '0');
+      return `<CSN:${startSeq},1,9999> ${bName}`;
+    });
+
+    // Listen for items as they are scanned
+    const unsubItems = subscribeToRangerItems(async (data) => {
+      if (scannerChoice !== 'Ranger' || !activeSlipEntryId) return;
+      
+      console.log('Ranger: Item captured in pocket, uploading...', data.itemID);
+      
+      try {
+        const front = base64ToFile(data.frontBase64, 'cheque-front.jpg');
+        const back = base64ToFile(data.backBase64, 'cheque-back.jpg');
+        const frontTiff = data.frontTiffBase64 ? base64ToFile(data.frontTiffBase64, 'cheque-front.tif') : undefined;
+        const backTiff = data.backTiffBase64 ? base64ToFile(data.backTiffBase64, 'cheque-back.tif') : undefined;
+        
+        if (!front) throw new Error('No front image captured');
+
+        // Note: We use the CURRENT nextChqSeq and then increment it
+        // In a high-speed scanner, we might need a queue to avoid race conditions
+        const result = await uploadMobileCheque(batchId, {
+          slipEntryId: activeSlipEntryId,
+          chqSeq: nextChqSeq,
+          imageFront: front,
+          imageBack: back,
+          imageFrontTiff: frontTiff,
+          imageBackTiff: backTiff,
+          micrRaw: data.micrRaw || undefined,
+          scanMICR1: data.scanMicr1 || undefined,
+          scanMICR2: data.scanMicr2 || undefined,
+          scanMICR3: data.scanMicr3 || undefined,
+          scannerType: 'Ranger',
+        });
+
+        setCurrentCheque(result);
+        await onCaptureSuccess(); // This increments nextChqSeq and reloads session
+      } catch (err: any) {
+        console.error('Ranger Item Upload Error:', err);
+        toast.error(`Failed to upload scanned item: ${err.message}`);
+      }
+    });
+
+    return () => {
+      unsubState();
+      unsubItems();
+      setRangerEndorsementProvider(null);
+    };
+  }, [scannerChoice, batchNo, nextChqSeq, activeSlipEntryId, batchId, onCaptureSuccess, rangerEndorsementBatchName]);
+
+  // Automate Ranger Lifecycle (ShutDown -> ChangeOptions -> ReadyToFeed)
+  useEffect(() => {
+    // Only auto-init if we have chosen Ranger or are in a step that likely needs it
+    if (scannerChoice !== 'Ranger') return;
+    
+    const runAutoRanger = async () => {
+      try {
+        if (rangerState === RangerTransportState.TransportShutDown || rangerState === RangerTransportState.TransportUnknownState) {
+          console.log('Ranger: Auto-starting...');
+          await rangerStartup(rangerWsUrl);
+        } else if (rangerState === RangerTransportState.TransportChangeOptions) {
+          console.log('Ranger: Auto-enabling options...');
+          // Set options once we are in ChangeOptions state
+          await rangerSetImagingOptions({ needImaging: true, needFrontGrayscale: true, needRearGrayscale: true });
+          
+          if (rangerEndorsementEnabled) {
+            const bName = rangerEndorsementBatchName || batchNo;
+            const startSeq = String(nextChqSeq).padStart(4, '0');
+            const endorsementText = rangerEndorsementUseImageName
+              ? `<CSN:${startSeq},1,9999> ${bName}`
+              : (rangerEndorsementCustomText || '');
+            await rangerSetEndorsementOptions({ enabled: true, text: endorsementText });
+          } else {
+            await rangerSetEndorsementOptions({ enabled: false });
+          }
+          
+          await rangerEnableOptions();
+        }
+      } catch (err: any) {
+        console.error('Ranger Auto-Init Error:', err);
+        // toast.error(`Ranger auto-init failed: ${err.message}`);
+      }
+    };
+
+    runAutoRanger();
+  }, [scannerChoice, rangerState, rangerWsUrl, batchNo, nextChqSeq, rangerEndorsementEnabled, rangerEndorsementUseImageName, rangerEndorsementCustomText]);
 
   // ─── Helpers ──────────────────────────────────────────────────────────────
 
@@ -106,52 +222,57 @@ export function useScannerLogic({
     setIsBusy(true);
     try {
       if (scannerChoice === 'Ranger') {
-        await rangerStartup(rangerWsUrl);
-        await rangerSetImagingOptions({ needImaging: true, needFrontGrayscale: true, needRearGrayscale: true });
-        if (rangerEndorsementEnabled) {
-          const endorsementText = rangerEndorsementUseImageName
-            ? `B_${String(nextChqSeq).padStart(4, '0')}`
-            : (rangerEndorsementCustomText || '');
-          await rangerSetEndorsementOptions({ enabled: true, text: endorsementText });
-        } else {
-          await rangerSetEndorsementOptions({ enabled: false });
+        if (rangerState !== RangerTransportState.TransportReadyToFeed) {
+          throw new Error('Ranger scanner is not ready yet. Please wait a moment.');
         }
-        await rangerEnableOptions();
         await rangerStartFeeding(type === 'Slip' ? 2 : 0, 0);
       } else {
         await startFeed(batchId, type);
       }
       setFeedRunning(p => ({ ...p, [type]: true }));
     } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? `Failed to start ${type} feed`);
+      toast.error(err?.response?.data?.message ?? err?.message ?? `Failed to start ${type} feed`);
     } finally {
       setIsBusy(false);
     }
-  }, [scannerChoice, rangerWsUrl, batchId, rangerEndorsementEnabled, rangerEndorsementUseImageName, rangerEndorsementCustomText, nextChqSeq]);
+  }, [scannerChoice, batchId, rangerState]);
 
   const handleStopFeed = useCallback(async (type: 'Cheque' | 'Slip') => {
     setIsBusy(true);
     try {
-      if (scannerChoice === 'Ranger') await rangerStopFeeding();
-      else await stopFeed(batchId, type);
+      if (scannerChoice === 'Ranger') {
+        if (rangerState === RangerTransportState.TransportFeeding) {
+          await rangerStopFeeding();
+        }
+      } else {
+        await stopFeed(batchId, type);
+      }
       setFeedRunning(p => ({ ...p, [type]: false }));
     } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? `Failed to stop ${type} feed`);
+      toast.error(err?.response?.data?.message ?? err?.message ?? `Failed to stop ${type} feed`);
     } finally {
       setIsBusy(false);
     }
-  }, [scannerChoice, batchId]);
+  }, [scannerChoice, batchId, rangerState]);
 
   const handleRangerStopAndCapture = useCallback(async () => {
     if (!activeSlipEntryId) return;
     setIsBusy(true);
     try {
-      await rangerStopFeeding();
+      if (rangerState === RangerTransportState.TransportFeeding) {
+        await rangerStopFeeding();
+      }
       setFeedRunning(p => ({ ...p, Cheque: false }));
+      
       await rangerPrepareToChangeOptions();
       const capture = rangerGetCaptureData('Both');
       const front = base64ToFile(capture.frontBase64, 'cheque-front.jpg');
       const back = base64ToFile(capture.backBase64, 'cheque-back.jpg');
+      
+      if (!front) {
+        throw new Error('No image captured from Ranger hopper');
+      }
+
       const result = await uploadMobileCheque(batchId, {
         slipEntryId: activeSlipEntryId,
         chqSeq: nextChqSeq,
@@ -163,11 +284,11 @@ export function useScannerLogic({
       await onCaptureSuccess();
       toast.success('Cheque captured from Ranger');
     } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? 'Failed to stop/capture Ranger feed');
+      toast.error(err?.response?.data?.message ?? err?.message ?? 'Failed to stop/capture Ranger feed');
     } finally {
       setIsBusy(false);
     }
-  }, [activeSlipEntryId, nextChqSeq, batchId, onCaptureSuccess]);
+  }, [activeSlipEntryId, nextChqSeq, batchId, onCaptureSuccess, rangerState]);
 
   // ─── Capture ──────────────────────────────────────────────────────────────
 
@@ -178,7 +299,7 @@ export function useScannerLogic({
     if (isDeveloper && mockScanEnabled && frontFile) {
       setIsBusy(true);
       try {
-        const result = await uploadMobileSlipScan(batchId, { slipEntryId: activeSlipEntryId, scanOrder: nextSlipScanOrder, image: frontFile });
+        const result = await uploadMobileSlipScan(batchId, { slipEntryId: activeSlipEntryId, scanOrder: nextSlipScanOrder, image: frontFile, scannerType: 'Scanner' });
         onClearCameraFiles();
         setCurrentSlipScan(result);
         await onCaptureSuccess();
@@ -199,7 +320,7 @@ export function useScannerLogic({
 
     setIsBusy(true);
     try {
-      const scanResult = await flatbedScan(selectedScannerId, { resolution: flatbedResolution, mode: flatbedMode });
+      const scanResult = await flatbedScan(selectedScannerId, { resolution: flatbedResolution, mode: flatbedMode, format: flatbedFormat });
       const mimeType = scanResult.format === 'PNG' ? 'image/png' : 'image/jpeg';
       const ext = scanResult.format === 'PNG' ? 'png' : 'jpg';
       const file = base64ToFile(`data:${mimeType};base64,${scanResult.image_base64}`, `slip-scan.${ext}`);
@@ -217,7 +338,7 @@ export function useScannerLogic({
     } finally {
       setIsBusy(false);
     }
-  }, [activeSlipEntryId, isDeveloper, mockScanEnabled, frontFile, batchId, nextSlipScanOrder, onClearCameraFiles, onCaptureSuccess, flatbedStatus, selectedScannerId, flatbedResolution, flatbedMode]);
+  }, [activeSlipEntryId, isDeveloper, mockScanEnabled, frontFile, batchId, nextSlipScanOrder, onClearCameraFiles, onCaptureSuccess, flatbedStatus, selectedScannerId, flatbedResolution, flatbedMode, flatbedFormat]);
 
   const handleCaptureCheque = useCallback(async () => {
     if (!activeSlipEntryId) return;
@@ -225,7 +346,7 @@ export function useScannerLogic({
     try {
       let result: ChequeItemDto;
       if (isDeveloper && mockScanEnabled && (frontFile || backFile)) {
-        result = await uploadMobileCheque(batchId, { slipEntryId: activeSlipEntryId, chqSeq: nextChqSeq, imageFront: frontFile ?? undefined, imageBack: backFile ?? undefined });
+        result = await uploadMobileCheque(batchId, { slipEntryId: activeSlipEntryId, chqSeq: nextChqSeq, imageFront: frontFile ?? undefined, imageBack: backFile ?? undefined, scannerType: 'Scanner' });
         onClearCameraFiles();
       } else if (isDeveloper && mockScanEnabled) {
         result = await captureCheque(batchId, { slipEntryId: activeSlipEntryId, scannerType: 'Cheque' });
@@ -258,13 +379,17 @@ export function useScannerLogic({
         setFlatbedStatus('idle');
       }
 
+      if (scannerChoice === 'Ranger') {
+        await rangerShutdown();
+      }
+
       onComplete();
     } catch (err: any) {
       toast.error(err?.response?.data?.message ?? 'Failed to complete scanning');
     } finally {
       setIsBusy(false);
     }
-  }, [batchId, useFlatbedWs]);
+  }, [batchId, useFlatbedWs, scannerChoice]);
 
   // ─── Scanner settings ─────────────────────────────────────────────────────
 
@@ -333,6 +458,7 @@ export function useScannerLogic({
 
   return {
     // State
+    batchNo,
     rangerMicrEnabled,
     scannerChoice,
     scanRoundActive,
@@ -348,9 +474,11 @@ export function useScannerLogic({
     selectedScannerId,
     flatbedResolution,
     flatbedMode,
+    flatbedFormat,
     flatbedStatus,
     flatbedError,
     isBusy,
+    rangerState,
 
     // Setters
     setScannerChoice,
@@ -366,6 +494,7 @@ export function useScannerLogic({
     setSelectedScannerId,
     setFlatbedResolution,
     setFlatbedMode,
+    setFlatbedFormat,
     setFlatbedStatus,
     setFlatbedError,
     setIsBusy,

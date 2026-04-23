@@ -54,9 +54,10 @@ public class SaveChequeItemRequest
     public string? ScanMICR1 { get; set; }
     public string? ScanMICR2 { get; set; }
     public string? ScanMICR3 { get; set; }
-    public decimal? ScanAmount { get; set; }
     public string? FrontImagePath { get; set; }
     public string? BackImagePath { get; set; }
+    public string? FrontImageTiffPath { get; set; }
+    public string? BackImageTiffPath { get; set; }
     public string ScannerType { get; set; } = "Cheque";
     public string ScanType { get; set; } = "Scan";
 }
@@ -66,7 +67,16 @@ public class MobileUploadSlipScanRequest
     public int SlipEntryId { get; set; }
     public int ScanOrder { get; set; } = 1;
     public IFormFile? Image { get; set; }
+    public string ScannerType { get; set; } = "Mobile-Camera";
 }
+
+public class BulkSlipUploadRequest
+{
+    public int SlipEntryId { get; set; }
+    public List<IFormFile> Images { get; set; } = new();
+    public string ScannerType { get; set; } = "Direct-Upload";
+}
+
 
 public class MobileUploadChequeRequest
 {
@@ -74,12 +84,14 @@ public class MobileUploadChequeRequest
     public int ChqSeq { get; set; }
     public IFormFile? ImageFront { get; set; }
     public IFormFile? ImageBack { get; set; }
+    public IFormFile? ImageFrontTiff { get; set; }
+    public IFormFile? ImageBackTiff { get; set; }
     public string? MICRRaw { get; set; }
     public string? ChqNo { get; set; }
     public string? ScanMICR1 { get; set; }
     public string? ScanMICR2 { get; set; }
     public string? ScanMICR3 { get; set; }
-    public decimal? ScanAmount { get; set; }
+    public string ScannerType { get; set; } = "Mobile-Camera";
 }
 
 public class ScanSessionDto
@@ -96,6 +108,9 @@ public class ScanSessionDto
 
     // All slip entries with their nested scans and cheques (grouped display)
     public List<SlipEntryDto> SlipGroups { get; set; } = new();
+
+    // Global slip scans for non-slip batches
+    public List<SlipScanDto> SlipScans { get; set; } = new();
 
     // Where to resume if session was interrupted
     public ScanResumeStateDto ResumeState { get; set; } = new();

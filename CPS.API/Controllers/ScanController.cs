@@ -76,6 +76,16 @@ public class ScanController : ControllerBase
         return StatusCode(201, ApiResponse<SlipScanDto>.Ok(result, "Slip scan uploaded"));
     }
 
+    [HttpPost("{batchId:long}/slip-scan/upload-bulk")]
+    [RequestSizeLimit(100_000_000)]
+    public async Task<IActionResult> UploadBulkSlipScans(long batchId, [FromForm] BulkSlipUploadRequest request)
+    {
+        var userId = int.Parse(User.FindFirstValue("userId")!);
+        var results = await _scanService.UploadBulkSlipScansAsync(batchId, request, userId);
+        return StatusCode(201, ApiResponse<List<SlipScanDto>>.Ok(results, $"{results.Count} slip image(s) uploaded"));
+    }
+
+
     // ─── Cheque capture ───────────────────────────────────────────────────────
 
     [HttpPost("{batchId:long}/cheque/capture")]
@@ -105,6 +115,22 @@ public class ScanController : ControllerBase
     }
 
     // ─── Complete / Release ───────────────────────────────────────────────────
+
+    [HttpPost("{batchId:long}/slip/{slipEntryId:int}/complete-slip")]
+    public async Task<IActionResult> CompleteSlipPhase(long batchId, int slipEntryId)
+    {
+        var userId = int.Parse(User.FindFirstValue("userId")!);
+        await _scanService.UpdateSlipStatusAsync(batchId, slipEntryId, CPS.API.Models.SlipStatus.SlipScanned, userId);
+        return Ok(ApiResponse<object>.Ok(new { }, "Slip scanning phase completed"));
+    }
+
+    [HttpPost("{batchId:long}/slip/{slipEntryId:int}/complete-cheque")]
+    public async Task<IActionResult> CompleteChequePhase(long batchId, int slipEntryId)
+    {
+        var userId = int.Parse(User.FindFirstValue("userId")!);
+        await _scanService.UpdateSlipStatusAsync(batchId, slipEntryId, CPS.API.Models.SlipStatus.Complete, userId);
+        return Ok(ApiResponse<object>.Ok(new { }, "Cheque scanning phase completed"));
+    }
 
     [HttpPost("{batchId:long}/complete")]
     public async Task<IActionResult> Complete(long batchId)

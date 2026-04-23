@@ -77,9 +77,9 @@ const STATUS_TONE: Record<number, Tone> = { 0: 'neutral', 1: 'info', 2: 'warning
 
 function getAction(b: BatchDto): { label: string; path: string } | null {
   switch (b.batchStatus) {
-    case BatchStatus.Created:            return { label: 'Start',    path: `/batch/${b.batchID}/details` };
+    case BatchStatus.Created:            return { label: 'Start',    path: `/scan/${b.batchNo}` };
     case BatchStatus.ScanningInProgress:
-    case BatchStatus.ScanningPending:    return { label: 'Continue', path: `/scan/${b.batchID}` };
+    case BatchStatus.ScanningPending:    return { label: 'Continue', path: `/scan/${b.batchNo}` };
     case BatchStatus.RRPending:          return { label: 'Repair',   path: `/rr/${b.batchID}` };
     default:                             return null;
   }
@@ -143,15 +143,11 @@ export function DashboardPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const eodDate = user?.eodDate
-    ? new Date(user.eodDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-    : '';
-
   const canCreateBatch = user?.roles.some(r => ['Scanner', 'MobileScanner', 'Admin', 'Developer'].includes(r));
 
   const kpis = [
     { label: 'Batches today',    value: summary?.totalBatchesToday ?? 0, delta: 'Total for today',    tone: 'neutral' as Tone, icon: 'receipt_long' },
-    { label: 'Scanning pending', value: summary?.scanningPending ?? 0,   delta: 'Awaiting scan',      tone: 'warning' as Tone, icon: 'hourglass_top' },
+    { label: 'Pending Batches', value: summary?.scanningPending ?? 0,   delta: 'Awaiting scan',      tone: 'warning' as Tone, icon: 'hourglass_top' },
     { label: 'RR queue',         value: summary?.rrPending ?? 0,         delta: 'Needs review',       tone: 'danger'  as Tone, icon: 'build' },
     { label: 'Completed',        value: summary?.completed ?? 0,         delta: 'Cleared today',      tone: 'success' as Tone, icon: 'task_alt' },
   ];
@@ -165,42 +161,194 @@ export function DashboardPage() {
 
   if (loading) return <SkeletonDashboard />;
 
+  const modules: Array<{
+    label: string;
+    sub: string;
+    icon: string;
+    active: boolean;
+    path?: string;
+    gradient: string;
+    iconColor: string;
+    show: boolean;
+  }> = [
+    
+    {
+      label: 'All Batches',
+      sub: 'View & manage batches',
+      icon: 'list_alt',
+      active: true,
+      path: '/all-batches',
+      gradient: 'linear-gradient(135deg, #c4613f 0%, #9d4e33 100%)', // Terracotta
+      iconColor: 'rgba(255,255,255,0.95)',
+      show: true,
+    },
+    {
+      label: 'Create Batch',
+      sub: 'Start a new cheque batch',
+      icon: 'add_box',
+      active: !!canCreateBatch,
+      path: '/batch/create',
+      gradient: 'linear-gradient(135deg, #d97757 0%, #a35238 100%)', // Burnt Orange
+      iconColor: 'rgba(255,255,255,0.95)',
+      show: true,
+    },
+    {
+      label: 'Scanner',
+      sub: 'Scan cheques & slips',
+      icon: 'scanner',
+      active: !!canCreateBatch,
+      path: '/scan',
+      gradient: 'linear-gradient(135deg, #b87333 0%, #7a4f25 100%)', // Amber
+      iconColor: 'rgba(255,255,255,0.95)',
+      show: true,
+    },
+    {
+      label: 'Reject & Repair',
+      sub: 'Fix MICR errors',
+      icon: 'build',
+      active: true,
+      path: '/rr',
+      gradient: 'linear-gradient(135deg, #8b4513 0%, #5d2e0d 100%)', // Saddle Brown
+      iconColor: 'rgba(255,255,255,0.95)',
+      show: true,
+    },
+    // {
+    //   label: 'Maker',
+    //   sub: 'Cheque data entry',
+    //   icon: 'edit_document',
+    //   active: false,
+    //   gradient: '',
+    //   iconColor: '',
+    //   show: true,
+    // },
+    // {
+    //   label: 'Checker',
+    //   sub: 'Verification & approval',
+    //   icon: 'fact_check',
+    //   active: false,
+    //   gradient: '',
+    //   iconColor: '',
+    //   show: true,
+    // },
+    // {
+    //   label: 'QC',
+    //   sub: 'Quality control',
+    //   icon: 'verified',
+    //   active: false,
+    //   gradient: '',
+    //   iconColor: '',
+    //   show: true,
+    // },
+    // {
+    //   label: 'File Export',
+    //   sub: 'XML & IMG generation',
+    //   icon: 'download',
+    //   active: false,
+    //   gradient: '',
+    //   iconColor: '',
+    //   show: true,
+    // },
+  ];
+
   return (
     <div>
-      {/* Page header */}
-      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: 'var(--text-2xl)', fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--fg)' }}>
-            Dashboard
-          </h1>
-          <p style={{ margin: '4px 0 0', fontSize: 'var(--text-sm)', color: 'var(--fg-muted)' }}>
-            {user?.locationName} · EOD{' '}
-            <span style={{ fontFamily: 'var(--font-mono)' }}>
-              {new Date(user?.eodDate ?? '').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
-            </span>
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          {canCreateBatch && (
-            <button
-              style={{
-                display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                padding: '9px 16px', height: 38,
-                background: 'var(--accent-500)', color: 'var(--fg-on-accent)',
-                border: '1px solid var(--accent-600)',
-                borderRadius: 'var(--r-md)',
-                fontSize: 'var(--text-sm)', fontWeight: 500, fontFamily: 'var(--font-sans)',
-                cursor: 'pointer', whiteSpace: 'nowrap',
-                transition: 'background-color var(--dur-fast) var(--ease)',
-              }}
-              onMouseEnter={e => (e.currentTarget.style.background = 'var(--accent-600)')}
-              onMouseLeave={e => (e.currentTarget.style.background = 'var(--accent-500)')}
-              onClick={() => navigate('/batch/create')}
-            >
-              <Icon name="add" size={16} weight={500} />
-              New batch
-            </button>
-          )}
+      {/* Module grid */}
+      <div style={{ marginBottom: 28 }}>
+        <div className="module-grid">
+          {modules.map((m) => (
+            m.active ? (
+              <button
+                key={m.label}
+                onClick={() => navigate(m.path!)}
+                style={{
+                  display: 'flex', flexDirection: 'column', gap: 8,
+                  padding: '14px 14px 12px',
+                  background: m.gradient,
+                  border: 'none',
+                  borderRadius: 'var(--r-lg)',
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.15), 0 1px 2px rgba(0,0,0,0.1)',
+                  transition: 'transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease)',
+                  textAlign: 'left',
+                  fontFamily: 'var(--font-sans)',
+                  position: 'relative',
+                  overflow: 'hidden',
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.22), 0 2px 6px rgba(0,0,0,0.14)';
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.18), 0 1px 3px rgba(0,0,0,0.12)';
+                }}
+              >
+                {/* subtle sheen */}
+                <div style={{
+                  position: 'absolute', inset: 0, borderRadius: 'var(--r-lg)',
+                  background: 'linear-gradient(135deg, rgba(255,255,255,0.12) 0%, transparent 60%)',
+                  pointerEvents: 'none',
+                }} />
+                <div style={{
+                  width: 28, height: 28, borderRadius: 'var(--r-sm)',
+                  background: 'rgba(0,0,0,0.18)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0,
+                }}>
+                  <Icon name={m.icon} size={16} style={{ color: m.iconColor }} />
+                </div>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)', color: '#fff', letterSpacing: '-0.01em', marginBottom: 1 }}>
+                    {m.label}
+                  </div>
+                  <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.72)', lineHeight: 1.3 }}>
+                    {m.sub}
+                  </div>
+                </div>
+                <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: 3 }}>
+                  <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.80)', fontWeight: 500 }}>Go</span>
+                  <Icon name="arrow_forward" size={12} style={{ color: 'rgba(255,255,255,0.80)' }} />
+                </div>
+              </button>
+            ) : (
+              <div
+                key={m.label}
+                style={{
+                  display: 'flex', flexDirection: 'column', gap: 8,
+                  padding: '14px 14px 12px',
+                  background: 'var(--bg-raised)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--r-lg)',
+                  boxShadow: 'var(--shadow-xs)',
+                  opacity: 0.55,
+                  cursor: 'not-allowed',
+                  position: 'relative',
+                  overflow: 'hidden',
+                }}
+              >
+                <div style={{
+                  width: 28, height: 28, borderRadius: 'var(--r-sm)',
+                  background: 'var(--bg-subtle)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0,
+                }}>
+                  <Icon name={m.icon} size={16} style={{ color: 'var(--fg-faint)' }} />
+                </div>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)', color: 'var(--fg)', letterSpacing: '-0.01em', marginBottom: 1 }}>
+                    {m.label}
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--fg-subtle)', lineHeight: 1.3 }}>
+                    {m.sub}
+                  </div>
+                </div>
+                <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: 3 }}>
+                  <Icon name="lock" size={10} style={{ color: 'var(--fg-faint)' }} />
+                  <span style={{ fontSize: '10px', color: 'var(--fg-faint)', fontWeight: 500 }}>Phase 2</span>
+                </div>
+              </div>
+            )
+          ))}
         </div>
       </div>
 
@@ -237,7 +385,7 @@ export function DashboardPage() {
       </div>
 
       {/* Batch table card */}
-      <div style={{
+      <div id="batches-table" style={{
         background: 'var(--bg-raised)', border: '1px solid var(--border)',
         borderRadius: 'var(--r-lg)', boxShadow: 'var(--shadow-xs)',
         overflow: 'hidden',

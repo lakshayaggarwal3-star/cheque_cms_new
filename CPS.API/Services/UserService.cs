@@ -68,6 +68,7 @@ public class UserService : IUserService
             RoleMaker = request.RoleMaker,
             RoleChecker = request.RoleChecker,
             RoleAdmin = request.RoleAdmin,
+            RoleImageViewer = request.RoleImageViewer,
             IsDeveloper = request.IsDeveloper,
             IsActive = true,
             CreatedBy = createdBy,
@@ -101,6 +102,7 @@ public class UserService : IUserService
         user.RoleMaker = request.RoleMaker;
         user.RoleChecker = request.RoleChecker;
         user.RoleAdmin = request.RoleAdmin;
+        user.RoleImageViewer = request.RoleImageViewer;
         user.IsDeveloper = request.IsDeveloper;
         user.UpdatedBy = updatedBy;
         user.UpdatedAt = DateTime.UtcNow;
@@ -201,6 +203,7 @@ public class UserService : IUserService
         RoleMaker = u.RoleMaker,
         RoleChecker = u.RoleChecker,
         RoleAdmin = u.RoleAdmin,
+        RoleImageViewer = u.RoleImageViewer,
         IsDeveloper = u.IsDeveloper,
         DefaultLocationID = u.DefaultLocationID,
         DefaultLocationName = u.DefaultLocation?.LocationName,

@@ -38,17 +38,17 @@ public class ScannerOrchestrator : IScannerOrchestrator
         return PostNoContentAsync(endpoint);
     }
 
-    public async Task<ScannerCaptureResult> CaptureChequeAsync(bool useMock)
+    public async Task<ScannerCaptureResult> CaptureChequeAsync(bool useMock, string? frontFileName = null, string? backFileName = null)
     {
-        if (useMock) return BuildMockCheque();
-        var json = await PostJsonAsync("/scanner/cheque/capture");
+        if (useMock) return BuildMockCheque(frontFileName, backFileName);
+        var json = await PostJsonAsync("/scanner/cheque/capture", frontFileName, backFileName);
         return ParseCapture(json, isSlip: false);
     }
 
-    public async Task<ScannerCaptureResult> CaptureSlipAsync(bool useMock)
+    public async Task<ScannerCaptureResult> CaptureSlipAsync(bool useMock, string? frontFileName = null)
     {
-        if (useMock) return BuildMockSlip();
-        var json = await PostJsonAsync("/scanner/slip/capture");
+        if (useMock) return BuildMockSlip(frontFileName);
+        var json = await PostJsonAsync("/scanner/slip/capture", frontFileName);
         return ParseCapture(json, isSlip: true);
     }
 
@@ -70,12 +70,22 @@ public class ScannerOrchestrator : IScannerOrchestrator
         }
     }
 
-    private async Task<string> PostJsonAsync(string endpoint)
+    private async Task<string> PostJsonAsync(string endpoint, string? frontName = null, string? backName = null)
     {
         using var http = CreateHttpClient();
         try
         {
-            using var response = await http.PostAsync(AbsoluteUrl(endpoint), content: null);
+            object? payload = null;
+            if (frontName != null || backName != null)
+            {
+                payload = new { frontFileName = frontName, backFileName = backName };
+            }
+            
+            var content = payload != null 
+                ? new StringContent(JsonSerializer.Serialize(payload), System.Text.Encoding.UTF8, "application/json") 
+                : null;
+
+            using var response = await http.PostAsync(AbsoluteUrl(endpoint), content);
             var body = await response.Content.ReadAsStringAsync();
             if (!response.IsSuccessStatusCode)
                 throw new ScannerException($"Scanner capture failed ({response.StatusCode}): {body}");
@@ -145,14 +155,14 @@ public class ScannerOrchestrator : IScannerOrchestrator
         return null;
     }
 
-    private ScannerCaptureResult BuildMockCheque()
+    private ScannerCaptureResult BuildMockCheque(string? frontName, string? backName)
     {
         var stamp = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss_fff");
         var suffix = stamp[^4..];
         return new ScannerCaptureResult
         {
-            ImageFrontPath = $"mock/cheque/F_{stamp}.jpg",
-            ImageBackPath = $"mock/cheque/B_{stamp}.jpg",
+            ImageFrontPath = frontName != null ? $"mock/cheque/{frontName}.jpg" : $"mock/cheque/F_{stamp}.jpg",
+            ImageBackPath = backName != null ? $"mock/cheque/{backName}.jpg" : $"mock/cheque/B_{stamp}.jpg",
             MICRRaw = $"12345678900000{suffix}",
             ChqNo = suffix.PadLeft(6, '0'),
             MICR1 = "123456789",
@@ -161,12 +171,12 @@ public class ScannerOrchestrator : IScannerOrchestrator
         };
     }
 
-    private ScannerCaptureResult BuildMockSlip()
+    private ScannerCaptureResult BuildMockSlip(string? frontName)
     {
         var stamp = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss_fff");
         return new ScannerCaptureResult
         {
-            ImageFrontPath = $"mock/slip/S_{stamp}.jpg"
+            ImageFrontPath = frontName != null ? $"mock/slip/{frontName}.jpg" : $"mock/slip/S_{stamp}.jpg"
         };
     }
 }

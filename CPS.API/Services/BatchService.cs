@@ -48,8 +48,8 @@ public class BatchService : IBatchService
         var isMobileMode = entryMode.Equals("mobile", StringComparison.OrdinalIgnoreCase);
 
         // BatchNo format requested:
-        // {ScannerID}{ddMMyyyy}{seq:D5}
-        // Example: SCN011404202600001
+        // {ScannerID}{yyyyMMdd}{seq:D5}
+        // Example: SCN012026041400001
         var scanner = request.ScannerMappingID > 0
             ? location.Scanners.FirstOrDefault(s => s.ScannerMappingID == request.ScannerMappingID && s.IsActive)
             : location.Scanners.FirstOrDefault(s => s.IsActive);
@@ -59,7 +59,7 @@ public class BatchService : IBatchService
 
         var scannerMappingId = request.ScannerMappingID > 0 ? request.ScannerMappingID : (int?)scanner.ScannerMappingID;
         var seqNo = await _batchRepo.GetNextSequenceAsync(request.BatchDate, request.LocationID, scannerMappingId);
-        var datePart = request.BatchDate.ToString("ddMMyyyy");
+        var datePart = request.BatchDate.ToString("yyyyMMdd");
         var batchNo = $"{scanner.ScannerID.Trim()}{datePart}{seqNo:D5}";
         
         string? summRefNo = null;
@@ -68,7 +68,7 @@ public class BatchService : IBatchService
         if (!isMobileMode)
         {
             // Scanner Mode: Auto-generate SummRefNo and PIF during batch creation
-            // Pattern: {PIFPrefix-or-LocationCode}{ddMMyyyy}{seq:D2}
+            // Pattern: {PIFPrefix-or-LocationCode}{yyyyMMdd}{seq:D2}
             var pifPrefix = (location.PIFPrefix ?? location.LocationCode).Trim();
             var generatedRefNo = $"{pifPrefix}{datePart}{seqNo:D2}";
             summRefNo = generatedRefNo;
@@ -193,6 +193,13 @@ public class BatchService : IBatchService
         return await MapToBatchDto(batch);
     }
 
+    public async Task<BatchDto> GetBatchByNumberAsync(string batchNo)
+    {
+        var batch = await _batchRepo.GetByNoAsync(batchNo)
+            ?? throw new NotFoundException($"Batch {batchNo} not found.");
+        return await MapToBatchDto(batch);
+    }
+
     public async Task<DashboardSummary> GetDashboardAsync(int locationId, DateOnly date)
     {
         var counts = await _batchRepo.GetDashboardCountsAsync(locationId, date);
@@ -247,6 +254,7 @@ public class BatchService : IBatchService
             LocationID = b.LocationID,
             LocationName = b.Location?.LocationName ?? string.Empty,
             LocationCode = b.Location?.LocationCode ?? string.Empty,
+            ClusterCode = b.Location?.ClusterCode ?? string.Empty,
             ScannerMappingID = b.ScannerMappingID,
             ScannerID = b.Scanner?.ScannerID,
             PickupPointCode = b.PickupPointCode,

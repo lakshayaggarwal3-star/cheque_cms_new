@@ -51,6 +51,7 @@ public class BatchDto
     public int LocationID { get; set; }
     public string LocationName { get; set; } = string.Empty;
     public string LocationCode { get; set; } = string.Empty;
+    public string ClusterCode { get; set; } = string.Empty;
     public int? ScannerMappingID { get; set; }
     public string? ScannerID { get; set; }
     public string? PickupPointCode { get; set; }

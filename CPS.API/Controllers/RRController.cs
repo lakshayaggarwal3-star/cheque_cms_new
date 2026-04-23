@@ -16,7 +16,7 @@ namespace CPS.API.Controllers;
 
 [ApiController]
 [Route("api/rr")]
-[Authorize]
+[Authorize(Roles = "Maker,Checker,Admin,Developer")]
 public class RRController : ControllerBase
 {
     private readonly IRRService _rrService;

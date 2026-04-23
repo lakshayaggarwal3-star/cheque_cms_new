@@ -228,7 +228,6 @@ public class SlipService : ISlipService
             ScanMICR1 = c.ScanMICR1,
             ScanMICR2 = c.ScanMICR2,
             ScanMICR3 = c.ScanMICR3,
-            ScanAmount = c.ScanAmount,
             RRMICR1 = c.RRMICR1,
             RRMICR2 = c.RRMICR2,
             RRMICR3 = c.RRMICR3,

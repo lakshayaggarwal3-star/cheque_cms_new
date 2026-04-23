@@ -11,25 +11,27 @@ import { useNavigate } from 'react-router-dom';
 import { getLocations, getScanners } from '../services/locationService';
 import { createBatch, updateBatch } from '../services/batchService';
 import { useAuthStore } from '../store/authStore';
+import { useSettingsStore } from '../store/settingsStore';
 import { toast } from '../store/toastStore';
 import type { LocationDto, ScannerDto } from '../types';
 
 export function useBatchForm() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
+  const { entryMode: storedEntryMode } = useSettingsStore();
 
   const [scanners, setScanners] = useState<ScannerDto[]>([]);
   const [locationDetails, setLocationDetails] = useState<LocationDto | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // Entry Mode
+  // Entry Mode — driven by Settings; force mobile if user lacks scanner role
   const hasBothRoles = !!(user?.roles.includes('Scanner') && user?.roles.includes('MobileScanner'));
   const onlyMobile = !!(user?.roles.includes('MobileScanner') && !user?.roles.includes('Scanner'));
-  const [entryMode, setEntryMode] = useState<'scanner' | 'mobile'>(onlyMobile ? 'mobile' : 'scanner');
+  const entryMode = onlyMobile ? 'mobile' : storedEntryMode;
 
   // Form State
   const [clearingType, setClearingType] = useState('03');
-  const [batchDate, setBatchDate] = useState(user?.eodDate ?? new Date().toISOString().slice(0, 10));
+  const [batchDate, setBatchDate] = useState(new Date().toISOString().slice(0, 10));
   
   const [summRefNo, setSummRefNo] = useState('');
   const [pif, setPif] = useState('');
@@ -112,7 +114,7 @@ export function useBatchForm() {
 
     setSubmitting(true);
     try {
-      // Create initial batch
+      // Create initial batch (PIF = Summary Ref)
       const batch = await createBatch({
         locationID:       user.locationId,
         scannerMappingID: activeScanner.scannerMappingID,
@@ -125,7 +127,7 @@ export function useBatchForm() {
         totalAmount:      0,
         entryMode:        entryMode,
         summRefNo:        summRefNo || undefined,
-        pif:              pif || undefined,
+        pif:              summRefNo || undefined,
       });
 
       // Update secondary fields including optional ones
@@ -137,11 +139,11 @@ export function useBatchForm() {
         scanType,
         withSlip: withSlip === 'with',
         summRefNo: summRefNo || batch.summRefNo,
-        pif: pif || batch.pif,
+        pif: summRefNo || batch.pif,
       });
 
       toast.success(`Batch ${batch.batchNo} created`);
-      navigate(`/scan/${batch.batchID}`);
+      navigate(`/scan/${batch.batchNo}`);
     } catch (err: any) {
       toast.error(err?.response?.data?.message ?? 'Failed to create batch');
     } finally {
@@ -170,7 +172,6 @@ export function useBatchForm() {
     showMobileModal,
     activeScanner,
     setShowMobileModal,
-    setEntryMode,
     setClearingType,
     setBatchDate,
     setSummRefNo,
