@@ -7,7 +7,7 @@
 // =============================================================================
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Outlet, useNavigate, useLocation, Link, NavLink } from 'react-router-dom';
+import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { logout } from '../services/authService';
 
@@ -78,65 +78,88 @@ function LogoIcon({ size = 28 }: { size?: number }) {
 
 // ── NavItem ───────────────────────────────────────────────────────────────────
 
-function NavItem({ icon, label, active, expanded, onClick }: {
-  icon: string; label: string; active: boolean; expanded: boolean; onClick?: () => void;
+function NavItem({ icon, label, active, expanded, onClick, path }: {
+  icon: string; label: string; active: boolean; expanded: boolean; onClick?: () => void; path?: string;
 }) {
   const [hover, setHover] = useState(false);
-  return (
-    <button
-      onClick={onClick}
-      title={expanded ? '' : label}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      style={{
-        display: 'flex', alignItems: 'center',
-        gap: 12,
-        width: expanded ? 'calc(100% - 20px)' : 44,
-        margin: expanded ? '2px 10px' : '2px auto',
-        padding: expanded ? '10px 12px' : 0,
-        justifyContent: expanded ? 'flex-start' : 'center',
-        height: expanded ? 44 : 44,
-        borderRadius: 'var(--r-lg)',
-        fontSize: 'var(--text-sm)', fontWeight: active ? 600 : 500,
-        color: active ? 'var(--accent-600)' : (hover ? 'var(--fg)' : 'var(--fg-muted)'),
-        background: active ? '#ffffff' : (hover ? 'var(--bg-hover)' : 'transparent'),
-        border: 'none',
-        cursor: 'pointer',
-        transition: 'all var(--dur-fast) var(--ease)',
-        position: 'relative',
-        boxShadow: active ? 'var(--shadow-sm)' : 'none',
-      }}
-    >
-      <Icon name={icon} size={22} weight={active ? 500 : 400} />
-      {expanded && <span>{label}</span>}
-      {active && (
+
+  const navStyle: React.CSSProperties = {
+    display: 'flex', alignItems: 'center',
+    gap: 12,
+    padding: expanded ? '8px 10px' : '9px 0',
+    margin: expanded ? 0 : '0 10px',
+    justifyContent: expanded ? 'flex-start' : 'center',
+    borderRadius: 'var(--r-md)',
+    fontSize: 'var(--text-sm)', fontWeight: 500,
+    color: active ? 'var(--accent-700)' : (hover ? 'var(--fg)' : 'var(--fg-muted)'),
+    background: active ? 'var(--accent-50)' : (hover ? 'var(--bg-hover)' : 'transparent'),
+    cursor: 'pointer',
+    transition: 'color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease)',
+    position: 'relative',
+    textDecoration: 'none',
+    userSelect: 'none',
+  };
+
+  const inner = (
+    <>
+      <Icon name={icon} size={20} weight={active ? 500 : 400} />
+      {expanded && <span style={{ whiteSpace: 'nowrap' }}>{label}</span>}
+      {active && !expanded && (
         <span style={{
-          position: 'absolute', left: -2, top: expanded ? 8 : 10, bottom: expanded ? 8 : 10,
-          width: 4, borderRadius: '0 4px 4px 0',
+          position: 'absolute', left: 0, top: 8, bottom: 8,
+          width: 3, borderRadius: '0 3px 3px 0',
           background: 'var(--accent-500)',
         }} />
       )}
-    </button>
+    </>
+  );
+
+  if (path) {
+    return (
+      <Link
+        to={path}
+        title={expanded ? '' : label}
+        onClick={onClick}
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
+        style={navStyle}
+      >
+        {inner}
+      </Link>
+    );
+  }
+
+  return (
+    <a
+      href="#"
+      title={expanded ? '' : label}
+      onClick={(e) => { e.preventDefault(); onClick?.(); }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={navStyle}
+    >
+      {inner}
+    </a>
   );
 }
 
 // ── Nav config ────────────────────────────────────────────────────────────────
 
-interface NavLink {
+interface NavLinkDef {
   id: string; label: string; icon: string; path: string; roles?: string[];
 }
 
-const NAV_LINKS: NavLink[] = [
-  { id: 'dashboard',    label: 'Dashboard',    icon: 'dashboard',    path: '/' },
-  { id: 'all-batches',  label: 'All Batches',   icon: 'list_alt',     path: '/all-batches' },
-  { id: 'batch-create', label: 'New Batch',     icon: 'add_circle',   path: '/batch/create', roles: ['Scanner', 'MobileScanner', 'Admin', 'Developer'] },
-  { id: 'scan',         label: 'Scanning',      icon: 'scanner',      path: '/scan',         roles: ['Scanner', 'MobileScanner', 'Admin', 'Developer'] },
-  { id: 'rr',           label: 'Reject Repair', icon: 'build',        path: '/rr' },
-  { id: 'users',        label: 'Users',         icon: 'group',        path: '/admin/users',  roles: ['Admin', 'Developer'] },
-  { id: 'masters',      label: 'Masters',       icon: 'folder',       path: '/admin/masters', roles: ['Admin', 'Developer'] },
+const NAV_LINKS: NavLinkDef[] = [
+  { id: 'dashboard',    label: 'Dashboard',    icon: 'dashboard',        path: '/' },
+  { id: 'all-batches',  label: 'All Batches',   icon: 'list_alt',         path: '/all-batches' },
+  { id: 'batch-create', label: 'New Batch',     icon: 'add_circle',       path: '/batch/create', roles: ['Scanner', 'MobileScanner', 'Admin', 'Developer'] },
+  { id: 'scan',         label: 'Scanning',      icon: 'document_scanner', path: '/scan',         roles: ['Scanner', 'MobileScanner', 'Admin', 'Developer'] },
+  { id: 'rr',           label: 'Reject Repair', icon: 'build',            path: '/rr' },
+  { id: 'users',        label: 'Users',         icon: 'group',            path: '/admin/users',  roles: ['Admin', 'Developer'] },
+  { id: 'masters',      label: 'Masters',       icon: 'folder',           path: '/admin/masters', roles: ['Admin', 'Developer'] },
 ];
 
-const FOOTER_LINKS: NavLink[] = [
+const FOOTER_LINKS: NavLinkDef[] = [
   { id: 'settings', label: 'Settings', icon: 'settings', path: '/admin/settings', roles: ['Developer'] },
   { id: 'logout',   label: 'Sign out', icon: 'logout',   path: '#logout' },
 ];
@@ -145,7 +168,7 @@ const PAGE_TITLES: Record<string, { title: string; subtitle: string }> = {
   '/':               { title: 'Dashboard',     subtitle: 'Overview & batch queue' },
   '/all-batches':    { title: 'All Batches',   subtitle: 'View & manage all batches' },
   '/batch/create':   { title: 'New Batch',     subtitle: 'Create & dispatch to scanner' },
-  '/scan':           { title: 'Pending Batches', subtitle: 'Batches pending scan' },
+  '/scan':           { title: 'Scanning Queue', subtitle: 'Batches pending scan' },
   '/rr':             { title: 'Reject Repair', subtitle: 'Batches pending repair' },
   '/admin/users':    { title: 'Users',         subtitle: 'Manage operators & roles' },
   '/admin/masters':  { title: 'Masters',       subtitle: 'Clients, banks, sort codes' },
@@ -172,7 +195,8 @@ function Sidebar({ expanded, open, currentPath, onNav, onLogout, user }: {
 
   const initials = user?.username?.slice(0, 2).toUpperCase() ?? 'U';
 
-
+  const isActive = (link: NavLinkDef) =>
+    link.path === '/' ? currentPath === '/' : currentPath.startsWith(link.path);
 
   return (
     <aside
@@ -193,7 +217,7 @@ function Sidebar({ expanded, open, currentPath, onNav, onLogout, user }: {
         <div style={{
           display: 'flex', alignItems: 'center', gap: 10,
           padding: expanded ? '16px 18px' : '16px 0',
-          justifyContent: 'center',
+          justifyContent: expanded ? 'flex-start' : 'center',
           height: 56, boxSizing: 'border-box', flexShrink: 0,
         }}>
           <LogoIcon size={24} />
@@ -215,21 +239,10 @@ function Sidebar({ expanded, open, currentPath, onNav, onLogout, user }: {
         scrollbarWidth: 'none',
       }}>
         {NAV_LINKS.filter(l => hasRole(l.roles)).map(l => (
-          <NavLink 
-            key={l.id} 
-            to={l.path}
-            onClick={() => onNav(l.path)}
-            style={{ textDecoration: 'none', display: 'flex' }}
-          >
-            {({ isActive }) => (
-              <NavItem 
-                icon={l.icon} 
-                label={l.label}
-                active={isActive} 
-                expanded={expanded}
-              />
-            )}
-          </NavLink>
+          <NavItem key={l.id} icon={l.icon} label={l.label}
+            active={isActive(l)} expanded={expanded}
+            path={l.path}
+            onClick={() => onNav(l.path)} />
         ))}
       </nav>
 
@@ -240,32 +253,10 @@ function Sidebar({ expanded, open, currentPath, onNav, onLogout, user }: {
         display: 'flex', flexDirection: 'column', gap: 2,
       }}>
         {FOOTER_LINKS.filter(l => hasRole(l.roles)).map(l => (
-          l.path === '#logout' ? (
-            <NavItem 
-              key={l.id} 
-              icon={l.icon} 
-              label={l.label}
-              active={false} 
-              expanded={expanded}
-              onClick={onLogout} 
-            />
-          ) : (
-            <NavLink 
-              key={l.id} 
-              to={l.path}
-              onClick={() => onNav(l.path)}
-              style={{ textDecoration: 'none' }}
-            >
-              {({ isActive }) => (
-                <NavItem 
-                  icon={l.icon} 
-                  label={l.label}
-                  active={isActive} 
-                  expanded={expanded}
-                />
-              )}
-            </NavLink>
-          )
+          <NavItem key={l.id} icon={l.icon} label={l.label}
+            active={false} expanded={expanded}
+            path={l.path === '#logout' ? undefined : l.path}
+            onClick={() => l.path === '#logout' ? onLogout() : onNav(l.path)} />
         ))}
       </div>
 
@@ -274,7 +265,7 @@ function Sidebar({ expanded, open, currentPath, onNav, onLogout, user }: {
         borderTop: '1px solid var(--border-subtle)',
         padding: expanded ? '12px 14px' : '12px 0',
         display: 'flex', alignItems: 'center', gap: 10,
-        justifyContent: 'center',
+        justifyContent: expanded ? 'flex-start' : 'center',
         flexShrink: 0,
         width: '100%',
         boxSizing: 'border-box',
@@ -369,6 +360,7 @@ export function Layout() {
   };
 
   const handleNav = (path: string) => {
+    // <Link> handles the actual navigation; we only manage sidebar state here
     const isAutoClosePage = AUTO_CLOSE_PATHS.some(p => path.startsWith(p));
     if (isMobile || isAutoClosePage) {
       setSidebarOpen(false);
@@ -426,18 +418,20 @@ export function Layout() {
           flexDirection: 'column',
           position: 'relative'
         }}>
-          <div 
-            className={!isNoHeaderPage ? "page-content" : ""} 
-            style={{ 
-              padding: !isNoHeaderPage ? '20px 24px 32px' : 0, 
-              width: '100%', 
-              boxSizing: 'border-box', 
-              flex: 1, 
-              display: 'flex', 
-              flexDirection: 'column' 
+          <div
+            key={location.key}
+            className={!isNoHeaderPage ? "page-content" : ""}
+            style={{
+              padding: !isNoHeaderPage ? '20px 24px 32px' : 0,
+              width: '100%',
+              boxSizing: 'border-box',
+              flex: 1,
+              minHeight: 0,
+              display: 'flex',
+              flexDirection: 'column'
             }}
           >
-            <Outlet key={location.pathname} />
+            <Outlet />
           </div>
         </main>
       </div>

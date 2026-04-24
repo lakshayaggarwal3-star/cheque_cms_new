@@ -185,35 +185,85 @@ function GroupRows({ group, onImageSelect, onRescan, onDelete }: {
   onRescan?: (item: RescanTarget) => void;
   onDelete: (item: DeleteTarget) => void;
 }) {
+  const [expanded, setExpanded] = useState(true);
+
+  const slipCount = group.slipScans.length;
+  const chqCount = group.cheques.length;
+  const pickupCode = group.pickupPoint ? group.pickupPoint.split(' - ')[0] : null;
+
+  const countLabel = [
+    slipCount > 0 ? `${slipCount} slip` : null,
+    chqCount > 0 ? `${chqCount} chq` : null,
+  ].filter(Boolean).join(' · ');
+
   return (
     <>
-      {/* Group separator row */}
-      <tr>
+      {/* Group header row — clickable to expand/collapse */}
+      <tr
+        onClick={() => setExpanded(e => !e)}
+        style={{ cursor: 'pointer', userSelect: 'none' }}
+      >
         <td colSpan={9} style={{
-          padding: '6px 16px',
+          padding: '7px 16px',
           background: 'var(--bg-raised)',
-          borderBottom: '1px solid var(--border-subtle)',
+          borderBottom: expanded ? '1px solid var(--border-subtle)' : '1px solid var(--border)',
           borderTop: '1px solid var(--border)',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Icon name="receipt" size={13} style={{ color: 'var(--fg-muted)' }} />
-            <span style={{ fontWeight: 600, color: 'var(--fg)', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)' }}>
+            {/* Expand/collapse chevron */}
+            <Icon
+              name={expanded ? 'expand_more' : 'chevron_right'}
+              size={15}
+              style={{ color: 'var(--fg-muted)', flexShrink: 0, transition: 'transform 0.15s' }}
+            />
+
+            <Icon name="receipt" size={13} style={{ color: 'var(--fg-muted)', flexShrink: 0 }} />
+
+            {/* Slip no */}
+            <span style={{ fontWeight: 700, color: 'var(--fg)', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', flexShrink: 0 }}>
               {group.depositSlipNo || group.slipNo}
             </span>
-            {(group.clientName || group.pickupPoint) && (
-              <span style={{ color: 'var(--fg-subtle)', fontSize: 10 }}>
-                — {group.clientName} {group.pickupPoint ? `(${group.pickupPoint})` : ''}
+
+            {/* Client name */}
+            {group.clientName && (
+              <span style={{ color: 'var(--fg-subtle)', fontSize: 10, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                — {group.clientName}
               </span>
             )}
-            <span style={{ color: 'var(--fg-faint)', marginLeft: 'auto', fontSize: 10 }}>
-              {group.cheques.length} chq · {group.slipScans.length} slip
+
+            {/* Pickup point code */}
+            {pickupCode && (
+              <span style={{
+                fontSize: 9, fontWeight: 600, padding: '1px 6px',
+                background: 'var(--bg-subtle)', border: '1px solid var(--border)',
+                borderRadius: 'var(--r-full)', color: 'var(--fg-muted)',
+                flexShrink: 0, fontFamily: 'var(--font-mono)',
+              }}>
+                {pickupCode}
+              </span>
+            )}
+
+            {/* Slip amount */}
+            {group.slipAmount > 0 && (
+              <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--fg)', flexShrink: 0 }}>
+                ₹{group.slipAmount.toLocaleString('en-IN')}
+              </span>
+            )}
+
+            {/* Item counts */}
+            <span style={{
+              fontSize: 9, color: 'var(--fg-muted)', flexShrink: 0,
+              padding: '1px 6px', background: 'var(--bg-subtle)',
+              border: '1px solid var(--border)', borderRadius: 'var(--r-full)',
+            }}>
+              {countLabel || '0 items'}
             </span>
           </div>
         </td>
       </tr>
 
-      {/* Slip scan rows */}
-      {group.slipScans.map((scan, idx) => (
+      {/* Item rows — only when expanded */}
+      {expanded && group.slipScans.map((scan, idx) => (
         <SlipScanRow
           key={scan.slipScanId}
           scan={scan}
@@ -225,8 +275,7 @@ function GroupRows({ group, onImageSelect, onRescan, onDelete }: {
         />
       ))}
 
-      {/* Cheque rows */}
-      {group.cheques.map(cheque => (
+      {expanded && group.cheques.map(cheque => (
         <ChequeRow
           key={cheque.chequeItemId}
           cheque={cheque}

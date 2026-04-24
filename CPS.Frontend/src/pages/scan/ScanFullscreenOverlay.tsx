@@ -22,8 +22,10 @@ interface Props {
   nextChqSeq: number;
   panning: boolean;
   hasMoved: React.RefObject<boolean>;
+  fsPanOffset: { x: number; y: number };
+  setFsPanOffset: React.Dispatch<React.SetStateAction<{ x: number; y: number }>>;
   viewerFsRef: React.RefObject<HTMLDivElement | null>;
-  makePanHandlers: (ref: React.RefObject<HTMLDivElement | null>) => any;
+  makePanHandlers: (setPan: React.Dispatch<React.SetStateAction<{ x: number; y: number }>>) => any;
   onClose: () => void;
 }
 
@@ -33,7 +35,7 @@ export function ScanFullscreenOverlay({
   flipped, setFlipped,
   zoom, setZoom,
   nextChqSeq, panning, hasMoved,
-  viewerFsRef, makePanHandlers, onClose,
+  fsPanOffset, setFsPanOffset, viewerFsRef, makePanHandlers, onClose,
 }: Props) {
   return (
     <div style={{
@@ -68,7 +70,7 @@ export function ScanFullscreenOverlay({
             {Math.round(zoom * 100)}%
           </span>
           <IconBtn icon="zoom_in" tooltip="Zoom in" onClick={() => setZoom(z => Math.min(4, +(z + 0.25).toFixed(2)))} />
-          <IconBtn icon="fit_screen" tooltip="Reset zoom" onClick={() => setZoom(1)} />
+          <IconBtn icon="fit_screen" tooltip="Reset zoom" onClick={() => { setZoom(1); setFsPanOffset({ x: 0, y: 0 }); }} />
           {!isSlipView && (
             <IconBtn icon="flip" tooltip="Flip" onClick={() => setFlipped(f => !f)} />
           )}
@@ -77,51 +79,34 @@ export function ScanFullscreenOverlay({
         </div>
       </div>
 
-      {/* Scrollable / pannable image */}
+      {/* Pannable image area — overflow:hidden, image moves via translate+scale */}
       <div
         ref={viewerFsRef}
-        {...makePanHandlers(viewerFsRef)}
-        style={{ flex: 1, overflow: 'auto', display: 'flex', padding: 32, cursor: panning ? 'grabbing' : 'grab', userSelect: 'none' }}
-      >
-        <div style={{
-          margin: 'auto',
-          width: `${Math.round(100 * zoom)}%`,
-          height: `${Math.round(100 * zoom)}%`,
-          minWidth: '100%', minHeight: '100%',
+        {...makePanHandlers(setFsPanOffset)}
+        style={{
+          flex: 1, overflow: 'hidden',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          flexShrink: 0,
-          transition: 'width 0.15s ease, height 0.15s ease',
-        }}>
-          <div
+          cursor: panning ? 'grabbing' : 'grab',
+          userSelect: 'none', touchAction: 'none',
+        }}
+        onClick={() => !isSlipView && !hasMoved.current && setFlipped(f => !f)}
+      >
+        {(previewFront || previewBack) ? (
+          <img
+            src={flipped ? (previewBack ?? previewFront ?? '') : (previewFront ?? '')}
+            alt={flipped ? 'Back' : 'Front'}
             style={{
-              position: 'relative', width: '100%', height: '100%',
-              transformStyle: 'preserve-3d',
-              perspective: '2000px',
-              transition: 'transform var(--dur-slow) var(--ease)',
-              transform: flipped ? 'rotateY(180deg)' : 'rotateY(0)',
-              cursor: !isSlipView ? (panning ? 'grabbing' : 'pointer') : (panning ? 'grabbing' : 'default'),
+              maxHeight: '88%', maxWidth: '88%',
+              display: 'block', borderRadius: 6,
+              pointerEvents: 'none', userSelect: 'none', flexShrink: 0,
+              transform: `translate(${fsPanOffset.x}px, ${fsPanOffset.y}px) scale(${zoom})`,
+              transformOrigin: 'center center',
+              transition: panning ? 'none' : 'transform 0.15s ease-out',
             }}
-            onClick={() => !isSlipView && !hasMoved.current && setFlipped(f => !f)}
-          >
-            <div style={{ position: 'absolute', inset: 0, backfaceVisibility: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              {previewFront
-                ? <img src={previewFront} alt="Front" style={{ display: 'block', maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
-                : <ImagePlaceholder label={isSlipView ? 'SLIP IMAGE' : 'FRONT'} />}
-            </div>
-            {!isSlipView && (
-              <div style={{
-                position: 'absolute', inset: 0,
-                backfaceVisibility: 'hidden',
-                transform: 'rotateY(180deg)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>
-                {previewBack
-                  ? <img src={previewBack} alt="Back" style={{ display: 'block', maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
-                  : <ImagePlaceholder label="BACK" />}
-              </div>
-            )}
-          </div>
-        </div>
+          />
+        ) : (
+          <ImagePlaceholder label={isSlipView ? 'SLIP IMAGE' : (flipped ? 'BACK' : 'FRONT')} />
+        )}
       </div>
 
       {/* Bottom nav */}

@@ -85,7 +85,11 @@ export interface ScanPageState {
   viewerFsRef: React.RefObject<HTMLDivElement | null>;
   hasMoved: React.RefObject<boolean>;
   panning: boolean;
-  makePanHandlers: (scrollRef: React.RefObject<HTMLDivElement | null>) => {
+  panOffset: { x: number; y: number };
+  setPanOffset: React.Dispatch<React.SetStateAction<{ x: number; y: number }>>;
+  fsPanOffset: { x: number; y: number };
+  setFsPanOffset: React.Dispatch<React.SetStateAction<{ x: number; y: number }>>;
+  makePanHandlers: (setPan: React.Dispatch<React.SetStateAction<{ x: number; y: number }>>) => {
     onMouseDown: (e: React.MouseEvent) => void;
     onMouseMove: (e: React.MouseEvent) => void;
     onMouseUp: () => void;
@@ -186,28 +190,28 @@ export function useScanPageState(): ScanPageState {
   // Pan / drag
   const viewerRef = useRef<HTMLDivElement>(null);
   const viewerFsRef = useRef<HTMLDivElement>(null);
-  const panRef = useRef({ active: false, startX: 0, startY: 0, scrollLeft: 0, scrollTop: 0 });
+  const panRef = useRef({ active: false, lastX: 0, lastY: 0 });
   const hasMoved = useRef(false);
   const [panning, setPanning] = useState(false);
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const [fsPanOffset, setFsPanOffset] = useState({ x: 0, y: 0 });
 
-  const makePanHandlers = (scrollRef: React.RefObject<HTMLDivElement | null>) => ({
+  const makePanHandlers = (setPan: React.Dispatch<React.SetStateAction<{ x: number; y: number }>>) => ({
     onMouseDown: (e: React.MouseEvent) => {
-      const el = scrollRef.current;
-      if (!el) return;
+      e.preventDefault();
+      panRef.current = { active: true, lastX: e.clientX, lastY: e.clientY };
       hasMoved.current = false;
-      panRef.current = { active: true, startX: e.clientX, startY: e.clientY, scrollLeft: el.scrollLeft, scrollTop: el.scrollTop };
       setPanning(true);
     },
     onMouseMove: (e: React.MouseEvent) => {
       if (!panRef.current.active) return;
-      const el = scrollRef.current;
-      if (!el) return;
       e.preventDefault();
-      const dx = e.clientX - panRef.current.startX;
-      const dy = e.clientY - panRef.current.startY;
-      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) hasMoved.current = true;
-      el.scrollLeft = panRef.current.scrollLeft - dx;
-      el.scrollTop = panRef.current.scrollTop - dy;
+      const dx = e.clientX - panRef.current.lastX;
+      const dy = e.clientY - panRef.current.lastY;
+      panRef.current.lastX = e.clientX;
+      panRef.current.lastY = e.clientY;
+      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) hasMoved.current = true;
+      setPan(p => ({ x: p.x + dx, y: p.y + dy }));
     },
     onMouseUp: () => { panRef.current.active = false; setPanning(false); },
     onMouseLeave: () => { panRef.current.active = false; setPanning(false); },
@@ -219,9 +223,17 @@ export function useScanPageState(): ScanPageState {
   const [viewerType, setViewerType] = useState<string | null>(null);
 
   // UI layout
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpenRaw] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const [completing, setCompleting] = useState(false);
+
+  // Reset zoom + pan whenever the thumbnail sidebar opens or closes so the
+  // image fits the newly-available space without manual zoom-out.
+  const setSidebarOpen = useCallback((v: boolean) => {
+    setSidebarOpenRaw(v);
+    setZoom(1);
+    setPanOffset({ x: 0, y: 0 });
+  }, []);
 
   // Helpers
   const toImageSrc = (path?: string, fallback?: string): string | undefined => {
@@ -259,7 +271,7 @@ export function useScanPageState(): ScanPageState {
     zoom, setZoom,
     isFullscreen, setIsFullscreen,
     viewerRef, viewerFsRef, hasMoved,
-    panning, makePanHandlers,
+    panning, panOffset, setPanOffset, fsPanOffset, setFsPanOffset, makePanHandlers,
     viewerFront, setViewerFront,
     viewerBack, setViewerBack,
     viewerType, setViewerType,

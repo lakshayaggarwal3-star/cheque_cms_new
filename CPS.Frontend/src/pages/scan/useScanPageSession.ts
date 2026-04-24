@@ -7,7 +7,7 @@
 // =============================================================================
 
 import { useCallback } from 'react';
-import { getScanSession, releaseScanLock, startScan, completeSlipPhase, completeChequePhase } from '../../services/scanService';
+import { getScanSession, startScan, completeSlipPhase, completeChequePhase } from '../../services/scanService';
 import { getBatch, getBatchByNumber } from '../../services/batchService';
 import { toast } from '../../store/toastStore';
 import { BatchStatus, type ScanSessionDto } from '../../types';
@@ -75,6 +75,9 @@ export function useScanPageSession({ state, scanner }: Deps) {
   // ── Initialise on mount (runs once per batchNo change) ───────────────────
 
   const init = async (batchNo: string) => {
+    setLoading(true);
+    setSession(null);
+    setBatchDetails(null);
     try {
       const batch = await getBatchByNumber(batchNo);
       const batchId = batch.batchID;
@@ -163,6 +166,14 @@ export function useScanPageSession({ state, scanner }: Deps) {
         return;
       }
     }
+
+    // Refresh session so resumeState.activeSlipEntryId reflects null — without
+    // this the stale value causes the "Viewing history" gate to fire instead of
+    // showing the new "Slip entry required" prompt.
+    try {
+      const fresh = await getScanSession(id);
+      setSession(fresh);
+    } catch { /* non-critical — UI gate fix below handles it */ }
 
     state.setNewSlipSaved(false);
     setActiveSlipEntryId(null);

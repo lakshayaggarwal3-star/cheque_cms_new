@@ -12,7 +12,9 @@ export enum RangerTransportState {
 
 let rangerInstance: RangerClient | null = null;
 let currentState: RangerTransportState = RangerTransportState.TransportShutDown;
+let currentModel: string = '';
 let stateListeners: Array<(state: RangerTransportState) => void> = [];
+let modelListeners: Array<(model: string) => void> = [];
 let itemListeners: Array<(data: any) => void> = [];
 let endorsementProvider: (() => string) | null = null;
 
@@ -26,6 +28,16 @@ function ensureRangerInstance(): RangerClient {
       rangerInstance.TransportNewState = (newState: number) => {
         currentState = newState as RangerTransportState;
         stateListeners.forEach(l => l(currentState));
+        // Read model when scanner finishes configuring (TransportChangeOptions = 2)
+        if (newState === RangerTransportState.TransportChangeOptions) {
+          try {
+            const model: string = rangerInstance ? ((rangerInstance as any).GetTransportInfo('General', 'Model') ?? '') : '';
+            if (model && model !== currentModel) {
+              currentModel = model;
+              modelListeners.forEach(l => l(currentModel));
+            }
+          } catch { /* GetTransportInfo not available yet */ }
+        }
       };
 
       rangerInstance.TransportItemInPocket = (itemID: string) => {
@@ -61,6 +73,18 @@ export function subscribeToRangerState(callback: (state: RangerTransportState) =
   return () => {
     stateListeners = stateListeners.filter(l => l !== callback);
   };
+}
+
+export function subscribeToRangerModel(callback: (model: string) => void) {
+  modelListeners.push(callback);
+  callback(currentModel);
+  return () => {
+    modelListeners = modelListeners.filter(l => l !== callback);
+  };
+}
+
+export function getRangerModel(): string {
+  return currentModel;
 }
 
 export function subscribeToRangerItems(callback: (data: any) => void) {

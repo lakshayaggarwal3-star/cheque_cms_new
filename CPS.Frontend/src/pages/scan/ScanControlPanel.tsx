@@ -8,9 +8,9 @@
 
 import React from 'react';
 import { getImageUrl } from '../../utils/imageUtils';
-import { type ScanSessionDto } from '../../types';
+import { type ScanSessionDto, BatchStatus } from '../../types';
 import {
-  Icon, IconBtn, ControlCard, DevMockSection, ScanItemsTable,
+  Icon, ControlCard, DevMockSection,
 } from '../../components/scan';
 import { CameraCapture } from '../../components/CameraCapture';
 import { RangerFeedControl } from '../../components/RangerFeedControl';
@@ -47,7 +47,6 @@ interface Props {
   setConfirmComplete: (v: 'slip' | 'cheque' | null) => void;
   openImageEditor: (file: File, target: 'slip-front' | 'cheque-front' | 'cheque-back') => void;
   startNewSlip: () => void;
-  onImageSelect: (front: string, back: string | undefined, type: string | undefined) => void;
 }
 
 // ── Flatbed scanner status banner ─────────────────────────────────────────────
@@ -78,7 +77,7 @@ function FlatbedStatusBanner({ scanner, scanStep }: { scanner: any; scanStep: Sc
         )}
         {scanner.flatbedStatus === 'ready' && (
           <span style={{ fontSize: 'var(--text-xs)', color: 'var(--fg)', fontWeight: 500 }}>
-            {scanner.selectedScannerId || 'Scanner ready'}
+            Flatbed: {scanner.selectedScannerId || 'Ready'}
           </span>
         )}
         {scanner.flatbedStatus === 'error' && (
@@ -112,51 +111,45 @@ function RangerStatusBanner({ scanner, scanStep }: { scanner: any; scanStep: Sca
   const isReady = rangerState === 4;
   const isFeeding = rangerState === 5;
 
-  const getStatusInfo = () => {
-    switch (rangerState) {
-      case 1: return { label: 'Starting Up...', sub: 'Initializing connection...', color: 'var(--fg-muted)', icon: 'sync' };
-      case 2: return { label: 'Configuring...', sub: 'Setting capture options...', color: 'var(--fg-muted)', icon: 'settings' };
-      case 3: return { label: 'Enabling...', sub: 'Activating sensors...', color: 'var(--fg-muted)', icon: 'power' };
-      case 4: return { label: 'Ready to Feed', sub: 'Hopper is ready for feed.', color: '#f59e0b', icon: 'scanner' };
-      case 5: return { label: 'Feeding Cheques...', sub: 'Items are being captured.', color: '#22c55e', icon: 'sync' };
-      case 6: return { label: 'Ranger Exception', sub: 'Please check hardware connections.', color: 'var(--danger)', icon: 'error' };
-      default: return { label: 'Ranger Connected', sub: 'Please wait...', color: 'var(--fg-muted)', icon: 'scanner' };
-    }
-  };
-
-  const info = getStatusInfo();
+  const color = isError ? 'var(--danger)' : isReady ? '#f59e0b' : isFeeding ? '#22c55e' : 'var(--fg-muted)';
+  const icon = isFeeding ? 'sync' : isError ? 'error' : 'scanner';
+  const label = isReady
+    ? `Ranger: ${scanner.rangerModel || 'Ready'}`
+    : isFeeding ? 'Feeding Cheques…'
+    : isError ? 'Ranger Exception'
+    : rangerState === 1 ? 'Starting Up…'
+    : rangerState === 2 ? 'Configuring…'
+    : rangerState === 3 ? 'Enabling…'
+    : 'Ranger Connected';
 
   return (
     <div style={{
       flexShrink: 0,
-      display: 'flex', alignItems: 'flex-start', gap: 8,
+      display: 'flex', alignItems: 'center', gap: 8,
       padding: '9px 14px',
       borderBottom: '1px solid var(--border)',
-      borderLeft: `3px solid ${info.color}`,
+      borderLeft: `3px solid ${color}`,
       background: isError ? 'var(--danger-bg, #fff1f0)' : 'var(--bg-raised)',
     }}>
-      <div style={{ position: 'relative', marginTop: 1 }}>
-        <span className="material-symbols-outlined" style={{
-          fontSize: 16, flexShrink: 0,
-          color: info.color,
-          animation: isFeeding ? 'spin 1.5s linear infinite' : 'none',
-        }}>
-          {info.icon}
-        </span>
-        <div style={{ 
-          position: 'absolute', bottom: -1, right: -1, 
-          width: 7, height: 7, borderRadius: '50%', 
-          background: info.color, border: '1.5px solid var(--bg-raised)',
-          boxShadow: isFeeding ? `0 0 4px ${info.color}` : 'none'
-        }} />
-      </div>
+      <span className="material-symbols-outlined" style={{
+        fontSize: 15, marginTop: 1, flexShrink: 0,
+        fontVariationSettings: `'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 15`,
+        color,
+        animation: isFeeding ? 'spin 1.5s linear infinite' : 'none',
+      }}>
+        {icon}
+      </span>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: isError ? 'var(--danger)' : 'var(--fg)' }}>
-          {info.label}
-        </div>
-        <div style={{ fontSize: 10, color: 'var(--fg-muted)', marginTop: 2 }}>
-          {info.sub}
-        </div>
+        {isError ? (
+          <>
+            <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--danger)' }}>Ranger Exception</div>
+            <div style={{ fontSize: 10, color: 'var(--danger)', marginTop: 2, wordBreak: 'break-word', opacity: 0.85 }}>Check hardware connections</div>
+          </>
+        ) : (
+          <span style={{ fontSize: 'var(--text-xs)', color: isReady ? 'var(--fg)' : 'var(--fg-muted)', fontWeight: isReady ? 500 : 400 }}>
+            {label}
+          </span>
+        )}
       </div>
       {isError && (
         <button
@@ -190,7 +183,7 @@ function RecentSequences({
   setFlipped: React.Dispatch<React.SetStateAction<boolean>>;
 }) {
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, borderTop: '1px solid var(--border)' }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden', borderTop: '1px solid var(--border)' }}>
       <div style={{ padding: '8px 16px', flexShrink: 0, borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <span style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--fg-subtle)', textTransform: 'uppercase', letterSpacing: '.04em' }}>
           Recent sequences
@@ -200,188 +193,173 @@ function RecentSequences({
         </span>
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6, padding: '8px 12px' }}>
+      <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4, padding: '6px 10px' }}>
+
+        {/* Global batch slips (without-slip mode) */}
         {!session.withSlip && session.slipScans && session.slipScans.length > 0 && (
-          <div style={{ marginBottom: 10, borderBottom: '1px solid var(--border-subtle)', paddingBottom: 10 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent-500)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Icon name="collections" size={14} />
-              Batch Slips (Global)
+          <div style={{ marginBottom: 8, borderBottom: '1px solid var(--border-subtle)', paddingBottom: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+              <Icon name="collections" size={13} style={{ color: 'var(--accent-500)' }} />
+              <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--accent-500)' }}>Batch Slips</span>
+              <span style={{ marginLeft: 'auto', fontSize: 9, padding: '1px 6px', background: 'var(--bg-subtle)', borderRadius: 8, color: 'var(--fg-muted)', fontVariantNumeric: 'tabular-nums' }}>
+                {session.slipScans.length}
+              </span>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: 6 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(72px, 1fr))', gap: 5 }}>
               {session.slipScans.map((s, idx) => (
-                <div
-                  key={idx}
-                  onClick={() => { setViewerFront(getImageUrl(s.imagePath)); setViewerBack(null); setViewerType('slip'); setFlipped(false); }}
-                  style={{
-                    aspectRatio: '1/1', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)',
-                    overflow: 'hidden', cursor: 'pointer', position: 'relative'
-                  }}
-                >
+                <div key={idx} onClick={() => { setViewerFront(getImageUrl(s.imagePath)); setViewerBack(null); setViewerType('slip'); setFlipped(false); }}
+                  style={{ aspectRatio: '1/1', background: 'var(--bg)', border: `1px solid ${viewerFront === getImageUrl(s.imagePath) ? 'var(--accent-500)' : 'var(--border)'}`, borderRadius: 'var(--r-sm)', overflow: 'hidden', cursor: 'pointer', position: 'relative' }}>
                   <img src={getImageUrl(s.imagePath)} alt="slip" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  {viewerFront === getImageUrl(s.imagePath) && (
-                    <div style={{ position: 'absolute', inset: 0, background: 'rgb(217 119 87 / 20%)', border: '2px solid var(--accent-500)', borderRadius: 'inherit' }} />
-                  )}
+                  {viewerFront === getImageUrl(s.imagePath) && <div style={{ position: 'absolute', inset: 0, background: 'rgb(217 119 87 / 20%)' }} />}
                 </div>
               ))}
             </div>
           </div>
         )}
-        {session.slipGroups.length > 0 ? (
-          session.slipGroups.map((group, idx) => (
-            <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {/* Group header row */}
+
+        {session.slipGroups.length > 0 ? session.slipGroups.map((group, idx) => {
+          const isActive = activeSlipEntryId === group.slipEntryId;
+          const isExpanded = !!expandedGroups[String(group.slipEntryId)];
+          const slipsExpanded = expandedGroups[`${group.slipEntryId}-slips`] === true;
+          const chequesExpanded = expandedGroups[`${group.slipEntryId}-cheques`] === true;
+          const slipCount = group.slipScans?.length ?? 0;
+          const chequeCount = group.cheques?.length ?? 0;
+
+          return (
+            <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+
+              {/* ── Group header — single row with all info ─────────────── */}
               <div
                 onClick={() => {
                   setActiveSlipEntryId(group.slipEntryId);
-                  const key = String(group.slipEntryId);
-                  setExpandedGroups(prev => ({ ...prev, [key]: !prev[key] }));
+                  setExpandedGroups(prev => ({ ...prev, [String(group.slipEntryId)]: !prev[String(group.slipEntryId)] }));
                 }}
                 style={{
-                  padding: '10px 12px',
-                  background: activeSlipEntryId === group.slipEntryId ? 'var(--bg-subtle)' : 'var(--bg-raised)',
-                  border: `1px solid ${activeSlipEntryId === group.slipEntryId ? 'var(--border-strong)' : 'var(--border)'}`,
-                  borderRadius: 'var(--r-md)',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease',
-                  fontSize: 'var(--text-xs)',
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                  padding: '6px 10px',
+                  background: isActive ? 'var(--bg-subtle)' : 'var(--bg)',
+                  border: `1px solid ${isActive ? 'var(--accent-500)' : 'var(--border)'}`,
+                  borderRadius: 'var(--r-md)', cursor: 'pointer',
+                  transition: 'border-color 0.15s ease, background 0.15s ease',
+                  display: 'flex', alignItems: 'center', gap: 7, overflow: 'hidden',
                 }}
               >
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 10px', alignItems: 'center', marginBottom: 2 }}>
-                    {/* Client Name */}
-                    <span title="Client" style={{ display: 'flex', alignItems: 'center', gap: 5, color: 'var(--fg)', fontWeight: 700, fontSize: '11px' }}>
-                      <Icon name="person" size={13} style={{ color: 'var(--accent-500)' }} />
-                      {group.clientName || 'N/A'}
-                    </span>
-                    {/* Pickup Point */}
-                    <span title="Pickup Point" style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--fg-muted)', fontSize: 10, fontWeight: 500 }}>
-                      <Icon name="location_on" size={11} />
-                      {((group as any).pickupPoint || '').split(' - ')[0] || 'N/A'}
-                    </span>
-                    {/* Deposit Slip No */}
-                    <span title="Deposit Slip No" style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--fg-muted)', fontSize: 10, fontWeight: 500 }}>
-                      <Icon name="description" size={11} />
-                      {group.depositSlipNo || group.slipNo || 'N/A'}
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', gap: 10, fontSize: 10, color: 'var(--fg-muted)', opacity: 0.8 }}>
-                    <span>{(group.slipScans?.length ?? 0)} slip</span>
-                    <span>{group.cheques?.length ?? 0} chq</span>
-                    <span>₹ {group.slipAmount.toLocaleString('en-IN')}</span>
-                  </div>
+                <Icon name="person" size={13} style={{ color: isActive ? 'var(--accent-500)' : 'var(--fg-faint)', flexShrink: 0 }} />
+
+                {/* Client name — grows and truncates */}
+                <span style={{ flex: '1 1 0', minWidth: 0, fontSize: 11, fontWeight: 700, color: 'var(--fg)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {group.clientName || 'N/A'}
+                </span>
+
+                {/* Thin divider */}
+                <span style={{ width: 1, height: 14, background: 'var(--border-strong)', flexShrink: 0, borderRadius: 1 }} />
+
+                {/* Metadata chips — fixed width items, never wrap */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0, fontSize: 9, color: 'var(--fg-muted)', fontVariantNumeric: 'tabular-nums' }}>
+                  <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--fg-subtle)', fontWeight: 500 }}>
+                    {group.depositSlipNo || group.slipNo || '—'}
+                  </span>
+                  {session.withSlip && slipCount > 0 && (
+                    <>
+                      <span style={{ color: 'var(--border-strong)' }}>·</span>
+                      <span>{slipCount} {slipCount === 1 ? 'slip' : 'slips'}</span>
+                    </>
+                  )}
+                  <span style={{ color: 'var(--border-strong)' }}>·</span>
+                  <span>{chequeCount} {chequeCount === 1 ? 'chq' : 'chqs'}</span>
+                  <span style={{ color: 'var(--border-strong)' }}>·</span>
+                  <span>₹{group.slipAmount.toLocaleString('en-IN')}</span>
                 </div>
-                <Icon name={expandedGroups[String(group.slipEntryId)] ? 'expand_less' : 'expand_more'} size={16} />
+
+                <Icon name={isExpanded ? 'expand_less' : 'expand_more'} size={14} style={{ flexShrink: 0, color: 'var(--fg-muted)' }} />
               </div>
 
-              {/* Collapsible sub-sections */}
-              {expandedGroups[String(group.slipEntryId)] && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingLeft: 12, borderLeft: '1px solid var(--border)', marginLeft: 8, marginTop: 4 }}>
+              {/* ── Expanded sub-sections ───────────────────────────────── */}
+              {isExpanded && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 3, paddingLeft: 10, borderLeft: '2px solid var(--border)', marginLeft: 6 }}>
 
-                  {/* Slip images (ONLY if WithSlip) */}
+                  {/* Slip images section */}
                   {session.withSlip && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                      <div
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const key = `${group.slipEntryId}-slips`;
-                          setExpandedGroups(prev => ({ ...prev, [key]: !prev[key] }));
-                        }}
+                      <button
+                        onClick={e => { e.stopPropagation(); setExpandedGroups(prev => ({ ...prev, [`${group.slipEntryId}-slips`]: !prev[`${group.slipEntryId}-slips`] })); }}
                         style={{
-                          display: 'flex', alignItems: 'center', gap: 6, padding: '4px 0',
-                          cursor: 'pointer', fontSize: 10, fontWeight: 700, color: 'var(--fg-subtle)',
-                          textTransform: 'uppercase', letterSpacing: '.02em'
+                          display: 'flex', alignItems: 'center', gap: 7, width: '100%',
+                          padding: '5px 8px', background: 'var(--bg-raised)', border: '1px solid var(--border)',
+                          borderRadius: 'var(--r-sm)', cursor: 'pointer', fontFamily: 'inherit',
                         }}
                       >
-                        <Icon name={expandedGroups[`${group.slipEntryId}-slips`] === true ? 'expand_more' : 'chevron_right'} size={12} />
-                        <span>Slip Images ({(group.slipScans?.length ?? 0)})</span>
-                      </div>
+                        <Icon name="description" size={13} style={{ color: 'var(--fg-subtle)', flexShrink: 0 }} />
+                        <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--fg)', flex: 1, textAlign: 'left' }}>Slip Images</span>
+                        <span style={{ fontSize: 9, padding: '1px 6px', background: 'var(--bg-subtle)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--fg-muted)', fontVariantNumeric: 'tabular-nums' }}>
+                          {slipCount}
+                        </span>
+                        <Icon name={slipsExpanded ? 'expand_more' : 'chevron_right'} size={13} style={{ color: 'var(--fg-muted)', flexShrink: 0 }} />
+                      </button>
 
-                      {expandedGroups[`${group.slipEntryId}-slips`] === true && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 3, paddingLeft: 4 }}>
-                          {(group.slipScans ?? []).length > 0 ? (group.slipScans ?? []).map((s: any, sIdx: number) => {
+                      {slipsExpanded && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 1, paddingLeft: 4 }}>
+                          {slipCount > 0 ? (group.slipScans ?? []).map((s: any, sIdx: number) => {
                             const isViewed = viewerFront === getImageUrl(s.imagePath);
                             return (
-                              <div
-                                key={`slip-${sIdx}`}
-                                onClick={() => { setViewerFront(getImageUrl(s.imagePath)); setViewerBack(null); setViewerType('slip'); setFlipped(false); }}
-                                style={{
-                                  display: 'flex', alignItems: 'center', gap: 8, fontSize: '11px',
-                                  color: isViewed ? 'var(--accent)' : 'var(--fg-muted)',
-                                  padding: '4px 6px', cursor: 'pointer', borderRadius: 'var(--r-sm)',
-                                  background: isViewed ? 'var(--bg-subtle)' : 'transparent',
-                                  transition: 'all 0.1s ease'
-                                }}
+                              <div key={sIdx}
+                                onClick={() => { setActiveSlipEntryId(group.slipEntryId); setViewerFront(getImageUrl(s.imagePath)); setViewerBack(null); setViewerType('slip'); setFlipped(false); }}
+                                style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '4px 8px', borderRadius: 'var(--r-sm)', cursor: 'pointer', background: isViewed ? 'var(--bg-subtle)' : 'transparent', transition: 'background 0.1s' }}
                                 onMouseEnter={e => !isViewed && (e.currentTarget.style.background = 'var(--bg-subtle)')}
                                 onMouseLeave={e => !isViewed && (e.currentTarget.style.background = 'transparent')}
                               >
-                                <Icon name="image" size={12} style={{ color: isViewed ? 'var(--accent)' : undefined }} />
-                                <span style={{
-                                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
-                                  fontFamily: 'var(--font-mono)', fontSize: 10,
-                                  fontWeight: isViewed ? 600 : 400
-                                }}>
-                                  {s.imagePath?.split(/[\\/]/).pop()?.split('?')[0] || `slip_${sIdx + 1}.jpg`}
+                                <Icon name="image" size={12} style={{ color: isViewed ? 'var(--accent-500)' : 'var(--fg-faint)', flexShrink: 0 }} />
+                                <span style={{ flex: 1, fontSize: 10, fontWeight: isViewed ? 600 : 400, color: isViewed ? 'var(--accent)' : 'var(--fg-muted)', whiteSpace: 'nowrap' }}>
+                                  Slip #{String(sIdx + 1).padStart(2, '0')}
                                 </span>
-                                {isViewed && <Icon name="play_arrow" size={12} style={{ color: 'var(--accent)' }} />}
+                                {isViewed && <Icon name="arrow_right" size={12} style={{ color: 'var(--accent-500)', flexShrink: 0 }} />}
                               </div>
                             );
                           }) : (
-                            <div style={{ fontSize: 10, color: 'var(--fg-faint)', padding: '4px 0' }}>No slip images</div>
+                            <span style={{ fontSize: 10, color: 'var(--fg-faint)', padding: '4px 8px' }}>No slip images</span>
                           )}
                         </div>
                       )}
                     </div>
                   )}
-                  {/* Cheque images */}
+
+                  {/* Cheque images section */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <div
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const key = `${group.slipEntryId}-cheques`;
-                        setExpandedGroups(prev => ({ ...prev, [key]: !prev[key] }));
-                      }}
+                    <button
+                      onClick={e => { e.stopPropagation(); setExpandedGroups(prev => ({ ...prev, [`${group.slipEntryId}-cheques`]: !prev[`${group.slipEntryId}-cheques`] })); }}
                       style={{
-                        display: 'flex', alignItems: 'center', gap: 6, padding: '4px 0',
-                        cursor: 'pointer', fontSize: 10, fontWeight: 700, color: 'var(--fg-subtle)',
-                        textTransform: 'uppercase', letterSpacing: '.02em'
+                        display: 'flex', alignItems: 'center', gap: 7, width: '100%',
+                        padding: '5px 8px', background: 'var(--bg-raised)', border: '1px solid var(--border)',
+                        borderRadius: 'var(--r-sm)', cursor: 'pointer', fontFamily: 'inherit',
                       }}
                     >
-                      <Icon name={expandedGroups[`${group.slipEntryId}-cheques`] === true ? 'expand_more' : 'chevron_right'} size={12} />
-                      <span>Cheque Images ({(group.cheques?.length ?? 0)})</span>
-                    </div>
+                      <Icon name="payments" size={13} style={{ color: 'var(--fg-subtle)', flexShrink: 0 }} />
+                      <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--fg)', flex: 1, textAlign: 'left' }}>Cheque Images</span>
+                      <span style={{ fontSize: 9, padding: '1px 6px', background: 'var(--bg-subtle)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--fg-muted)', fontVariantNumeric: 'tabular-nums' }}>
+                        {chequeCount}
+                      </span>
+                      <Icon name={chequesExpanded ? 'expand_more' : 'chevron_right'} size={13} style={{ color: 'var(--fg-muted)', flexShrink: 0 }} />
+                    </button>
 
-                    {expandedGroups[`${group.slipEntryId}-cheques`] === true && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 3, paddingLeft: 4 }}>
-                        {(group.cheques ?? []).length > 0 ? (group.cheques ?? []).map((chq: any, cIdx: number) => {
+                    {chequesExpanded && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 1, paddingLeft: 4 }}>
+                        {chequeCount > 0 ? (group.cheques ?? []).map((chq: any, cIdx: number) => {
                           const isViewed = viewerFront === getImageUrl(chq.frontImagePath);
                           return (
-                            <div
-                              key={`chq-${cIdx}`}
-                              onClick={() => { setViewerFront(getImageUrl(chq.frontImagePath)); setViewerBack(chq.backImagePath ? getImageUrl(chq.backImagePath) : null); setViewerType('cheque'); setFlipped(false); }}
-                              style={{
-                                display: 'flex', alignItems: 'center', gap: 8, fontSize: '11px',
-                                color: isViewed ? 'var(--accent)' : 'var(--fg-muted)',
-                                padding: '4px 6px', cursor: 'pointer', borderRadius: 'var(--r-sm)',
-                                background: isViewed ? 'var(--bg-subtle)' : 'transparent',
-                                transition: 'all 0.1s ease'
-                              }}
+                            <div key={cIdx}
+                              onClick={() => { setActiveSlipEntryId(group.slipEntryId); setViewerFront(getImageUrl(chq.frontImagePath)); setViewerBack(chq.backImagePath ? getImageUrl(chq.backImagePath) : null); setViewerType('cheque'); setFlipped(false); }}
+                              style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '4px 8px', borderRadius: 'var(--r-sm)', cursor: 'pointer', background: isViewed ? 'var(--bg-subtle)' : 'transparent', transition: 'background 0.1s' }}
                               onMouseEnter={e => !isViewed && (e.currentTarget.style.background = 'var(--bg-subtle)')}
                               onMouseLeave={e => !isViewed && (e.currentTarget.style.background = 'transparent')}
                             >
-                              <Icon name="payments" size={12} style={{ color: isViewed ? 'var(--accent)' : undefined }} />
-                              <span style={{
-                                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
-                                fontFamily: 'var(--font-mono)', fontSize: 10,
-                                fontWeight: isViewed ? 600 : 400
-                              }}>
-                                {chq.frontImagePath?.split(/[\\/]/).pop()?.split('?')[0] || `chq_${cIdx + 1}.jpg`}
+                              <Icon name="payments" size={12} style={{ color: isViewed ? 'var(--accent-500)' : 'var(--fg-faint)', flexShrink: 0 }} />
+                              <span style={{ flex: 1, fontSize: 10, fontWeight: isViewed ? 600 : 400, color: isViewed ? 'var(--accent)' : 'var(--fg-muted)', whiteSpace: 'nowrap' }}>
+                                Cheque #{String(chq.chqSeq ?? cIdx + 1).padStart(3, '0')}
                               </span>
-                              {isViewed && <Icon name="play_arrow" size={12} style={{ color: 'var(--accent)' }} />}
+                              {isViewed && <Icon name="arrow_right" size={12} style={{ color: 'var(--accent-500)', flexShrink: 0 }} />}
                             </div>
                           );
                         }) : (
-                          <div style={{ fontSize: 10, color: 'var(--fg-faint)', padding: '4px 0' }}>No cheques scanned</div>
+                          <span style={{ fontSize: 10, color: 'var(--fg-faint)', padding: '4px 8px' }}>No cheques scanned</span>
                         )}
                       </div>
                     )}
@@ -390,9 +368,9 @@ function RecentSequences({
                 </div>
               )}
             </div>
-          ))
-        ) : (
-          <div style={{ padding: '12px 8px', fontSize: 'var(--text-xs)', color: 'var(--fg-faint)', textAlign: 'center' }}>
+          );
+        }) : (
+          <div style={{ padding: '16px 8px', fontSize: 'var(--text-xs)', color: 'var(--fg-faint)', textAlign: 'center' }}>
             No sequences yet
           </div>
         )}
@@ -413,10 +391,10 @@ export function ScanControlPanel({
   viewerFront, setViewerFront, setViewerBack, setViewerType, setFlipped,
   activeSlipEntryId, setActiveSlipEntryId,
   setScanStep, setShowSlipForm, setConfirmComplete,
-  openImageEditor, startNewSlip, onImageSelect,
+  openImageEditor, startNewSlip,
 }: Props) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', background: 'var(--bg-raised)', minWidth: 0, overflowY: 'auto' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', background: 'var(--bg-raised)', minWidth: 0, overflow: 'hidden' }}>
 
       {/* Flatbed scanner status banner */}
       <FlatbedStatusBanner scanner={scanner} scanStep={scanStep} />
@@ -424,7 +402,19 @@ export function ScanControlPanel({
 
       {/* Scan controls */}
       <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 12, padding: '14px 16px', borderBottom: '1px solid var(--border)' }}>
-        {activeSlipEntryId !== session.resumeState?.activeSlipEntryId ? (
+        {session.batchStatus >= BatchStatus.ScanningCompleted ? (
+          <div style={{
+            padding: '16px 12px', background: 'var(--bg-subtle)', borderRadius: 'var(--r-md)',
+            border: '1px solid var(--border)', textAlign: 'center',
+            display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center',
+          }}>
+            <Icon name="check_circle" size={20} style={{ color: 'var(--success, #16a34a)' }} />
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg)' }}>Scanning complete</div>
+            <p style={{ fontSize: 10, color: 'var(--fg-faint)', margin: 0 }}>
+              This batch has been scanned. Use the history below to review images.
+            </p>
+          </div>
+        ) : activeSlipEntryId !== null && activeSlipEntryId !== session.resumeState?.activeSlipEntryId ? (
           <div style={{
             padding: '16px 12px', background: 'var(--bg-subtle)', borderRadius: 'var(--r-md)',
             border: '1px dotted var(--border)', textAlign: 'center',
@@ -473,7 +463,9 @@ export function ScanControlPanel({
                     {scanner.useFlatbedWs ? 'Flatbed Scanner (WebSocket)' : 'Document Scanner'}
                   </div>
                   <p style={{ fontSize: 11, color: 'var(--fg-muted)', margin: '0 0 8px' }}>
-                    Place the slip on the flatbed and press Scan.
+                    {slipScansForActive.length === 0
+                      ? 'Place the slip on the flatbed and press Scan.'
+                      : `${slipScansForActive.length} slip image${slipScansForActive.length !== 1 ? 's' : ''} scanned. Scan another or complete.`}
                   </p>
                   <button
                     onClick={scanner.handleCaptureSlipScan}
@@ -483,13 +475,18 @@ export function ScanControlPanel({
                     title={scanner.flatbedStatus === 'error' ? 'Scanner not connected — see status above' : scanner.flatbedStatus === 'connecting' ? 'Connecting to scanner…' : undefined}
                   >
                     <Icon name="document_scanner" size={14} />
-                    {scanner.isBusy ? 'Scanning…' : scanner.flatbedStatus === 'connecting' ? 'Connecting…' : 'Scan Slip'}
+                    {scanner.isBusy
+                      ? 'Scanning…'
+                      : scanner.flatbedStatus === 'connecting'
+                      ? 'Connecting…'
+                      : slipScansForActive.length === 0
+                      ? 'Scan Slip'
+                      : `Scan Slip #${slipScansForActive.length + 1}`}
                   </button>
 
                   {slipScansForActive.length > 0 && (
                     <button
                       onClick={() => setConfirmComplete('slip')}
-                      disabled={slipScansForActive.length === 0}
                       className="btn-primary"
                       style={{ width: '100%', justifyContent: 'center', height: 28, fontSize: 11, marginTop: 8 }}
                     >
@@ -611,8 +608,8 @@ export function ScanControlPanel({
         setFlipped={setFlipped}
       />
 
-      {/* View all / scanned items table overlay */}
-      <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)', background: 'var(--bg-raised)', flexShrink: 0 }}>
+      {/* View all / scanned items table — always at bottom since panel is overflow:hidden */}
+      <div style={{ padding: '10px 14px', borderTop: '1px solid var(--border)', background: 'var(--bg-raised)', flexShrink: 0 }}>
         <button
           onClick={() => setShowTable(t => !t)}
           className="btn-secondary"

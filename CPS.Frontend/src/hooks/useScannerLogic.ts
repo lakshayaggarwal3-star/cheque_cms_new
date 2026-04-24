@@ -17,7 +17,8 @@ import {
   rangerSetEndorsementOptions, rangerSetImagingOptions, rangerShutdown,
   rangerStartFeeding, rangerStartup, rangerStopFeeding,
   RangerTransportState, subscribeToRangerState, getRangerState,
-  setRangerEndorsementProvider, subscribeToRangerItems
+  setRangerEndorsementProvider, subscribeToRangerItems,
+  subscribeToRangerModel, getRangerModel,
 } from '../services/rangerWebService';
 import {
   flatbedConnect, flatbedDetectScanners, flatbedAutoSelect, flatbedScan,
@@ -92,8 +93,14 @@ export function useScannerLogic({
   const [flatbedError, setFlatbedError] = useState('');
 
   const [isBusy, setIsBusy] = useState(false);
+  const [rangerModel, setRangerModel] = useState<string>(getRangerModel());
 
-  // Sync Ranger state
+  // Sync Ranger state + model
+  useEffect(() => {
+    const unsubModel = subscribeToRangerModel((model) => setRangerModel(model));
+    return () => { unsubModel(); };
+  }, []);
+
   useEffect(() => {
     const unsubState = subscribeToRangerState((state) => {
       setRangerState(state);
@@ -479,6 +486,7 @@ export function useScannerLogic({
     flatbedError,
     isBusy,
     rangerState,
+    rangerModel,
 
     // Setters
     setScannerChoice,

@@ -28,12 +28,12 @@ import {
   Pill, Icon, ScanItemsTable, ScannerSettingsModal,
 } from '../components/scan';
 import { uploadBulkSlipScans } from '../services/scanService';
+import { BatchStatus } from '../types';
 
 import {
   useScanPageState,
   useScanPageSession,
   ScanViewport,
-  ThumbnailSidebar,
   ScanControlPanel,
   ScanFullscreenOverlay,
   ScanConfirmCompleteModal,
@@ -81,12 +81,13 @@ export function ScanPage() {
   const {
     id, session, batchDetails, loading,
     scanStep, setScanStep,
-    activeSlipEntryId, activeSlipNo,
+    activeSlipEntryId,
     nextSlipScanOrder, nextChqSeq, setNextChqSeq,
     frontFile, backFile, frontPreview, backPreview,
     flipped, setFlipped, zoom, setZoom,
     isFullscreen, setIsFullscreen,
-    panning, hasMoved, viewerRef, viewerFsRef, makePanHandlers,
+    panning, hasMoved, viewerRef, viewerFsRef,
+    panOffset, setPanOffset, fsPanOffset, setFsPanOffset, makePanHandlers,
     viewerFront, setViewerFront, viewerBack, setViewerBack,
     viewerType, setViewerType,
     sidebarOpen, setSidebarOpen,
@@ -242,15 +243,15 @@ export function ScanPage() {
 
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', background: 'var(--bg)', minHeight: '100vh' }}>
+    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg)', overflow: 'hidden' }}>
 
-      {/* Scan viewport (action bar + 3-column grid) */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', flexShrink: 0, position: 'relative' }}>
+      {/* Scan viewport (action bar + 2-column grid) */}
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
 
         {/* ── Action bar ──────────────────────────────────────────────────── */}
         <div style={{
           display: 'flex', alignItems: 'center', gap: 10,
-          padding: '10px 20px', borderBottom: '1px solid var(--border)',
+          padding: '10px 32px', borderBottom: '1px solid var(--border)',
           background: 'var(--bg-raised)', flexShrink: 0, flexWrap: 'wrap',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0, flexWrap: 'wrap' }}>
@@ -260,6 +261,15 @@ export function ScanPage() {
             <Pill icon="account_tree" title="Cluster" style={{ flex: '0 1 auto' }}>Cluster: {batchDetails?.clusterCode || '—'}</Pill>
             <Pill icon="print" title="Scanner Code" style={{ flex: '0 1 auto' }}>Scanner ID: {batchDetails?.scannerID || '—'}</Pill>
             {batchDetails?.isPDC && <Pill icon="event_upcoming" title="PDC" style={{ flex: '0 1 auto' }}>PDC: True</Pill>}
+            {session.batchStatus === BatchStatus.ScanningCompleted && (
+              <Pill icon="check_circle" title="Scanning completed" style={{ flex: '0 1 auto', background: 'var(--success-bg, #f0fdf4)', color: 'var(--success, #16a34a)', borderColor: 'var(--success, #16a34a)' }}>Scanning Complete</Pill>
+            )}
+            {session.batchStatus === BatchStatus.RRPending && (
+              <Pill icon="build" title="Reject Repair pending" style={{ flex: '0 1 auto', background: 'var(--warning-bg, #fffbeb)', color: 'var(--warning, #d97706)', borderColor: 'var(--warning, #d97706)' }}>RR Pending</Pill>
+            )}
+            {session.batchStatus === BatchStatus.RRCompleted && (
+              <Pill icon="done_all" title="Reject Repair completed" style={{ flex: '0 1 auto', background: 'var(--success-bg, #f0fdf4)', color: 'var(--success, #16a34a)', borderColor: 'var(--success, #16a34a)' }}>RR Complete</Pill>
+            )}
           </div>
 
           <button
@@ -283,12 +293,15 @@ export function ScanPage() {
           )}
 
           {(() => {
+            const isScanningDone = session.batchStatus >= BatchStatus.ScanningCompleted;
             const incompleteSlips = session?.slipGroups?.filter(g => (g.slipScans?.length ?? 0) === 0) || [];
             const hasIncompleteSlips = incompleteSlips.length > 0;
             const activeSlipIncomplete = activeGroup ? activeGroup.cheques.length !== activeGroup.totalInstruments : false;
-            
-            let tooltip = undefined;
-            if (activeSlipIncomplete && activeGroup) {
+
+            let tooltip: string | undefined;
+            if (isScanningDone) {
+              tooltip = 'Scanning already completed for this batch';
+            } else if (activeSlipIncomplete && activeGroup) {
               tooltip = `Active slip needs ${activeGroup.totalInstruments} cheques (scanned ${activeGroup.cheques.length})`;
             } else if (hasIncompleteSlips) {
               tooltip = `Missing slip images for: ${incompleteSlips.map(s => s.depositSlipNo || s.slipNo).join(', ')}`;
@@ -297,33 +310,22 @@ export function ScanPage() {
             return (
               <button
                 onClick={() => setConfirmComplete('batch')}
-                disabled={scanner.isBusy || completing || activeSlipIncomplete || hasIncompleteSlips}
+                disabled={scanner.isBusy || completing || activeSlipIncomplete || hasIncompleteSlips || isScanningDone}
                 className="btn-primary"
                 style={{ height: 32, padding: '0 14px', gap: 6, fontSize: 'var(--text-xs)' }}
                 title={tooltip}
               >
-                <Icon name="check" size={14} />
-                {scanner.isBusy || completing ? 'Completing…' : 'Complete batch'}
+                <Icon name={isScanningDone ? 'check_circle' : 'check'} size={14} />
+                {scanner.isBusy || completing ? 'Completing…' : isScanningDone ? 'Scanning done' : 'Complete batch'}
               </button>
             );
           })()}
         </div>
 
-        {/* ── 3-column grid (sidebar | viewer | controls) ──────────────── */}
-        <div style={{ flex: 1, display: 'grid', gridTemplateColumns: sidebarOpen ? '140px 1fr minmax(450px, 32%)' : '1fr minmax(450px, 32%)', minHeight: 0 }}>
+        {/* ── 2-column grid (viewer | controls) — sidebar is an overlay inside viewer ── */}
+        <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr minmax(500px, 40%)', minHeight: 0 }}>
 
-          {/* Left: thumbnail sidebar */}
-          <ThumbnailSidebar
-            session={session}
-            sidebarOpen={sidebarOpen}
-            setSidebarOpen={setSidebarOpen}
-            setViewerFront={setViewerFront}
-            setViewerBack={setViewerBack}
-            setViewerType={setViewerType}
-            setFlipped={setFlipped}
-          />
-
-          {/* Center: image viewer */}
+          {/* Center: image viewer — sidebar is an absolute overlay inside here */}
           <ScanViewport
             session={session}
             sidebarOpen={sidebarOpen}
@@ -342,15 +344,16 @@ export function ScanPage() {
             setZoom={setZoom}
             panning={panning}
             hasMoved={hasMoved}
+            panOffset={panOffset}
+            setPanOffset={setPanOffset}
             viewerRef={viewerRef}
             makePanHandlers={makePanHandlers}
-            setViewerFront={setViewerFront}
-            setViewerBack={setViewerBack}
-            setViewerType={setViewerType}
             setIsFullscreen={setIsFullscreen}
             handleNavLeft={handleNavLeft}
             handleNavRight={handleNavRight}
-            batchDate={batchDetails?.batchDate}
+            setViewerFront={setViewerFront}
+            setViewerBack={setViewerBack}
+            setViewerType={setViewerType}
           />
 
           {/* Right: scan controls + recent sequences */}
@@ -385,13 +388,6 @@ export function ScanPage() {
             setConfirmComplete={setConfirmComplete}
             openImageEditor={openImageEditor}
             startNewSlip={() => session_hooks.startNewSlip(activeGroup)}
-            onImageSelect={(front, back, type) => {
-              setViewerFront(front);
-              setViewerBack(back ?? null);
-              setViewerType(type ?? null);
-              setFlipped(false);
-              setShowTable(false);
-            }}
           />
         </div>
 
@@ -590,6 +586,8 @@ export function ScanPage() {
           nextChqSeq={nextChqSeq}
           panning={panning}
           hasMoved={hasMoved}
+          fsPanOffset={fsPanOffset}
+          setFsPanOffset={setFsPanOffset}
           viewerFsRef={viewerFsRef}
           makePanHandlers={makePanHandlers}
           onClose={() => setIsFullscreen(false)}

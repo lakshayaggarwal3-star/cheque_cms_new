@@ -6,7 +6,7 @@
 // Created     : 2026-04-19
 // =============================================================================
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getLocations, getScanners } from '../services/locationService';
 import { createBatch, updateBatch } from '../services/batchService';
@@ -24,10 +24,17 @@ export function useBatchForm() {
   const [locationDetails, setLocationDetails] = useState<LocationDto | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // Entry Mode — driven by Settings; force mobile if user lacks scanner role
-  const hasBothRoles = !!(user?.roles.includes('Scanner') && user?.roles.includes('MobileScanner'));
-  const onlyMobile = !!(user?.roles.includes('MobileScanner') && !user?.roles.includes('Scanner'));
-  const entryMode = onlyMobile ? 'mobile' : storedEntryMode;
+  // Entry Mode — driven by Settings; strictly follow roles
+  const isDev = !!user?.isDeveloper;
+  const isMobileScanner = !!user?.roles?.includes('MobileScanner');
+  const isScanner = !!user?.roles?.includes('Scanner');
+  const hasBothRoles = (isMobileScanner && isScanner) || isDev;
+
+  const entryMode = useMemo(() => {
+    if (isDev || hasBothRoles) return storedEntryMode;
+    if (isMobileScanner) return 'mobile';
+    return 'scanner';
+  }, [isDev, hasBothRoles, isMobileScanner, storedEntryMode]);
 
   // Form State
   const [clearingType, setClearingType] = useState('03');

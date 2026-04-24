@@ -80,20 +80,21 @@ export function ImagePlaceholder({ label, hasPath }: { label: string, hasPath?: 
     <div style={{
       width: '100%', height: '100%',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: 'var(--bg-subtle)', position: 'relative', overflow: 'hidden'
+      position: 'relative',
     }}>
-      {/* Subtle Pattern */}
+      {/* Subtle dot pattern on the viewport background */}
       <div style={{
         position: 'absolute', inset: 0,
         backgroundImage: 'radial-gradient(var(--border) 1px, transparent 1px)',
-        backgroundSize: '24px 24px', opacity: 0.4
+        backgroundSize: '24px 24px', opacity: 0.4,
+        pointerEvents: 'none',
       }} />
 
       <div style={{
-        width: '100%', 
-        maxWidth: isSlip ? 'min(95%, 600px)' : 'min(95%, 900px)',
-        maxHeight: isSlip ? '90%' : '85%',
-        aspectRatio: isSlip ? '1 / 1.41' : '2.35 / 1',
+        width: '100%',
+        maxWidth: '92%',
+        maxHeight: '88%',
+        aspectRatio: isSlip ? '0.71 / 1' : '2.35 / 1',
         background: isBack ? 'repeating-linear-gradient(45deg, var(--bg-subtle), var(--bg-subtle) 10px, var(--bg-raised) 10px, var(--bg-raised) 20px)' : 'var(--bg-raised)',
         border: '1px solid var(--border)',
         borderRadius: isSlip ? 'var(--r-md)' : '14px',

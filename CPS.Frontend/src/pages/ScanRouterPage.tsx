@@ -1,11 +1,12 @@
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
+import { useParams } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { useSettingsStore } from '../store/settingsStore';
-import { shouldUseMobileScanFlow } from '../utils/mobileScanRouting';
 import { ScanPage } from './ScanPage';
 import { MobileScanPage } from './MobileScanPage';
 
 export function ScanRouterPage() {
+  const { batchNo } = useParams<{ batchNo: string }>();
   const { user } = useAuthStore();
   const { entryMode } = useSettingsStore();
 
@@ -17,16 +18,22 @@ export function ScanRouterPage() {
     const isScanner = !!user?.roles?.includes('Scanner');
     const hasBoth = isMobileScanner && isScanner;
 
-    if ((hasBoth || isDev) && entryMode === 'mobile') return true;
-    if (isMobileScanner && !isScanner && !isDev) return true;
+    // Developer or dual-role users: strictly follow the explicit entryMode setting
+    if (isDev || hasBoth) {
+      return entryMode === 'mobile';
+    }
 
-    const width = typeof window !== 'undefined' ? window.innerWidth : 0;
-    return shouldUseMobileScanFlow(user, width);
+    // Single-role users: strictly follow their assigned role
+    if (isMobileScanner) return true;
+    if (isScanner) return false;
+
+    // Fallback: Default to desktop flow if no specific roles match
+    return false;
   }, [user, entryMode]);
 
   if (useMobileFlow) {
-    return <MobileScanPage />;
+    return <MobileScanPage key={batchNo} />;
   }
 
-  return <ScanPage />;
+  return <ScanPage key={batchNo} />;
 }

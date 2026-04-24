@@ -42,7 +42,7 @@ const CLIENT_COLS: ColumnDef[] = [
   { key: 'clientName',      label: 'Client Name'                 },
   { key: 'rcmsCode',        label: 'RCMS Code',       width: 110 },
   { key: 'pickupPointCode', label: 'Pickup Code',     width: 110 },
-  { key: 'globalCode',      label: 'Global Group',    width: 110 },
+  { key: 'globalCode',      label: 'Global Client Code', width: 110 },
   { key: 'isPriority',      label: 'Priority',        width: 100 },
   { key: 'status',          label: 'Status',          width: 110 },
 ];
@@ -741,12 +741,12 @@ export function MastersPage() {
         </div>
       )}
 
-      {/* ── Create Global Group Modal ── */}
+      {/* ── Create Global Client Code Modal ── */}
       {showCreateModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300, backdropFilter: 'blur(4px)' }}>
           <div className="card" style={{ width: 500, display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden' }}>
             <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg-raised)' }}>
-              <h2 style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 700 }}>New Global Group</h2>
+              <h2 style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 700 }}>New Global Client Code</h2>
               <button onClick={() => setShowCreateModal(false)} className="btn-ghost"><Icon name="close" size={24} /></button>
             </div>
             <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 20 }}>
