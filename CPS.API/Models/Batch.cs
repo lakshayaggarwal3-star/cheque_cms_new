@@ -61,9 +61,6 @@ public class Batch
 
     public bool? WithSlip { get; set; }
 
-    [MaxLength(20)]
-    public string? GlobalSlipNo { get; set; }
-
     public int BatchStatus { get; set; } = 0;
     public string? StatusHistory { get; set; }
 

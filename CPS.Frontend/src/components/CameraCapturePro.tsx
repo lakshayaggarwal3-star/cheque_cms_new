@@ -10,13 +10,14 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 
 interface CameraCapturProProps {
   mode: 'slip' | 'cheque';
+  side?: 'front' | 'back';
   onCapture: (file: File, position: 'front' | 'back') => void;
   onClose: () => void;
 }
 
 type CameraState = 'starting' | 'live' | 'error' | 'gallery';
 
-export function CameraCapturePro({ mode, onCapture, onClose }: CameraCapturProProps) {
+export function CameraCapturePro({ mode, side = 'front', onCapture, onClose }: CameraCapturProProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
@@ -28,7 +29,7 @@ export function CameraCapturePro({ mode, onCapture, onClose }: CameraCapturProPr
   const [useFront, setUseFront] = useState(false);
   const [brightness, setBrightness] = useState(100);
   const [zoom, setZoom] = useState(1);
-  const [position, setPosition] = useState<'front' | 'back'>('front');
+  const [position, setPosition] = useState<'front' | 'back'>(side);
   const [showSettings, setShowSettings] = useState(false);
   const [capturing, setCapturing] = useState(false);
 
@@ -100,12 +101,15 @@ export function CameraCapturePro({ mode, onCapture, onClose }: CameraCapturProPr
     setCapturing(true);
     const video = videoRef.current;
     const canvas = canvasRef.current;
+
     canvas.width = video.videoWidth || 1280;
     canvas.height = video.videoHeight || 720;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+
     ctx.filter = `brightness(${brightness}%)`;
     ctx.drawImage(video, 0, 0);
+
     canvas.toBlob(blob => {
       setCapturing(false);
       if (!blob) return;
@@ -167,7 +171,7 @@ export function CameraCapturePro({ mode, onCapture, onClose }: CameraCapturProPr
         </button>
       </div>
 
-      {/* ── CAMERA / ERROR AREA ── */}
+      {/* ── CAMERA AREA ── */}
       <div
         style={{ flex: 1, position: 'relative', overflow: 'hidden', background: '#111' }}
         onTouchStart={onTouchStart}
@@ -222,7 +226,7 @@ export function CameraCapturePro({ mode, onCapture, onClose }: CameraCapturProPr
           </div>
         )}
 
-        {/* Document frame overlay (when live) */}
+        {/* Document frame guide */}
         {cameraState === 'live' && (
           <div style={{
             position: 'absolute', inset: 0, display: 'flex',
@@ -231,19 +235,20 @@ export function CameraCapturePro({ mode, onCapture, onClose }: CameraCapturProPr
             <div style={{
               aspectRatio: frameAspect,
               maxWidth: '85%', maxHeight: '80%',
-              border: '2px solid rgba(255,255,255,0.5)',
-              borderRadius: 10,
-              boxShadow: '0 0 0 9999px rgba(0,0,0,0.35)',
+              border: '2px solid rgba(255,255,255,0.4)',
+              borderRadius: 12,
+              boxShadow: '0 0 0 9999px rgba(0,0,0,0.4)',
               position: 'relative',
             }}>
-              {/* Corner dots */}
-              {[['0 auto auto 0'],['0 0 auto auto'],['auto auto 0 0'],['auto 0 0 auto']].map((inset, i) => (
+              {/* Corner markers only */}
+              {[
+                { top: -2, left: -2, borderTop: '4px solid #fff', borderLeft: '4px solid #fff' },
+                { top: -2, right: -2, borderTop: '4px solid #fff', borderRight: '4px solid #fff' },
+                { bottom: -2, left: -2, borderBottom: '4px solid #fff', borderLeft: '4px solid #fff' },
+                { bottom: -2, right: -2, borderBottom: '4px solid #fff', borderRight: '4px solid #fff' },
+              ].map((s, i) => (
                 <div key={i} style={{
-                  position: 'absolute', width: 16, height: 16, inset: inset.join(' '),
-                  borderTop: i < 2 ? '3px solid #3b82f6' : 'none',
-                  borderBottom: i >= 2 ? '3px solid #3b82f6' : 'none',
-                  borderLeft: i % 2 === 0 ? '3px solid #3b82f6' : 'none',
-                  borderRight: i % 2 === 1 ? '3px solid #3b82f6' : 'none',
+                  position: 'absolute', width: 24, height: 24, ...s, borderRadius: 4,
                 }} />
               ))}
             </div>
@@ -263,7 +268,7 @@ export function CameraCapturePro({ mode, onCapture, onClose }: CameraCapturProPr
           <span className="material-symbols-outlined" style={{ fontSize: 24 }}>photo_library</span>
         </button>
 
-        {/* Capture shutter — center */}
+        {/* Capture shutter */}
         <button
           onClick={capturePhoto}
           disabled={cameraState !== 'live' || capturing}
@@ -278,7 +283,7 @@ export function CameraCapturePro({ mode, onCapture, onClose }: CameraCapturProPr
           }}
         />
 
-        {/* Flip camera button */}
+        {/* Flip camera */}
         <button onClick={flipCamera} style={{ ...btnStyle, width: 48, height: 48 }}>
           <span className="material-symbols-outlined" style={{ fontSize: 24 }}>flip_camera_android</span>
         </button>

@@ -39,11 +39,11 @@ public class ExtraMastersController : ControllerBase
         {
             var searchTerm = q.ToLower();
             query = query.Where(b => 
-                b.EBANK.ToLower().Contains(searchTerm) || 
-                b.SORTCODE.ToLower().Contains(searchTerm) || 
-                b.NAME.ToLower().Contains(searchTerm) || 
-                b.FULLNAME.ToLower().Contains(searchTerm) || 
-                b.BRANCH.ToLower().Contains(searchTerm));
+                (b.EBANK ?? "").ToLower().Contains(searchTerm) || 
+                (b.SORTCODE ?? "").ToLower().Contains(searchTerm) || 
+                (b.NAME ?? "").ToLower().Contains(searchTerm) || 
+                (b.FULLNAME ?? "").ToLower().Contains(searchTerm) || 
+                (b.BRANCH ?? "").ToLower().Contains(searchTerm));
         }
 
         var total = await query.CountAsync();
@@ -75,13 +75,13 @@ public class ExtraMastersController : ControllerBase
         {
             var searchTerm = q.ToLower();
             query = query.Where(r => 
-                r.CEID.ToLower().Contains(searchTerm) || 
-                r.ClientCode.ToLower().Contains(searchTerm) || 
-                r.FieldName1.ToLower().Contains(searchTerm) || 
-                r.FieldName2.ToLower().Contains(searchTerm) || 
-                r.FieldName3.ToLower().Contains(searchTerm) || 
-                r.FieldName4.ToLower().Contains(searchTerm) || 
-                r.FieldName5.ToLower().Contains(searchTerm));
+                (r.CEID ?? "").ToLower().Contains(searchTerm) || 
+                (r.ClientCode ?? "").ToLower().Contains(searchTerm) || 
+                (r.FieldName1 ?? "").ToLower().Contains(searchTerm) || 
+                (r.FieldName2 ?? "").ToLower().Contains(searchTerm) || 
+                (r.FieldName3 ?? "").ToLower().Contains(searchTerm) || 
+                (r.FieldName4 ?? "").ToLower().Contains(searchTerm) || 
+                (r.FieldName5 ?? "").ToLower().Contains(searchTerm));
         }
 
         var total = await query.CountAsync();

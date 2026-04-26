@@ -1,5 +1,5 @@
 // =============================================================================
-// File        : SlipScan.cs
+// File        : SlipItem.cs
 // Project     : CPS — Cheque Processing System
 // Module      : Scanning
 // Description : Physical slip scan image record — 0 to N per SlipEntry (with-slip mode only).
@@ -11,10 +11,10 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace CPS.API.Models;
 
-public class SlipScan
+public class SlipItem
 {
     [Key]
-    public long SlipScanId { get; set; }
+    public long SlipItemId { get; set; }
 
     public long SlipEntryId { get; set; }
 
@@ -26,6 +26,9 @@ public class SlipScan
 
     [MaxLength(500)]
     public string? ImageBaseName { get; set; }
+
+    [MaxLength(200)]
+    public string? ImageName { get; set; }
 
     [MaxLength(10)]
     public string? FileExtension { get; set; }
@@ -44,6 +47,9 @@ public class SlipScan
 
     [MaxLength(50)]
     public string? ScannerType { get; set; }
+
+    [MaxLength(20)]
+    public string? EntryMode { get; set; }
 
     public int CreatedBy { get; set; }
     public DateTime CreatedAt { get; set; }

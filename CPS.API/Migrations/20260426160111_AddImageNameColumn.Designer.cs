@@ -4,6 +4,7 @@ using CPS.API.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace CPS.API.Migrations
 {
     [DbContext(typeof(CpsDbContext))]
-    partial class CpsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260426160111_AddImageNameColumn")]
+    partial class AddImageNameColumn
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -425,10 +428,6 @@ namespace CPS.API.Migrations
 
                     b.Property<int>("CreatedBy")
                         .HasColumnType("int");
-
-                    b.Property<string>("EntryMode")
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
 
                     b.Property<string>("FileExtension")
                         .HasMaxLength(10)
@@ -1391,23 +1390,19 @@ namespace CPS.API.Migrations
                     b.ToTable("SlipEntries");
                 });
 
-            modelBuilder.Entity("CPS.API.Models.SlipItem", b =>
+            modelBuilder.Entity("CPS.API.Models.SlipScan", b =>
                 {
-                    b.Property<long>("SlipItemId")
+                    b.Property<long>("SlipScanId")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bigint");
 
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("SlipItemId"));
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("SlipScanId"));
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
                     b.Property<int>("CreatedBy")
                         .HasColumnType("int");
-
-                    b.Property<string>("EntryMode")
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
 
                     b.Property<string>("FileExtension")
                         .HasMaxLength(10)
@@ -1456,13 +1451,13 @@ namespace CPS.API.Migrations
                     b.Property<int?>("UpdatedBy")
                         .HasColumnType("int");
 
-                    b.HasKey("SlipItemId");
+                    b.HasKey("SlipScanId");
 
                     b.HasIndex("SlipEntryId");
 
                     b.HasIndex("SlipEntryId", "ScanOrder");
 
-                    b.ToTable("SlipItems");
+                    b.ToTable("SlipScans");
                 });
 
             modelBuilder.Entity("CPS.API.Models.UserLocationHistory", b =>
@@ -1775,10 +1770,10 @@ namespace CPS.API.Migrations
                     b.Navigation("Batch");
                 });
 
-            modelBuilder.Entity("CPS.API.Models.SlipItem", b =>
+            modelBuilder.Entity("CPS.API.Models.SlipScan", b =>
                 {
                     b.HasOne("CPS.API.Models.SlipEntry", "SlipEntry")
-                        .WithMany("SlipItems")
+                        .WithMany("SlipScans")
                         .HasForeignKey("SlipEntryId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
@@ -1877,7 +1872,7 @@ namespace CPS.API.Migrations
                 {
                     b.Navigation("ChequeItems");
 
-                    b.Navigation("SlipItems");
+                    b.Navigation("SlipScans");
                 });
 
             modelBuilder.Entity("CPS.API.Models.UserMaster", b =>

@@ -24,9 +24,9 @@ export function getImageUrl(relativePath: string | null | undefined): string {
  * Derives the URL for a specific side of a cheque using the base name optimization.
  */
 export function getChequeImageUrl(item: { imageBaseName?: string; fileExtension?: string }, side: 'front' | 'back' | 'frontTiff' | 'backTiff'): string {
-  if (item.imageBaseName && item.fileExtension) {
-    const suffix = side === 'front' ? 'CF' : side === 'back' ? 'CR' : side === 'frontTiff' ? 'CF_T' : 'CR_T';
-    const ext = (side === 'frontTiff' || side === 'backTiff') ? '.tif' : item.fileExtension;
+  if (item.imageBaseName) {
+    const suffix = (side === 'front' || side === 'frontTiff') ? 'CF' : 'CR';
+    const ext = (side === 'frontTiff' || side === 'backTiff') ? '.tif' : '.jpg';
     return getImageUrl(`${item.imageBaseName}${suffix}${ext}`);
   }
   return '/placeholder-cheque.png';
@@ -37,9 +37,8 @@ export function getChequeImageUrl(item: { imageBaseName?: string; fileExtension?
  */
 export function getSlipImageUrl(scan: { imageBaseName?: string; fileExtension?: string }): string {
   if (scan.imageBaseName && scan.fileExtension) {
-    // Check if it's a global upload or a sequence-based slip front (SF)
-    const suffix = scan.imageBaseName.includes('_GLB_') ? '' : 'SF';
-    return getImageUrl(`${scan.imageBaseName}${suffix}${scan.fileExtension}`);
+    // The suffix (SF or GLB) is now part of the ImageBaseName stored in DB
+    return getImageUrl(`${scan.imageBaseName}${scan.fileExtension}`);
   }
   return '/placeholder-cheque.png';
 }

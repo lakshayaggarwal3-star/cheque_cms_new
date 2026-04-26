@@ -111,7 +111,7 @@ public class SystemController : ControllerBase
         {
             // Keep users + masters. Reset only operational/runtime data.
             await _db.ChequeItems.ExecuteDeleteAsync();
-            await _db.SlipScans.ExecuteDeleteAsync();
+            await _db.SlipItems.ExecuteDeleteAsync();
             await _db.SlipEntries.ExecuteDeleteAsync();
             await _db.BatchSlipSequences.ExecuteDeleteAsync();
             await _db.Batches.ExecuteDeleteAsync();
@@ -124,8 +124,8 @@ public class SystemController : ControllerBase
             await _db.Database.ExecuteSqlRawAsync(@"
 IF EXISTS (SELECT 1 FROM sys.identity_columns WHERE object_id = OBJECT_ID(N'dbo.ChequeItems'))
     DBCC CHECKIDENT ('dbo.ChequeItems', RESEED, 0);
-IF EXISTS (SELECT 1 FROM sys.identity_columns WHERE object_id = OBJECT_ID(N'dbo.SlipScans'))
-    DBCC CHECKIDENT ('dbo.SlipScans', RESEED, 0);
+IF EXISTS (SELECT 1 FROM sys.identity_columns WHERE object_id = OBJECT_ID(N'dbo.SlipItems'))
+    DBCC CHECKIDENT ('dbo.SlipItems', RESEED, 0);
 IF EXISTS (SELECT 1 FROM sys.identity_columns WHERE object_id = OBJECT_ID(N'dbo.SlipEntries'))
     DBCC CHECKIDENT ('dbo.SlipEntries', RESEED, 0);
 IF EXISTS (SELECT 1 FROM sys.identity_columns WHERE object_id = OBJECT_ID(N'dbo.BatchSlipSequences'))

@@ -20,8 +20,8 @@ public class ScannerFeedRequest
     public string ScannerType { get; set; } = "Cheque";
 }
 
-// Capture a slip scan image for a specific SlipEntry
-public class CaptureSlipScanRequest
+// Capture a slip item image for a specific SlipEntry
+public class CaptureSlipItemRequest
 {
     public long SlipEntryId { get; set; }
     public int ScanOrder { get; set; } = 1;
@@ -35,7 +35,7 @@ public class CaptureChequeRequest
     public string ScannerType { get; set; } = "Cheque";
 }
 
-public class SaveSlipScanRequest
+public class SaveSlipItemRequest
 {
     public long BatchId { get; set; }
     public long SlipEntryId { get; set; }
@@ -66,7 +66,7 @@ public class SaveChequeItemRequest
     public string ScanType { get; set; } = "Scan";
 }
 
-public class MobileUploadSlipScanRequest
+public class MobileUploadSlipItemRequest
 {
     public long SlipEntryId { get; set; }
     public int ScanOrder { get; set; } = 1;
@@ -74,7 +74,7 @@ public class MobileUploadSlipScanRequest
     public string ScannerType { get; set; } = "Mobile-Camera";
 }
 
-public class BulkSlipUploadRequest
+public class BulkSlipItemUploadRequest
 {
     public long SlipEntryId { get; set; }
     public List<IFormFile> Images { get; set; } = new();
@@ -117,7 +117,7 @@ public class ScanSessionDto
     public List<SlipEntryDto> SlipGroups { get; set; } = new();
 
     // Global slip scans for non-slip batches
-    public List<SlipScanDto> SlipScans { get; set; } = new();
+    public List<SlipItemDto> SlipItems { get; set; } = new();
 
     // Where to resume if session was interrupted
     public ScanResumeStateDto ResumeState { get; set; } = new();

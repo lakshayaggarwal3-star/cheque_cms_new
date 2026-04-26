@@ -94,12 +94,20 @@ function fmtAmount(n: number) {
 function SkeletonDashboard() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16 }}>
+      <div className="module-grid">
         {[...Array(4)].map((_, i) => (
           <div key={i} style={{
             background: 'var(--bg-raised)', border: '1px solid var(--border)',
-            borderRadius: 'var(--r-lg)', height: 108,
-          }} className="animate-pulse" />
+            borderRadius: 'var(--r-lg)',
+          }} className="animate-pulse module-skeleton" />
+        ))}
+      </div>
+      <div className="kpi-grid">
+        {[...Array(4)].map((_, i) => (
+          <div key={i} style={{
+            background: 'var(--bg-raised)', border: '1px solid var(--border)',
+            borderRadius: 'var(--r-lg)',
+          }} className="animate-pulse kpi-skeleton" />
         ))}
       </div>
       <div style={{
@@ -260,27 +268,9 @@ export function DashboardPage() {
               <button
                 key={m.label}
                 onClick={() => navigate(m.path!)}
+                className="module-btn"
                 style={{
-                  display: 'flex', flexDirection: 'column', gap: 8,
-                  padding: '14px 14px 12px',
                   background: m.gradient,
-                  border: 'none',
-                  borderRadius: 'var(--r-lg)',
-                  cursor: 'pointer',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.15), 0 1px 2px rgba(0,0,0,0.1)',
-                  transition: 'transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease)',
-                  textAlign: 'left',
-                  fontFamily: 'var(--font-sans)',
-                  position: 'relative',
-                  overflow: 'hidden',
-                }}
-                onMouseEnter={e => {
-                  e.currentTarget.style.transform = 'translateY(-2px)';
-                  e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.22), 0 2px 6px rgba(0,0,0,0.14)';
-                }}
-                onMouseLeave={e => {
-                  e.currentTarget.style.transform = 'translateY(0)';
-                  e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.18), 0 1px 3px rgba(0,0,0,0.12)';
                 }}
               >
                 {/* subtle sheen */}
@@ -289,62 +279,41 @@ export function DashboardPage() {
                   background: 'linear-gradient(135deg, rgba(255,255,255,0.12) 0%, transparent 60%)',
                   pointerEvents: 'none',
                 }} />
-                <div style={{
-                  width: 28, height: 28, borderRadius: 'var(--r-sm)',
-                  background: 'rgba(0,0,0,0.18)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  flexShrink: 0,
-                }}>
+                <div className="module-icon-box">
                   <Icon name={m.icon} size={16} style={{ color: m.iconColor }} />
                 </div>
-                <div>
-                  <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)', color: '#fff', letterSpacing: '-0.01em', marginBottom: 1 }}>
+                <div className="module-content">
+                  <div className="module-title">
                     {m.label}
                   </div>
-                  <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.72)', lineHeight: 1.3 }}>
+                  <div className="module-sub">
                     {m.sub}
                   </div>
                 </div>
-                <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: 3 }}>
-                  <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.80)', fontWeight: 500 }}>Go</span>
-                  <Icon name="arrow_forward" size={12} style={{ color: 'rgba(255,255,255,0.80)' }} />
+                <div className="module-go">
+                  <span style={{ fontSize: '12px' }}>Go</span>
+                  <Icon name="arrow_forward" size={12} />
                 </div>
               </button>
             ) : (
               <div
                 key={m.label}
-                style={{
-                  display: 'flex', flexDirection: 'column', gap: 8,
-                  padding: '14px 14px 12px',
-                  background: 'var(--bg-raised)',
-                  border: '1px solid var(--border)',
-                  borderRadius: 'var(--r-lg)',
-                  boxShadow: 'var(--shadow-xs)',
-                  opacity: 0.55,
-                  cursor: 'not-allowed',
-                  position: 'relative',
-                  overflow: 'hidden',
-                }}
+                className="module-btn module-btn-disabled"
               >
-                <div style={{
-                  width: 28, height: 28, borderRadius: 'var(--r-sm)',
-                  background: 'var(--bg-subtle)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  flexShrink: 0,
-                }}>
+                <div className="module-icon-box">
                   <Icon name={m.icon} size={16} style={{ color: 'var(--fg-faint)' }} />
                 </div>
-                <div>
-                  <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)', color: 'var(--fg)', letterSpacing: '-0.01em', marginBottom: 1 }}>
+                <div className="module-content">
+                  <div className="module-title">
                     {m.label}
                   </div>
-                  <div style={{ fontSize: '11px', color: 'var(--fg-subtle)', lineHeight: 1.3 }}>
+                  <div className="module-sub">
                     {m.sub}
                   </div>
                 </div>
-                <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: 3 }}>
+                <div className="module-go">
                   <Icon name="lock" size={10} style={{ color: 'var(--fg-faint)' }} />
-                  <span style={{ fontSize: '10px', color: 'var(--fg-faint)', fontWeight: 500 }}>Phase 2</span>
+                  <span style={{ fontSize: '10px' }}>Phase 2</span>
                 </div>
               </div>
             )
@@ -355,30 +324,20 @@ export function DashboardPage() {
       {/* KPI tiles */}
       <div className="kpi-grid">
         {kpis.map((k, i) => (
-          <div key={i} style={{
-            background: 'var(--bg-raised)', border: '1px solid var(--border)',
-            borderRadius: 'var(--r-lg)', padding: 18,
-            display: 'flex', flexDirection: 'column', gap: 12,
-            boxShadow: 'var(--shadow-xs)',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '.04em', fontWeight: 500 }}>
-                {k.label}
-              </span>
-              <div style={{
-                width: 28, height: 28, borderRadius: 'var(--r-md)',
-                background: 'var(--bg-subtle)', color: 'var(--fg-subtle)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>
-                <Icon name={k.icon} size={16} />
+          <div key={i} className="kpi-card" style={{ position: 'relative' }}>
+            <div className="kpi-icon-box">
+              <Icon name={k.icon} size={16} />
+            </div>
+            <div className="kpi-content">
+              <div className="kpi-value-group">
+                <div className="kpi-value">{k.value}</div>
+                <div className="kpi-separator">—</div>
+                <div className="kpi-label">{k.label}</div>
               </div>
-            </div>
-            <div style={{ fontSize: 'var(--text-3xl)', fontWeight: 600, letterSpacing: '-0.02em', lineHeight: 1, color: 'var(--fg)' }}>
-              {k.value}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--text-xs)', color: 'var(--fg-muted)' }}>
-              <Dot tone={k.tone} />
-              <span>{k.delta}</span>
+              <div className="kpi-delta">
+                <Dot tone={k.tone} />
+                <span>{k.delta}</span>
+              </div>
             </div>
           </div>
         ))}
@@ -391,136 +350,180 @@ export function DashboardPage() {
         overflow: 'hidden',
       }}>
         {/* Header bar */}
-        <div className="table-header-bar" style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div className="table-header-bar">
+          <div className="table-header-title-row">
             <h2 style={{ margin: 0, fontSize: 'var(--text-md)', fontWeight: 600, color: 'var(--fg)', whiteSpace: 'nowrap' }}>
               Today's batches
             </h2>
             <Chip tone="outline">{batches.length} total</Chip>
           </div>
-          <div style={{ flex: 1 }} />
-          {/* Search */}
-          <div className="table-header-search" style={{ width: 260, position: 'relative' }}>
-            <Icon name="search" size={16} style={{
-              position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)',
-              color: 'var(--fg-subtle)', pointerEvents: 'none',
-            }} />
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search batch no or scanner…"
-              onFocus={() => setSearchFocus(true)}
-              onBlur={() => setSearchFocus(false)}
+          
+          <div className="table-header-actions-row">
+            {/* Search */}
+            <div className="table-header-search">
+              <Icon name="search" size={16} style={{
+                position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)',
+                color: 'var(--fg-subtle)', pointerEvents: 'none',
+              }} />
+              <input
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search batch no or scanner…"
+                onFocus={() => setSearchFocus(true)}
+                onBlur={() => setSearchFocus(false)}
+                style={{
+                  width: '100%', boxSizing: 'border-box',
+                  padding: '9px 12px 9px 32px',
+                  background: 'var(--bg-input)', color: 'var(--fg)',
+                  border: `1px solid ${searchFocus ? 'var(--accent-500)' : 'var(--border-strong)'}`,
+                  borderRadius: 'var(--r-md)',
+                  fontSize: 'var(--text-sm)', fontFamily: 'var(--font-sans)',
+                  outline: 'none',
+                  boxShadow: searchFocus ? 'var(--shadow-focus)' : 'none',
+                  transition: 'border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease)',
+                }}
+              />
+            </div>
+            {/* Filter icon button */}
+            <button
+              className="table-header-filter"
+              title="Filters"
               style={{
-                width: '100%', boxSizing: 'border-box',
-                padding: '9px 12px 9px 32px',
-                background: 'var(--bg-input)', color: 'var(--fg)',
-                border: `1px solid ${searchFocus ? 'var(--accent-500)' : 'var(--border-strong)'}`,
-                borderRadius: 'var(--r-md)',
-                fontSize: 'var(--text-sm)', fontFamily: 'var(--font-sans)',
-                outline: 'none',
-                boxShadow: searchFocus ? 'var(--shadow-focus)' : 'none',
-                transition: 'border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease)',
+                width: 36, height: 36, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                background: 'transparent', color: 'var(--fg-muted)',
+                border: '1px solid var(--border)', borderRadius: 'var(--r-md)',
+                cursor: 'pointer', transition: 'background-color var(--dur-fast) var(--ease)',
+                flexShrink: 0,
               }}
-            />
+              onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-hover)'; e.currentTarget.style.color = 'var(--fg)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--fg-muted)'; }}
+            >
+              <Icon name="tune" size={20} />
+            </button>
           </div>
-          {/* Filter icon button */}
-          <button
-            className="table-header-filter"
-            title="Filters"
-            style={{
-              width: 36, height: 36, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-              background: 'transparent', color: 'var(--fg-muted)',
-              border: '1px solid transparent', borderRadius: 'var(--r-md)',
-              cursor: 'pointer', transition: 'background-color var(--dur-fast) var(--ease)',
-              flexShrink: 0,
-            }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-hover)'; e.currentTarget.style.color = 'var(--fg)'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--fg-muted)'; }}
-          >
-            <Icon name="tune" size={20} />
-          </button>
         </div>
 
-        {/* Table */}
+        {/* Table/Cards */}
         <div className="table-scroll">
           {filtered.length === 0 ? (
             <div style={{ padding: '48px 20px', textAlign: 'center', fontSize: 'var(--text-sm)', color: 'var(--fg-subtle)' }}>
               No batches today. Create one to get started.
             </div>
           ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-sm)' }}>
-              <thead>
-                <tr style={{ textAlign: 'left', background: 'var(--bg)' }}>
-                  {['Batch no', 'Scanner', 'Slips', 'Amount', 'Status', ''].map((h, i) => (
-                    <th key={i} style={{
-                      padding: '10px 20px',
-                      fontSize: 'var(--text-xs)', color: 'var(--fg-subtle)',
-                      fontWeight: 500, textTransform: 'uppercase', letterSpacing: '.04em',
-                      borderBottom: '1px solid var(--border)',
-                      textAlign: ['Slips', 'Amount'].includes(h) ? 'right' : 'left',
-                    }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
+            <>
+              {/* Desktop Table */}
+              <table className="table-desktop" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-sm)' }}>
+                <thead>
+                  <tr style={{ textAlign: 'left', background: 'var(--bg)' }}>
+                    {['Batch no', 'Scanner', 'Slips', 'Amount', 'Status', ''].map((h, i) => (
+                      <th key={i} style={{
+                        padding: '10px 20px',
+                        fontSize: 'var(--text-xs)', color: 'var(--fg-subtle)',
+                        fontWeight: 500, textTransform: 'uppercase', letterSpacing: '.04em',
+                        borderBottom: '1px solid var(--border)',
+                        textAlign: ['Slips', 'Amount'].includes(h) ? 'right' : 'left',
+                      }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map(b => {
+                    const action = getAction(b);
+                    const tone = STATUS_TONE[b.batchStatus] ?? 'neutral';
+                    return (
+                      <tr key={b.batchID} style={{ borderBottom: '1px solid var(--border-subtle)' }}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-subtle)')}
+                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                      >
+                        <td style={{ padding: '14px 20px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <Dot tone={tone} />
+                            <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 500, color: 'var(--fg)' }}>
+                              {b.batchNo}
+                            </span>
+                          </div>
+                        </td>
+                        <td style={{ padding: '14px 20px', color: 'var(--fg-muted)' }}>
+                          {b.scannerID ?? '—'}
+                        </td>
+                        <td style={{ padding: '14px 20px', textAlign: 'right', color: 'var(--fg)', fontVariantNumeric: 'tabular-nums' }}>
+                          {b.totalSlips || '—'}
+                        </td>
+                        <td style={{ padding: '14px 20px', textAlign: 'right', color: 'var(--fg)', fontVariantNumeric: 'tabular-nums', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)' }}>
+                          {fmtAmount(b.totalAmount)}
+                        </td>
+                        <td style={{ padding: '14px 20px' }}>
+                          <Chip tone={tone}>{BatchStatusLabels[b.batchStatus]}</Chip>
+                        </td>
+                        <td style={{ padding: '14px 20px', textAlign: 'right' }}>
+                          {action ? (
+                            <button
+                              onClick={() => navigate(action.path)}
+                              style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 6,
+                                padding: '6px 12px', height: 30,
+                                background: 'transparent', color: 'var(--fg)',
+                                border: '1px solid transparent',
+                                borderRadius: 'var(--r-md)',
+                                fontSize: 'var(--text-sm)', fontWeight: 500, fontFamily: 'var(--font-sans)',
+                                cursor: 'pointer',
+                                transition: 'background-color var(--dur-fast) var(--ease)',
+                              }}
+                              onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
+                              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                            >
+                              {action.label}
+                              <Icon name="arrow_forward" size={16} weight={500} />
+                            </button>
+                          ) : (
+                            <Icon name="check_circle" size={16} style={{ color: 'var(--success)' }} />
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+
+              {/* Mobile Cards */}
+              <div className="mobile-batch-cards">
                 {filtered.map(b => {
                   const action = getAction(b);
                   const tone = STATUS_TONE[b.batchStatus] ?? 'neutral';
                   return (
-                    <tr key={b.batchID} style={{ borderBottom: '1px solid var(--border-subtle)' }}
-                      onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-subtle)')}
-                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                    >
-                      <td style={{ padding: '14px 20px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div key={b.batchID} className="batch-card">
+                      <div className="batch-card-header">
+                        <div className="batch-card-no-group">
                           <Dot tone={tone} />
-                          <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 500, color: 'var(--fg)' }}>
-                            {b.batchNo}
-                          </span>
+                          <span>{b.batchNo}</span>
                         </div>
-                      </td>
-                      <td style={{ padding: '14px 20px', color: 'var(--fg-muted)' }}>
-                        {b.scannerID ?? '—'}
-                      </td>
-                      <td style={{ padding: '14px 20px', textAlign: 'right', color: 'var(--fg)', fontVariantNumeric: 'tabular-nums' }}>
-                        {b.totalSlips || '—'}
-                      </td>
-                      <td style={{ padding: '14px 20px', textAlign: 'right', color: 'var(--fg)', fontVariantNumeric: 'tabular-nums', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)' }}>
-                        {fmtAmount(b.totalAmount)}
-                      </td>
-                      <td style={{ padding: '14px 20px' }}>
                         <Chip tone={tone}>{BatchStatusLabels[b.batchStatus]}</Chip>
-                      </td>
-                      <td style={{ padding: '14px 20px', textAlign: 'right' }}>
-                        {action ? (
-                          <button
-                            onClick={() => navigate(action.path)}
-                            style={{
-                              display: 'inline-flex', alignItems: 'center', gap: 6,
-                              padding: '6px 12px', height: 30,
-                              background: 'transparent', color: 'var(--fg)',
-                              border: '1px solid transparent',
-                              borderRadius: 'var(--r-md)',
-                              fontSize: 'var(--text-sm)', fontWeight: 500, fontFamily: 'var(--font-sans)',
-                              cursor: 'pointer',
-                              transition: 'background-color var(--dur-fast) var(--ease)',
-                            }}
-                            onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
-                            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                          >
-                            {action.label}
-                            <Icon name="arrow_forward" size={16} weight={500} />
-                          </button>
-                        ) : (
-                          <Icon name="check_circle" size={16} style={{ color: 'var(--success)' }} />
-                        )}
-                      </td>
-                    </tr>
+                      </div>
+                      <div className="batch-card-grid">
+                        <div className="batch-card-item">
+                          <span className="batch-card-label">Scanner</span>
+                          <span className="batch-card-value">{b.scannerID || '—'}</span>
+                        </div>
+                        <div className="batch-card-item" style={{ textAlign: 'right' }}>
+                          <span className="batch-card-label">Slips</span>
+                          <span className="batch-card-value">{b.totalSlips || '0'}</span>
+                        </div>
+                        <div className="batch-card-item">
+                          <span className="batch-card-label">Amount</span>
+                          <span className="batch-card-value" style={{ fontFamily: 'var(--font-mono)' }}>{fmtAmount(b.totalAmount)}</span>
+                        </div>
+                      </div>
+                      {action && (
+                        <button className="batch-card-action" onClick={() => navigate(action.path)}>
+                          {action.label}
+                          <Icon name="arrow_forward" size={16} />
+                        </button>
+                      )}
+                    </div>
                   );
                 })}
-              </tbody>
-            </table>
+              </div>
+            </>
           )}
         </div>
 

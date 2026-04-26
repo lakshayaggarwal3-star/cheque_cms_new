@@ -86,11 +86,11 @@ export function SlipGroupRow({ group, isActive, isLocked, onSelect, onImageSelec
       {/* Expanded: slip images + cheques */}
       {expanded && (
         <div style={{ borderTop: '1px solid var(--border-subtle)', paddingBottom: 4 }}>
-          {/* Slip scan images */}
-          {group.slipScans.length > 0 && (
+          {/* Slip items images */}
+          {group.slipItems.length > 0 && (
             <>
               <div style={{ padding: '5px 12px 2px 30px', fontSize: 10, color: 'var(--fg-subtle)', textTransform: 'uppercase', letterSpacing: '.04em' }}>Slip images</div>
-              {group.slipScans.map((scan: any, idx: number) => {
+              {group.slipItems.map((scan: any, idx: number) => {
                 const url = getSlipImageUrl(scan);
                 return (
                   <div
@@ -132,7 +132,7 @@ export function SlipGroupRow({ group, isActive, isLocked, onSelect, onImageSelec
               })}
             </>
           )}
-          {group.slipScans.length === 0 && group.cheques.length === 0 && (
+          {group.slipItems.length === 0 && group.cheques.length === 0 && (
             <div style={{ padding: '6px 12px 6px 30px', fontSize: 10, color: 'var(--fg-faint)' }}>No items yet</div>
           )}
         </div>

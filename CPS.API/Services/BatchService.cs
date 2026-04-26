@@ -316,7 +316,6 @@ public class BatchService : IBatchService
             ScanType = b.ScanType,
             EntryMode = b.EntryMode,
             WithSlip = b.WithSlip,
-            GlobalSlipNo = b.GlobalSlipNo,
             BatchStatus = b.BatchStatus,
             BatchStatusLabel = statusLabels.TryGetValue(b.BatchStatus, out var lbl) ? lbl : "Unknown",
             CreatedAt = b.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss")

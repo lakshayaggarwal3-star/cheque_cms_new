@@ -8,7 +8,7 @@
 
 import React, { useState } from 'react';
 import { getChequeImageUrl, getSlipImageUrl } from '../../utils/imageUtils';
-import type { ScanSessionDto, SlipEntryDto, ChequeItemDto, SlipScanDto } from '../../types';
+import type { ScanSessionDto, SlipEntryDto, ChequeItemDto, SlipItemDto } from '../../types';
 import { Icon } from './ScanPageUI';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -23,11 +23,11 @@ interface ScanItemsTableProps {
 }
 
 type RescanTarget =
-  | { kind: 'slip'; slipScanId: number; slipEntryId: number }
+  | { kind: 'slip'; slipItemId: number; slipEntryId: number }
   | { kind: 'cheque'; chequeItemId: number; slipEntryId: number };
 
 type DeleteTarget =
-  | { kind: 'slip'; slipScanId: number }
+  | { kind: 'slip'; slipItemId: number }
   | { kind: 'cheque'; chequeItemId: number };
 
 // ── ScanItemsTable ────────────────────────────────────────────────────────────
@@ -36,7 +36,7 @@ export function ScanItemsTable({ session, onImageSelect, onClose, pickupPoint, o
   const [confirmDelete, setConfirmDelete] = useState<DeleteTarget | null>(null);
 
   const allGroups = session.slipGroups;
-  const totalItems = allGroups.reduce((n, g) => n + g.slipScans.length + g.cheques.length, 0);
+  const totalItems = allGroups.reduce((n, g) => n + g.slipItems.length + g.cheques.length, 0);
 
   if (totalItems === 0) {
     return (
@@ -187,7 +187,7 @@ function GroupRows({ group, onImageSelect, onRescan, onDelete }: {
 }) {
   const [expanded, setExpanded] = useState(true);
 
-  const slipCount = group.slipScans.length;
+  const slipCount = group.slipItems.length;
   const chqCount = group.cheques.length;
   const pickupCode = group.pickupPoint ? group.pickupPoint.split(' - ')[0] : null;
 
@@ -263,9 +263,9 @@ function GroupRows({ group, onImageSelect, onRescan, onDelete }: {
       </tr>
 
       {/* Item rows — only when expanded */}
-      {expanded && group.slipScans.map((scan, idx) => (
-        <SlipScanRow
-          key={scan.slipScanId}
+      {expanded && group.slipItems.map((scan, idx) => (
+        <SlipItemRow
+          key={scan.slipItemId}
           scan={scan}
           idx={idx}
           group={group}
@@ -289,10 +289,10 @@ function GroupRows({ group, onImageSelect, onRescan, onDelete }: {
   );
 }
 
-// ── SlipScanRow ───────────────────────────────────────────────────────────────
+// ── SlipItemRow ───────────────────────────────────────────────────────────────
 
-function SlipScanRow({ scan, idx, group, onImageSelect, onRescan, onDelete }: {
-  scan: SlipScanDto; idx: number; group: SlipEntryDto;
+function SlipItemRow({ scan, idx, group, onImageSelect, onRescan, onDelete }: {
+  scan: SlipItemDto; idx: number; group: SlipEntryDto;
   onImageSelect: (front: string, back?: string, type?: 'slip' | 'cheque') => void;
   onRescan?: (item: RescanTarget) => void;
   onDelete: (item: DeleteTarget) => void;
@@ -324,14 +324,14 @@ function SlipScanRow({ scan, idx, group, onImageSelect, onRescan, onDelete }: {
 
 
       <td style={{ padding: '8px 8px', color: 'var(--fg-faint)', fontFamily: 'var(--font-mono)', fontSize: 10 }}>
-        {scan.imageBaseName ? scan.imageBaseName.split(/[\\/]/).pop() : '—'}
+        {scan.imageName || '—'}
       </td>
 
       <td style={{ padding: '8px 8px' }}>
         <ActionButtons
           disabled
-          onRescan={onRescan ? () => onRescan({ kind: 'slip', slipScanId: scan.slipScanId, slipEntryId: group.slipEntryId }) : undefined}
-          onDelete={() => onDelete({ kind: 'slip', slipScanId: scan.slipScanId })}
+          onRescan={onRescan ? () => onRescan({ kind: 'slip', slipItemId: scan.slipItemId, slipEntryId: group.slipEntryId }) : undefined}
+          onDelete={() => onDelete({ kind: 'slip', slipItemId: scan.slipItemId })}
         />
       </td>
     </tr>
@@ -375,7 +375,7 @@ function ChequeRow({ cheque, group, onImageSelect, onRescan, onDelete }: {
 
       {/* Front image filename */}
       <td style={{ padding: '8px 8px', color: 'var(--fg-faint)', fontFamily: 'var(--font-mono)', fontSize: 10 }}>
-        {cheque.imageBaseName ? cheque.imageBaseName.split(/[\\/]/).pop() : '—'}
+        {cheque.imageName ? `${cheque.imageName}CF` : '—'}
       </td>
 
       <td style={{ padding: '8px 8px' }}>

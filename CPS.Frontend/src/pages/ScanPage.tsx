@@ -27,7 +27,7 @@ import { ImageEditModal } from '../components/ImageEditModal';
 import {
   Pill, Icon, ScanItemsTable, ScannerSettingsModal,
 } from '../components/scan';
-import { uploadBulkSlipScans } from '../services/scanService';
+import { uploadBulkSlipItems } from '../services/scanService';
 import { BatchStatus } from '../types';
 
 import {
@@ -82,7 +82,8 @@ export function ScanPage() {
     id, session, batchDetails, loading,
     scanStep, setScanStep,
     activeSlipEntryId,
-    nextSlipScanOrder, nextChqSeq, setNextChqSeq,
+    nextSlipItemOrder, nextChqSeq, setNextChqSeq,
+    setNextSlipItemOrder,
     frontFile, backFile, frontPreview, backPreview,
     flipped, setFlipped, zoom, setZoom,
     isFullscreen, setIsFullscreen,
@@ -108,7 +109,7 @@ export function ScanPage() {
     batchId: id,
     batchNo: session?.batchNo || '',
     activeSlipEntryId,
-    nextSlipScanOrder,
+    nextSlipItemOrder,
     nextChqSeq,
     mockScanEnabled,
     isDeveloper: user?.isDeveloper,
@@ -166,18 +167,18 @@ export function ScanPage() {
 
   const withSlip = session.withSlip ?? false;
   const activeGroup = session.slipGroups.find(g => g.slipEntryId === activeSlipEntryId);
-  const slipScansForActive = activeGroup?.slipScans ?? [];
-  const isCurrentSlipScanDone = withSlip && slipScansForActive.length > 0;
-  const canMoveToChequeScan = !withSlip || isCurrentSlipScanDone;
+  const slipItemsForActive = activeGroup?.slipItems ?? [];
+  const isCurrentSlipItemDone = withSlip && slipItemsForActive.length > 0;
+  const canMoveToChequeScan = !withSlip || isCurrentSlipItemDone;
 
   const isSlipView = viewerType === 'slip' || (viewerType === null && scanStep === 'SlipScan');
-  const viewItems = isSlipView ? slipScansForActive : (activeGroup?.cheques ?? []);
+  const viewItems = isSlipView ? slipItemsForActive : (activeGroup?.cheques ?? []);
   const lastActiveItem = viewItems.length > 0 ? viewItems[viewItems.length - 1] as any : null;
 
   const previewFront = viewerFront
     ?? (lastActiveItem ? (isSlipView ? getSlipImageUrl(lastActiveItem) : getChequeImageUrl(lastActiveItem, 'front')) : null)
     ?? (scanner.currentCheque ? getChequeImageUrl(scanner.currentCheque, 'front') : scanner.mockPreview?.front)
-    ?? (scanner.currentSlipScan ? getSlipImageUrl(scanner.currentSlipScan) : scanner.mockPreview?.front);
+    ?? (scanner.currentSlipItem ? getSlipImageUrl(scanner.currentSlipItem) : scanner.mockPreview?.front);
 
   const previewBack = viewerBack
     ?? (lastActiveItem && !isSlipView ? getChequeImageUrl(lastActiveItem, 'back') : null)
@@ -228,7 +229,7 @@ export function ScanPage() {
     setUploading(true);
     try {
       // Pass 0 if no active slip; the server will handle global batch association
-      await uploadBulkSlipScans(id, activeSlipEntryId || 0, uploadFiles.map(f => f.file));
+      await uploadBulkSlipItems(id, activeSlipEntryId || 0, uploadFiles.map(f => f.file));
       toast.success(`${uploadFiles.length} slip image(s) uploaded globally to batch`);
       uploadFiles.forEach(f => URL.revokeObjectURL(f.previewUrl));
       setUploadFiles([]);
@@ -294,7 +295,7 @@ export function ScanPage() {
 
           {(() => {
             const isScanningDone = session.batchStatus >= BatchStatus.ScanningCompleted;
-            const incompleteSlips = session?.slipGroups?.filter(g => (g.slipScans?.length ?? 0) === 0) || [];
+            const incompleteSlips = session?.slipGroups?.filter(g => (g.slipItems?.length ?? 0) === 0) || [];
             const hasIncompleteSlips = incompleteSlips.length > 0;
             const activeSlipIncomplete = activeGroup ? activeGroup.cheques.length !== activeGroup.totalInstruments : false;
 
@@ -363,7 +364,7 @@ export function ScanPage() {
             scanStep={scanStep}
             activeSlipEntryId={activeSlipEntryId}
             activeGroup={activeGroup}
-            slipScansForActive={slipScansForActive}
+            slipItemsForActive={slipItemsForActive}
             canMoveToChequeScan={canMoveToChequeScan}
             withSlip={withSlip}
             isDeveloper={user?.isDeveloper}
@@ -644,7 +645,7 @@ export function ScanPage() {
             state.setNewSlipSaved(true);
             state.setActiveSlipEntryId(slip.slipEntryId);
             state.setActiveSlipNo(slip.slipNo);
-            state.setNextSlipScanOrder(1);
+            state.setNextSlipItemOrder(1);
             state.setNextChqSeq(1);
             if (withSlip) {
               session_hooks.moveToSlipScan();

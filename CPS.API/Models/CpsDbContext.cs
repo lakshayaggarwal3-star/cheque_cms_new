@@ -30,7 +30,8 @@ public class CpsDbContext : DbContext
     public DbSet<BatchItemSequence> BatchItemSequences { get; set; }
     public DbSet<Batch> Batches { get; set; }
     public DbSet<SlipEntry> SlipEntries { get; set; }
-    public DbSet<SlipScan> SlipScans { get; set; }
+    public DbSet<SlipItem> SlipItems { get; set; }
+
     public DbSet<ChequeItem> ChequeItems { get; set; }
     public DbSet<MasterUploadLog> MasterUploadLogs { get; set; }
     public DbSet<AppSetting> AppSettings { get; set; }
@@ -125,15 +126,15 @@ public class CpsDbContext : DbContext
         modelBuilder.Entity<SlipEntry>()
             .Property(s => s.SlipAmount).HasColumnType("decimal(15,3)");
 
-        // SlipScan: no cascade from SlipEntry (avoids multi-path cascade via Batch)
-        modelBuilder.Entity<SlipScan>()
+        // SlipItem: no cascade from SlipEntry (avoids multi-path cascade via Batch)
+        modelBuilder.Entity<SlipItem>()
             .HasOne(s => s.SlipEntry)
-            .WithMany(e => e.SlipScans)
+            .WithMany(e => e.SlipItems)
             .HasForeignKey(s => s.SlipEntryId)
             .OnDelete(DeleteBehavior.NoAction);
-        modelBuilder.Entity<SlipScan>()
+        modelBuilder.Entity<SlipItem>()
             .HasIndex(s => s.SlipEntryId);
-        modelBuilder.Entity<SlipScan>()
+        modelBuilder.Entity<SlipItem>()
             .HasIndex(s => new { s.SlipEntryId, s.ScanOrder });
 
         // ChequeItem: no cascade from SlipEntry (avoids multi-path cascade via Batch)

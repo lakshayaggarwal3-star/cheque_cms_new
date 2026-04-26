@@ -105,7 +105,7 @@ function ThumbnailSidebar({ session, sidebarOpen, setSidebarOpen, setViewerFront
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 14, padding: '10px 8px', overflowY: 'auto' }}>
         {session?.slipGroups && session.slipGroups.length > 0 ? (
           [...session.slipGroups].reverse().map(group => {
-            const hasItems = (group.cheques?.length ?? 0) > 0 || (group.slipScans?.length ?? 0) > 0;
+            const hasItems = (group.cheques?.length ?? 0) > 0 || (group.slipItems?.length ?? 0) > 0;
             if (!hasItems) return null;
 
             const isExpanded = expandedGroups[group.slipEntryId] ?? true;
@@ -174,11 +174,11 @@ function ThumbnailSidebar({ session, sidebarOpen, setSidebarOpen, setViewerFront
                   })}
 
                     {/* Slips */}
-                    {group.slipScans && [...group.slipScans].reverse().map((s: any, sIdx: number) => {
+                    {group.slipItems && [...group.slipItems].reverse().map((s: any, sIdx: number) => {
                       const isViewed = viewerFront === getSlipImageUrl(s);
                       return (
                         <button
-                          key={`slip-${s.slipScanId || sIdx}`}
+                          key={`slip-${s.slipItemId || sIdx}`}
                           onClick={() => { setViewerFront(getSlipImageUrl(s)); setViewerBack(null); setViewerType('slip'); setFlipped(false); }}
                           style={{ 
                             width: '100%', padding: 4, background: isViewed ? 'var(--bg-subtle)' : 'var(--bg)', 

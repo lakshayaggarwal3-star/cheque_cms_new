@@ -21,14 +21,14 @@ public class SlipEntryRepository : ISlipEntryRepository
 
     public async Task<SlipEntry?> GetByIdAsync(long slipEntryId) =>
         await _db.SlipEntries
-            .Include(s => s.SlipScans.Where(ss => !ss.IsDeleted).OrderBy(ss => ss.ScanOrder))
+            .Include(s => s.SlipItems.Where(si => !si.IsDeleted).OrderBy(si => si.ScanOrder))
             .Include(s => s.ChequeItems.Where(c => !c.IsDeleted).OrderBy(c => c.ChqSeq))
             .AsSplitQuery()
             .FirstOrDefaultAsync(s => s.SlipEntryId == slipEntryId && !s.IsDeleted);
 
     public async Task<List<SlipEntry>> GetByBatchAsync(long batchId) =>
         await _db.SlipEntries
-            .Include(s => s.SlipScans.Where(ss => !ss.IsDeleted).OrderBy(ss => ss.ScanOrder))
+            .Include(s => s.SlipItems.Where(si => !si.IsDeleted).OrderBy(si => si.ScanOrder))
             .Include(s => s.ChequeItems.Where(c => !c.IsDeleted).OrderBy(c => c.ChqSeq))
             .AsSplitQuery()
             .Where(s => s.BatchId == batchId && !s.IsDeleted)
@@ -57,25 +57,25 @@ public class SlipEntryRepository : ISlipEntryRepository
 
     // ─── SlipScan ─────────────────────────────────────────────────────────────
 
-    public async Task<SlipScan?> GetSlipScanByIdAsync(long slipScanId) =>
-        await _db.SlipScans.FirstOrDefaultAsync(s => s.SlipScanId == slipScanId && !s.IsDeleted);
+    public async Task<SlipItem?> GetSlipItemByIdAsync(long slipItemId) =>
+        await _db.SlipItems.FirstOrDefaultAsync(s => s.SlipItemId == slipItemId && !s.IsDeleted);
 
-    public async Task<List<SlipScan>> GetSlipScansByEntryAsync(long slipEntryId) =>
-        await _db.SlipScans
+    public async Task<List<SlipItem>> GetSlipItemsByEntryAsync(long slipEntryId) =>
+        await _db.SlipItems
             .Where(s => s.SlipEntryId == slipEntryId && !s.IsDeleted)
             .OrderBy(s => s.ScanOrder)
             .ToListAsync();
 
-    public async Task<SlipScan> CreateSlipScanAsync(SlipScan scan)
+    public async Task<SlipItem> CreateSlipItemAsync(SlipItem scan)
     {
-        _db.SlipScans.Add(scan);
+        _db.SlipItems.Add(scan);
         await _db.SaveChangesAsync();
         return scan;
     }
 
-    public async Task UpdateSlipScanAsync(SlipScan scan)
+    public async Task UpdateSlipItemAsync(SlipItem scan)
     {
-        _db.SlipScans.Update(scan);
+        _db.SlipItems.Update(scan);
         await _db.SaveChangesAsync();
     }
 

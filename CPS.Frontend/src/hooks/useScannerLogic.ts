@@ -9,7 +9,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import {
   captureCheque, completeScan, startFeed, stopFeed,
-  uploadMobileCheque, uploadMobileSlipScan,
+  uploadMobileCheque, uploadMobileSlipItem,
 } from '../services/scanService';
 import { toast } from '../store/toastStore';
 import {
@@ -25,7 +25,7 @@ import {
   getFlatbedWsUrl, isFlatbedConnected, setFlatbedWsUrl as applyFlatbedWsUrl, flatbedDisconnectAction,
   type FlatbedScanner, type ScanSettings,
 } from '../services/flatbedWebService';
-import type { ChequeItemDto, SlipScanDto } from '../types';
+import type { ChequeItemDto, SlipItemDto } from '../types';
 
 type EditableImageTarget = 'slip-front' | 'cheque-front' | 'cheque-back';
 
@@ -33,7 +33,7 @@ interface UseScannerLogicProps {
   batchId: number;
   batchNo: string;
   activeSlipEntryId: number | null;
-  nextSlipScanOrder: number;
+  nextSlipItemOrder: number;
   nextChqSeq: number;
   mockScanEnabled: boolean;
   isDeveloper?: boolean;
@@ -53,7 +53,7 @@ export function useScannerLogic({
   batchId,
   batchNo,
   activeSlipEntryId,
-  nextSlipScanOrder,
+  nextSlipItemOrder,
   nextChqSeq,
   mockScanEnabled,
   isDeveloper,
@@ -76,7 +76,7 @@ export function useScannerLogic({
 
   // Preview
   const [mockPreview, setMockPreview] = useState<{ front: string; back: string } | null>(null);
-  const [currentSlipScan, setCurrentSlipScan] = useState<SlipScanDto | null>(null);
+  const [currentSlipItem, setCurrentSlipItem] = useState<SlipItemDto | null>(null);
   const [currentCheque, setCurrentCheque] = useState<ChequeItemDto | null>(null);
 
   // Scanner settings
@@ -301,18 +301,18 @@ export function useScannerLogic({
 
   // ─── Capture ──────────────────────────────────────────────────────────────
 
-  const handleCaptureSlipScan = useCallback(async () => {
+  const handleCaptureSlipItem = useCallback(async () => {
     if (!activeSlipEntryId) return;
 
     // Dev mock path — camera file was captured, upload it as a real entry
     if (isDeveloper && mockScanEnabled && frontFile) {
       setIsBusy(true);
       try {
-        const result = await uploadMobileSlipScan(batchId, { slipEntryId: activeSlipEntryId, scanOrder: nextSlipScanOrder, image: frontFile, scannerType: 'Scanner' });
+        const result = await uploadMobileSlipItem(batchId, { slipEntryId: activeSlipEntryId, scanOrder: nextSlipItemOrder, image: frontFile, scannerType: 'Scanner' });
         onClearCameraFiles();
-        setCurrentSlipScan(result);
+        setCurrentSlipItem(result);
         await onCaptureSuccess();
-        toast.success('Slip scan captured');
+        toast.success('Slip image captured');
       } catch (err: any) {
         toast.error(err?.response?.data?.message ?? err?.message ?? 'Upload failed');
       } finally {
@@ -334,10 +334,10 @@ export function useScannerLogic({
       const ext = scanResult.format === 'PNG' ? 'png' : 'jpg';
       const file = base64ToFile(`data:${mimeType};base64,${scanResult.image_base64}`, `slip-scan.${ext}`);
       if (!file) throw new Error('Invalid image data from scanner');
-      const result = await uploadMobileSlipScan(batchId, { slipEntryId: activeSlipEntryId, scanOrder: nextSlipScanOrder, image: file });
-      setCurrentSlipScan(result);
+      const result = await uploadMobileSlipItem(batchId, { slipEntryId: activeSlipEntryId, scanOrder: nextSlipItemOrder, image: file });
+      setCurrentSlipItem(result);
       await onCaptureSuccess();
-      toast.success('Slip scan captured');
+      toast.success('Slip image captured');
     } catch (err: any) {
       if (!isFlatbedConnected()) {
         setFlatbedStatus('error');
@@ -347,7 +347,7 @@ export function useScannerLogic({
     } finally {
       setIsBusy(false);
     }
-  }, [activeSlipEntryId, isDeveloper, mockScanEnabled, frontFile, batchId, nextSlipScanOrder, onClearCameraFiles, onCaptureSuccess, flatbedStatus, selectedScannerId, flatbedResolution, flatbedMode, flatbedFormat]);
+  }, [activeSlipEntryId, isDeveloper, mockScanEnabled, frontFile, batchId, nextSlipItemOrder, onClearCameraFiles, onCaptureSuccess, flatbedStatus, selectedScannerId, flatbedResolution, flatbedMode, flatbedFormat]);
 
   const handleCaptureCheque = useCallback(async () => {
     if (!activeSlipEntryId) return;
@@ -485,7 +485,7 @@ export function useScannerLogic({
     scanRoundActive,
     feedRunning,
     mockPreview,
-    currentSlipScan,
+    currentSlipItem,
     currentCheque,
     rangerWsUrl,
     flatbedWsUrl,
@@ -507,7 +507,7 @@ export function useScannerLogic({
     setScanRoundActive,
     setFeedRunning,
     setMockPreview,
-    setCurrentSlipScan,
+    setCurrentSlipItem,
     setCurrentCheque,
     setRangerWsUrl,
     setFlatbedWsUrl,
@@ -525,7 +525,7 @@ export function useScannerLogic({
     handleStartFeed,
     handleStopFeed,
     handleRangerStopAndCapture,
-    handleCaptureSlipScan,
+    handleCaptureSlipItem,
     handleCaptureCheque,
     handleCompleteScan,
     handleSaveSettings,

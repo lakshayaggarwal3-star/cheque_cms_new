@@ -129,12 +129,14 @@ export interface ScannerDto {
 }
 
 // ── Slip ──────────────────────────────────────────────────────────────────────
-export interface SlipScanDto {
-  slipScanId: number;
+export interface SlipItemDto {
+  slipItemId: number;
   slipEntryId: number;
   scanOrder: number;
   retryCount: number;
   imageBaseName?: string;
+  imageName?: string;
+
   fileExtension?: string;
   imageHash?: string;
   scanStatus: string;
@@ -163,6 +165,8 @@ export interface ChequeItemDto {
   rrState: number;
   retryCount: number;
   imageBaseName?: string;
+  imageName?: string;
+
   fileExtension?: string;
   imageHash?: string;
   scanStatus: string;
@@ -182,7 +186,7 @@ export interface SlipEntryDto {
   slipStatus: number;
   createdAt: string;
   rowVersion: string;
-  slipScans: SlipScanDto[];
+  slipItems: SlipItemDto[];
   cheques: ChequeItemDto[];
 }
 
@@ -194,7 +198,7 @@ export interface ScanResumeStateDto {
   activeSlipNo?: string;
   // "SlipEntry" | "SlipScan" | "ChequeScan" | null
   resumeStep?: string | null;
-  nextSlipScanOrder: number;
+  nextSlipItemOrder: number;
   nextChqSeq: number;
 }
 
@@ -210,7 +214,7 @@ export interface ScanSessionDto {
   totalSlipEntries: number;
   totalAmount: number;
   slipGroups: SlipEntryDto[];
-  slipScans?: SlipScanDto[];
+  slipItems?: SlipItemDto[];
   resumeState: ScanResumeStateDto;
 }
 
@@ -240,6 +244,8 @@ export interface RRItemDto {
   slipAmount?: number;
   totalInstruments?: number;
   imageBaseName?: string;
+  imageName?: string;
+
   fileExtension?: string;
   rowVersion: string;
 }
