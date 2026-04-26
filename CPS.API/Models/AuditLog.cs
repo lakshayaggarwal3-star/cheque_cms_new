@@ -30,9 +30,6 @@ public class AuditLog
     public int ChangedBy { get; set; }
     public DateTime ChangedAt { get; set; }
 
-    [MaxLength(45)]
-    public string? IPAddress { get; set; }
-
     [MaxLength(50)]
-    public string? SessionID { get; set; }
+    public string? BatchNo { get; set; }
 }

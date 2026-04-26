@@ -55,7 +55,15 @@ public class Batch
     [MaxLength(10)]
     public string ScanType { get; set; } = "Scan";
 
+    // "scanner" | "mobile" — derived from user role at creation, never changed after
+    [MaxLength(20)]
+    public string EntryMode { get; set; } = "scanner";
+
     public bool? WithSlip { get; set; }
+
+    [MaxLength(20)]
+    public string? GlobalSlipNo { get; set; }
+
     public int BatchStatus { get; set; } = 0;
     public string? StatusHistory { get; set; }
 
@@ -66,6 +74,18 @@ public class Batch
     // RR lock
     public int? RRLockedBy { get; set; }
     public DateTime? RRLockedAt { get; set; }
+
+    // Phase started
+    public int? ScanStartedBy { get; set; }
+    public DateTime? ScanStartedAt { get; set; }
+    public int? RRStartedBy { get; set; }
+    public DateTime? RRStartedAt { get; set; }
+
+    // Phase completions
+    public int? ScanCompletedBy { get; set; }
+    public DateTime? ScanCompletedAt { get; set; }
+    public int? RRCompletedBy { get; set; }
+    public DateTime? RRCompletedAt { get; set; }
 
     public int CreatedBy { get; set; }
     public DateTime CreatedAt { get; set; }

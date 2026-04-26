@@ -25,6 +25,11 @@ export async function getBatch(id: number): Promise<BatchDto> {
   return extractData<BatchDto>(res);
 }
 
+export async function getBatchByNumber(batchNo: string): Promise<BatchDto> {
+  const res = await apiClient.get(`/batch/by-number/${batchNo}`);
+  return extractData<BatchDto>(res);
+}
+
 export async function createBatch(data: {
   locationID: number;
   scannerMappingID: number;
@@ -37,7 +42,6 @@ export async function createBatch(data: {
   totalAmount: number;
   summRefNo?: string;
   pif?: string;
-  entryMode?: string;
 }): Promise<BatchDto> {
   const res = await apiClient.post('/batch', data);
   return extractData<BatchDto>(res);

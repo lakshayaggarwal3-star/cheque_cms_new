@@ -18,7 +18,7 @@ public class AuditService : IAuditService
     public AuditService(CpsDbContext db) => _db = db;
 
     public async Task LogAsync(string tableName, string recordId, string action,
-        object? oldValues, object? newValues, int changedBy, string? ipAddress = null, string? sessionId = null)
+        object? oldValues, object? newValues, int changedBy, string? batchNo = null)
     {
         var entry = new AuditLog
         {
@@ -29,8 +29,7 @@ public class AuditService : IAuditService
             NewValues = newValues != null ? JsonSerializer.Serialize(newValues) : null,
             ChangedBy = changedBy,
             ChangedAt = DateTime.UtcNow,
-            IPAddress = ipAddress,
-            SessionID = sessionId
+            BatchNo = batchNo
         };
         _db.AuditLogs.Add(entry);
         await _db.SaveChangesAsync();

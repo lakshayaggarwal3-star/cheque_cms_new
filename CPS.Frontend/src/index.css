@@ -1,4 +1,5 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,400..700,0..1,-25..200&display=swap');
+/* Material Symbols loaded via Google Fonts in HTML head */
+/* Inter font fallback — see index.html for font loading */
 @import './styles/theme.css';
 
 @keyframes spin {
@@ -14,17 +15,17 @@
   :root {
     color-scheme: light;
 
-    --font-sans: 'Georgia', ui-serif, Georgia, serif;
+    --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
     --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
-    --text-xs:   11px;
-    --text-sm:   13px;
-    --text-base: 14px;
-    --text-md:   15px;
-    --text-lg:   17px;
-    --text-xl:   20px;
-    --text-2xl:  24px;
-    --text-3xl:  32px;
+    --text-xs:   13px;
+    --text-sm:   15px;
+    --text-base: 16px;
+    --text-md:   17px;
+    --text-lg:   19px;
+    --text-xl:   22px;
+    --text-2xl:  28px;
+    --text-3xl:  36px;
 
     --r-sm:   6px;
     --r-md:   10px;
@@ -119,7 +120,7 @@
   }
 
   html {
-    font-size: 14px;
+    font-size: 16px;
     transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
   }
 
@@ -151,6 +152,19 @@
 ::placeholder                { color: var(--fg-subtle) !important; opacity: 1 !important; }
 
 /* ── Responsive helpers ── */
+
+/* Module grid: 4 cols desktop → 2 cols tablet → 2 cols mobile */
+.module-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+@media (max-width: 1023px) {
+  .module-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+}
+@media (max-width: 640px) {
+  .module-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+}
 
 /* KPI grid: 4 cols desktop → 2 cols mobile */
 .kpi-grid {
@@ -342,4 +356,44 @@
     border-color: var(--accent-500);
     box-shadow: var(--shadow-focus);
   }
+}
+
+/* ── Material Symbols Configuration (Bundled Locally) ── */
+.material-icons, .material-symbols-outlined {
+  font-family: 'Material Symbols Outlined', 'Material Icons';
+  font-weight: normal;
+  font-style: normal;
+  font-size: 20px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-feature-settings: 'liga';
+  -webkit-font-smoothing: antialiased;
+  font-display: block;
+}
+
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+}
+
+/* Specific sizes per user request */
+.btn .material-symbols-outlined,
+.chip .material-symbols-outlined,
+button .material-symbols-outlined {
+  font-size: 16px;
+  font-variation-settings: 'FILL' 0, 'wght' 500, 'GRAD' 0, 'opsz' 20;
+}
+
+.inline-icon .material-symbols-outlined {
+  font-size: 14px;
+}
+
+.btn-primary .material-symbols-outlined,
+.btn-secondary .material-symbols-outlined,
+.active .material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 500, 'GRAD' 0, 'opsz' 20;
 }

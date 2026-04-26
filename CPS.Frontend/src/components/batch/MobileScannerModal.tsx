@@ -18,24 +18,22 @@ interface MobileScannerModalProps {
 
 export function MobileScannerModal({ hasBothRoles, submitting, onClose, onSubmit }: MobileScannerModalProps) {
   const [modalSumm, setModalSumm] = useState('');
-  const [modalPif, setModalPif] = useState('');
   const [modalSlips, setModalSlips] = useState('');
   const [modalAmount, setModalAmount] = useState('');
   const [modalErrors, setModalErrors] = useState<Record<string, string>>({});
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     const newErrs: Record<string, string> = {};
     if (!modalSumm.trim()) newErrs.summ = 'Required';
-    if (!modalPif.trim()) newErrs.pif = 'Required';
     if (!modalSlips || parseInt(modalSlips) <= 0) newErrs.slips = 'Required (>0)';
     if (!modalAmount || parseFloat(modalAmount) <= 0) newErrs.amount = 'Required (>0)';
 
     setModalErrors(newErrs);
     if (Object.keys(newErrs).length > 0) return;
 
-    onSubmit({ summ: modalSumm, pif: modalPif, slips: modalSlips, amount: modalAmount });
+    onSubmit({ summ: modalSumm, pif: modalSumm, slips: modalSlips, amount: modalAmount });
   };
 
   return (
@@ -45,22 +43,22 @@ export function MobileScannerModal({ hasBothRoles, submitting, onClose, onSubmit
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       zIndex: 100, padding: 24, animation: 'fadeIn 0.2s ease-out'
     }}>
-      <form 
+      <form
         onSubmit={handleSubmit}
         style={{
           background: 'var(--bg-raised, #fff)', border: '1px solid var(--border)',
           borderRadius: 'var(--r-xl, 16px)', boxShadow: 'var(--shadow-xl)',
-          width: '100%', maxWidth: 520, overflow: 'hidden',
+          width: '100%', maxWidth: 460, overflow: 'hidden',
           display: 'flex', flexDirection: 'column'
         }}
       >
-        <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
           <div>
             <h2 style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 600, color: 'var(--fg)' }}>
-              Mobile Scanner Form
+              Batch Details
             </h2>
-            <div style={{ marginTop: 4, fontSize: 'var(--text-xs)', color: 'var(--fg-subtle)' }}>
-              Please fill all fields to populate the batch configuration.
+            <div style={{ marginTop: 2, fontSize: 'var(--text-xs)', color: 'var(--fg-subtle)' }}>
+              Fill all fields to proceed
             </div>
           </div>
           {hasBothRoles && (
@@ -70,17 +68,22 @@ export function MobileScannerModal({ hasBothRoles, submitting, onClose, onSubmit
           )}
         </div>
 
-        <div style={{ padding: 24, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-          <div style={{ gridColumn: '1 / -1' }}>
+        <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div>
             <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--fg-muted)', display: 'block', marginBottom: 6 }}>
               Summary Ref No <span style={{ color: 'var(--danger)' }}>*</span>
             </label>
             <input
               autoFocus
               value={modalSumm}
-              onChange={e => { setModalSumm(e.target.value); setModalErrors(prev => ({ ...prev, summ: '' })); }}
+              onChange={e => {
+                const val = e.target.value;
+                setModalSumm(val);
+                setModalErrors(prev => ({ ...prev, summ: '' }));
+              }}
+              placeholder="Enter reference no"
               style={{
-                width: '100%', boxSizing: 'border-box', padding: '9px 12px',
+                width: '100%', boxSizing: 'border-box', padding: '10px 12px',
                 background: 'var(--bg-input)',
                 border: `1px solid ${modalErrors.summ ? 'var(--danger)' : 'var(--border-strong)'}`,
                 borderRadius: 'var(--r-md)', fontSize: 'var(--text-sm)',
@@ -90,94 +93,80 @@ export function MobileScannerModal({ hasBothRoles, submitting, onClose, onSubmit
             {modalErrors.summ && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--danger)', marginTop: 4 }}>{modalErrors.summ}</div>}
           </div>
 
-          <div style={{ gridColumn: '1 / -1' }}>
-            <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--fg-muted)', display: 'block', marginBottom: 6 }}>
-              PIF No <span style={{ color: 'var(--danger)' }}>*</span>
-            </label>
-            <input
-              value={modalPif}
-              onChange={e => { setModalPif(e.target.value); setModalErrors(prev => ({ ...prev, pif: '' })); }}
-              style={{
-                width: '100%', boxSizing: 'border-box', padding: '9px 12px',
-                background: 'var(--bg-input)',
-                border: `1px solid ${modalErrors.pif ? 'var(--danger)' : 'var(--border-strong)'}`,
-                borderRadius: 'var(--r-md)', fontSize: 'var(--text-sm)',
-                fontFamily: 'var(--font-mono)', outline: 'none', color: 'var(--fg)'
-              }}
-            />
-            {modalErrors.pif && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--danger)', marginTop: 4 }}>{modalErrors.pif}</div>}
-          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12 }}>
+            <div>
+              <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--fg-muted)', display: 'block', marginBottom: 6 }}>
+                Total Slips <span style={{ color: 'var(--danger)' }}>*</span>
+              </label>
+              <input
+                type="number"
+                value={modalSlips}
+                placeholder="Enter total slips"
+                onChange={e => { setModalSlips(e.target.value); setModalErrors(prev => ({ ...prev, slips: '' })); }}
+                style={{
+                  width: '100%', boxSizing: 'border-box', padding: '9px 12px',
+                  background: 'var(--bg-input)',
+                  border: `1px solid ${modalErrors.slips ? 'var(--danger)' : 'var(--border-strong)'}`,
+                  borderRadius: 'var(--r-md)', fontSize: 'var(--text-sm)',
+                  outline: 'none', color: 'var(--fg)'
+                }}
+              />
+              {modalErrors.slips && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--danger)', marginTop: 4 }}>{modalErrors.slips}</div>}
+            </div>
 
-          <div>
-            <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--fg-muted)', display: 'block', marginBottom: 6 }}>
-              Total Slips <span style={{ color: 'var(--danger)' }}>*</span>
-            </label>
-            <input
-              type="number"
-              value={modalSlips}
-              onChange={e => { setModalSlips(e.target.value); setModalErrors(prev => ({ ...prev, slips: '' })); }}
-              style={{
-                width: '100%', boxSizing: 'border-box', padding: '9px 12px',
-                background: 'var(--bg-input)',
-                border: `1px solid ${modalErrors.slips ? 'var(--danger)' : 'var(--border-strong)'}`,
-                borderRadius: 'var(--r-md)', fontSize: 'var(--text-sm)',
-                outline: 'none', color: 'var(--fg)'
-              }}
-            />
-            {modalErrors.slips && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--danger)', marginTop: 4 }}>{modalErrors.slips}</div>}
-          </div>
-
-          <div>
-            <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--fg-muted)', display: 'block', marginBottom: 6 }}>
-              Total Amount (₹) <span style={{ color: 'var(--danger)' }}>*</span>
-            </label>
-            <input
-              type="number"
-              value={modalAmount}
-              onChange={e => { setModalAmount(e.target.value); setModalErrors(prev => ({ ...prev, amount: '' })); }}
-              style={{
-                width: '100%', boxSizing: 'border-box', padding: '9px 12px',
-                background: 'var(--bg-input)',
-                border: `1px solid ${modalErrors.amount ? 'var(--danger)' : 'var(--border-strong)'}`,
-                borderRadius: 'var(--r-md)', fontSize: 'var(--text-sm)',
-                outline: 'none', color: 'var(--fg)'
-              }}
-            />
-            {modalErrors.amount && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--danger)', marginTop: 4 }}>{modalErrors.amount}</div>}
+            <div>
+              <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--fg-muted)', display: 'block', marginBottom: 6 }}>
+                Total Amount (₹) <span style={{ color: 'var(--danger)' }}>*</span>
+              </label>
+              <input
+                type="number"
+                value={modalAmount}
+                onChange={e => { setModalAmount(e.target.value); setModalErrors(prev => ({ ...prev, amount: '' })); }}
+                placeholder="Enter total amount"
+                style={{
+                  width: '100%', boxSizing: 'border-box', padding: '9px 12px',
+                  background: 'var(--bg-input)',
+                  border: `1px solid ${modalErrors.amount ? 'var(--danger)' : 'var(--border-strong)'}`,
+                  borderRadius: 'var(--r-md)', fontSize: 'var(--text-sm)',
+                  outline: 'none', color: 'var(--fg)'
+                }}
+              />
+              {modalErrors.amount && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--danger)', marginTop: 4 }}>{modalErrors.amount}</div>}
+            </div>
           </div>
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, padding: '16px 24px', borderTop: '1px solid var(--border)', background: 'var(--bg-subtle)' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '12px 20px', borderTop: '1px solid var(--border)', background: 'var(--bg-subtle)' }}>
+          <button
+            type="submit"
+            disabled={submitting}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+              padding: '11px 16px', minHeight: 40,
+              background: 'var(--accent-500)', color: 'var(--fg-on-accent)',
+              border: '1px solid var(--accent-600)', borderRadius: 'var(--r-md)',
+              fontSize: 'var(--text-sm)', fontWeight: 500, cursor: 'pointer', width: '100%'
+            }}
+          >
+            <Icon name="check_circle" size={16} />
+            Fill Details
+          </button>
           {hasBothRoles && (
             <button
               type="button"
               onClick={onClose}
               disabled={submitting}
               style={{
-                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                padding: '9px 16px', height: 38,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                padding: '11px 16px', minHeight: 40,
                 background: 'var(--bg-raised)', color: 'var(--fg)',
                 border: '1px solid var(--border-strong)', borderRadius: 'var(--r-md)',
-                fontSize: 'var(--text-sm)', fontWeight: 500, cursor: 'pointer'
+                fontSize: 'var(--text-sm)', fontWeight: 500, cursor: 'pointer', width: '100%'
               }}
             >
               Cancel
             </button>
           )}
-          <button
-            type="submit"
-            disabled={submitting}
-            style={{
-              display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-              padding: '9px 16px', height: 38,
-              background: 'var(--accent-500)', color: 'var(--fg-on-accent)',
-              border: '1px solid var(--accent-600)', borderRadius: 'var(--r-md)',
-              fontSize: 'var(--text-sm)', fontWeight: 500, cursor: 'pointer'
-            }}
-          >
-            <Icon name="check_circle" size={16} />
-            Confirm Details To Form
-          </button>
         </div>
       </form>
     </div>

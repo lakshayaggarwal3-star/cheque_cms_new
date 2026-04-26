@@ -10,32 +10,40 @@ import type { FlatbedScanner, ScanSettings } from '../../services/flatbedWebServ
 import { Icon, Toggle } from './ScanPageUI';
 
 export function ScannerSettingsModal({
+  scanner,
   rangerWsUrl, flatbedWsUrl, useFlatbedWs, isDeveloper, flatbedConnecting,
   detectedScanners, selectedScannerId, flatbedResolution, flatbedMode,
   rangerMicrEnabled, rangerEndorsementEnabled,
   rangerEndorsementUseImageName, rangerEndorsementCustomText,
+  rangerEndorsementBatchName,
   onRangerUrlChange, onFlatbedUrlChange, onFlatbedWsToggle,
   onDetectScanners, onAutoSelect, onSelectScanner,
-  onResolutionChange, onModeChange,
+  onResolutionChange, onModeChange, onFormatChange,
   onRangerMicrChange, onRangerEndorsementChange,
   onRangerEndorsementModeChange, onRangerEndorsementTextChange,
+  onRangerEndorsementBatchNameChange,
   onSave, onClose,
+  flatbedFormat,
 }: {
+  scanner: any;
   rangerWsUrl: string; flatbedWsUrl: string; useFlatbedWs: boolean;
   isDeveloper: boolean; flatbedConnecting: boolean;
   detectedScanners: FlatbedScanner[]; selectedScannerId: string;
-  flatbedResolution: number; flatbedMode: ScanSettings['mode'];
+  flatbedResolution: number; flatbedMode: ScanSettings['mode']; flatbedFormat: ScanSettings['format'];
   rangerMicrEnabled: boolean; rangerEndorsementEnabled: boolean;
   rangerEndorsementUseImageName: boolean; rangerEndorsementCustomText: string;
+  rangerEndorsementBatchName: string;
   onRangerUrlChange: (v: string) => void; onFlatbedUrlChange: (v: string) => void;
   onFlatbedWsToggle: (v: boolean) => void;
   onDetectScanners: () => void; onAutoSelect: () => void;
   onSelectScanner: (id: string) => void;
   onResolutionChange: (v: number) => void; onModeChange: (v: ScanSettings['mode']) => void;
+  onFormatChange: (v: ScanSettings['format']) => void;
   onRangerMicrChange: (v: boolean) => void;
   onRangerEndorsementChange: (v: boolean) => void;
   onRangerEndorsementModeChange: (v: boolean) => void;
   onRangerEndorsementTextChange: (v: string) => void;
+  onRangerEndorsementBatchNameChange: (v: string) => void;
   onSave: () => void; onClose: () => void;
 }) {
   const uniqueScanners = Array.from(new Map(detectedScanners.map(s => [s.name, s])).values());
@@ -59,9 +67,43 @@ export function ScannerSettingsModal({
 
           {/* ── Ranger URL ── */}
           <section>
-            <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--fg-subtle)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 10 }}>
-              Cheque Scanner (Ranger)
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+              <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--fg-subtle)', textTransform: 'uppercase', letterSpacing: '.04em' }}>
+                Cheque Scanner (Ranger)
+              </div>
+              {/* Ranger Status indicator */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, fontWeight: 600 }}>
+                <div style={{ width: 6, height: 6, borderRadius: '50%', background: scanner.rangerState === 5 ? 'var(--success, #22c55e)' : scanner.rangerState > 0 ? 'var(--warning, #f59e0b)' : 'var(--fg-faint, #94a3b8)' }} />
+                <span style={{ color: 'var(--fg-muted)' }}>
+                  {scanner.rangerState === 0 ? 'OFFLINE' : 
+                   scanner.rangerState === 5 ? 'FEEDING' : 
+                   scanner.rangerState === 4 ? 'READY' : 'BUSY'}
+                </span>
+              </div>
             </div>
+
+            {/* Quick Actions at top */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
+              <button
+                onClick={() => { scanner.setScannerChoice('Ranger'); scanner.handleStartFeed('Cheque'); }}
+                disabled={scanner.isBusy || scanner.rangerState === 5}
+                className="btn-primary"
+                style={{ height: 32, fontSize: 'var(--text-xs)', gap: 6, justifyContent: 'center' }}
+              >
+                <Icon name="play_arrow" size={16} />
+                Start Ranger
+              </button>
+              <button
+                onClick={scanner.handleRangerStopAndCapture}
+                disabled={scanner.isBusy || scanner.rangerState !== 5}
+                className="btn-secondary"
+                style={{ height: 32, fontSize: 'var(--text-xs)', gap: 6, justifyContent: 'center', color: 'var(--danger)', borderColor: 'var(--danger)' }}
+              >
+                <Icon name="stop" size={16} />
+                Stop Ranger
+              </button>
+            </div>
+
             <label className="label" style={{ display: 'block', marginBottom: 6 }}>WebSocket URL</label>
             <input className="input-field" value={rangerWsUrl} onChange={e => onRangerUrlChange(e.target.value)} placeholder="ws://127.0.0.1:9002" style={{ fontFamily: 'var(--font-mono)' }} />
             <p style={{ margin: '5px 0 0', fontSize: 'var(--text-xs)', color: 'var(--fg-subtle)' }}>Ranger PICA cheque scanner — bulk feed mode.</p>
@@ -140,8 +182,19 @@ export function ScannerSettingsModal({
                   )}
 
                   {rangerEndorsementUseImageName && (
-                    <div style={{ padding: '6px 10px', borderRadius: 'var(--r-sm)', background: 'var(--info-bg, #eff6ff)', border: '1px solid var(--info, #3b82f6)', fontSize: 10, color: 'var(--info, #1d4ed8)' }}>
-                      Endorsement text = back image filename without extension (e.g. <strong>B_0001</strong> for the first cheque in the batch)
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <label className="label" style={{ fontSize: 10 }}>Endorsement Batch Name</label>
+                      <input
+                        className="input-field"
+                        value={rangerEndorsementBatchName}
+                        onChange={e => onRangerEndorsementBatchNameChange(e.target.value)}
+                        placeholder="Default: Batch No"
+                        style={{ height: 32, fontSize: 'var(--text-xs)' }}
+                      />
+                      <div style={{ padding: '6px 10px', borderRadius: 'var(--r-sm)', background: 'var(--info-bg, #eff6ff)', border: '1px solid var(--info, #3b82f6)', fontSize: 10, color: 'var(--info, #1d4ed8)' }}>
+                        Result: <strong>{`<CSN:${String(scanner.nextChqSeq).padStart(4, '0')},1,9999> ` + (rangerEndorsementBatchName || scanner.batchNo)}</strong>
+                        <div style={{ marginTop: 4, opacity: 0.8 }}>Ranger will automatically increment the sequence number during bulk scanning.</div>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -213,9 +266,9 @@ export function ScannerSettingsModal({
             )}
 
             {useFlatbedWs && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
                 <div>
-                  <label className="label" style={{ display: 'block', marginBottom: 6 }}>Resolution (DPI)</label>
+                  <label className="label" style={{ display: 'block', marginBottom: 6 }}>Resolution</label>
                   <select className="input-field" value={flatbedResolution} onChange={e => onResolutionChange(Number(e.target.value))}>
                     <option value={150}>150 dpi</option>
                     <option value={200}>200 dpi</option>
@@ -226,9 +279,16 @@ export function ScannerSettingsModal({
                 <div>
                   <label className="label" style={{ display: 'block', marginBottom: 6 }}>Colour Mode</label>
                   <select className="input-field" value={flatbedMode} onChange={e => onModeChange(e.target.value as ScanSettings['mode'])}>
-                    <option value="Gray">Grayscale</option>
                     <option value="Color">Colour</option>
+                    <option value="Gray">Grayscale</option>
                     <option value="Lineart">Lineart (B&W)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="label" style={{ display: 'block', marginBottom: 6 }}>Format</label>
+                  <select className="input-field" value={flatbedFormat} onChange={e => onFormatChange(e.target.value as ScanSettings['format'])}>
+                    <option value="JPEG">JPEG (.jpg)</option>
+                    <option value="PNG">PNG (.png)</option>
                   </select>
                 </div>
               </div>

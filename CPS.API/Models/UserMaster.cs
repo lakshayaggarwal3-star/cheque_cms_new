@@ -29,12 +29,6 @@ public class UserMaster
     public string? Email { get; set; }
 
     public bool IsActive { get; set; } = true;
-    public bool RoleScanner { get; set; } = false;
-    public bool RoleMobileScanner { get; set; } = false;
-    public bool RoleMaker { get; set; } = false;
-    public bool RoleChecker { get; set; } = false;
-    public bool RoleAdmin { get; set; } = false;
-    public bool IsDeveloper { get; set; } = false;
 
     public int? DefaultLocationID { get; set; }
 
@@ -45,6 +39,8 @@ public class UserMaster
     public Guid? SessionToken { get; set; }
     public int LoginAttempts { get; set; } = 0;
     public bool IsLocked { get; set; } = false;
+
+    public ICollection<UserRole> UserRoles { get; set; } = new List<UserRole>();
 
     public int? CreatedBy { get; set; }
     public DateTime? CreatedAt { get; set; }

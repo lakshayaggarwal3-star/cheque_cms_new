@@ -23,6 +23,6 @@ public interface IScannerOrchestrator
 {
     Task StartFeedAsync(string scannerType, bool useMock);
     Task StopFeedAsync(string scannerType, bool useMock);
-    Task<ScannerCaptureResult> CaptureChequeAsync(bool useMock);
-    Task<ScannerCaptureResult> CaptureSlipAsync(bool useMock);
+    Task<ScannerCaptureResult> CaptureChequeAsync(bool useMock, string? frontFileName = null, string? backFileName = null);
+    Task<ScannerCaptureResult> CaptureSlipAsync(bool useMock, string? frontFileName = null);
 }

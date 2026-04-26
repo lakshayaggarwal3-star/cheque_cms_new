@@ -2,232 +2,243 @@
 // File        : MobileScanPage.tsx
 // Project     : CPS — Cheque Processing System
 // Module      : Scanning
-// Description : Mobile camera-based scanning page for slip images and cheques.
+// Description : Mobile camera scanning page — design-system matched, clean flow
 // Created     : 2026-04-14
+// Updated     : 2026-04-24
 // =============================================================================
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { getBatch } from '../services/batchService';
+import { getBatchByNumber } from '../services/batchService';
 import { completeScan, getScanSession, startScan, uploadMobileCheque, uploadMobileSlipScan } from '../services/scanService';
 import { toast } from '../store/toastStore';
-import type { ChequeItemDto, SlipScanDto, ScanSessionDto } from '../types';
+import type { ScanSessionDto } from '../types';
 import { BatchStatus } from '../types';
-import { getImageUrl } from '../utils/imageUtils';
+import { getChequeImageUrl, getSlipImageUrl } from '../utils/imageUtils';
 import { SlipFormModal } from '../components/SlipFormModal';
-import { CameraCapture } from '../components/CameraCapture';
-import { ImageEditModal } from '../components/ImageEditModal';
+import { CameraCapturePro } from '../components/CameraCapturePro';
+import { ImageEditModalMobile } from '../components/ImageEditModalMobile';
 
-type ScanTarget = 'Slip' | 'Cheque';
-type MobileScanStep = 'SlipScan' | 'ChequeScan';
-type EditableImageTarget = 'slip-front' | 'cheque-front' | 'cheque-back';
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+type Step =
+  | 'slip-entry'      // fill in slip form
+  | 'slip-capture'    // capture slip image(s)
+  | 'slip-done'       // slip captured — choose next
+  | 'cheque-front'    // capture cheque front
+  | 'cheque-back'     // capture cheque back
+  | 'cheque-review';  // review both, save or retake
+
+type EditTarget = 'slip' | 'cheque-front' | 'cheque-back';
+
+// ── Style constants ───────────────────────────────────────────────────────────
+
+const card: React.CSSProperties = {
+  background: 'var(--bg-raised)',
+  border: '1px solid var(--border)',
+  borderRadius: 'var(--r-lg)',
+  boxShadow: 'var(--shadow-xs)',
+  padding: 16,
+};
+
+const pill: React.CSSProperties = {
+  padding: '2px 6px', borderRadius: 'var(--r-full)',
+  fontSize: 10, fontWeight: 600,
+  background: 'var(--bg)', border: '1px solid var(--border)',
+  color: 'var(--fg-muted)',
+};
+
+const thumbBtn: React.CSSProperties = {
+  position: 'absolute', top: 4, right: 4,
+  width: 24, height: 24, borderRadius: '50%',
+  background: 'rgba(0,0,0,0.6)', border: 'none',
+  color: '#fff', cursor: 'pointer',
+  display: 'flex', alignItems: 'center', justifyContent: 'center',
+};
+
+const missingThumb: React.CSSProperties = {
+  width: '100%', aspectRatio: '85.6/54',
+  borderRadius: 8, border: '1px dashed var(--border)',
+  background: 'var(--bg-subtle)',
+  display: 'flex', alignItems: 'center', justifyContent: 'center',
+};
+
+// ── MobileScanPage ────────────────────────────────────────────────────────────
 
 export function MobileScanPage() {
-  const { batchId } = useParams<{ batchId: string }>();
+  const { batchNo } = useParams<{ batchNo: string }>();
   const navigate = useNavigate();
-  const id = Number(batchId);
+  const [id, setId] = useState<number>(0);
 
   const [session, setSession] = useState<ScanSessionDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [showStartModal, setShowStartModal] = useState(false);
-  const [startStep, setStartStep] = useState<'scanType' | 'slipMode'>('scanType');
-  const [selectedScanType, setSelectedScanType] = useState<'Scan' | 'Rescan'>('Scan');
-  const [scanTarget, setScanTarget] = useState<ScanTarget>('Slip');
-  const [scanStep, setScanStep] = useState<MobileScanStep>('SlipScan');
-  const [slipScansCount, setSlipScansCount] = useState(0);
-  const [showSlipForm, setShowSlipForm] = useState(false);
-  const [slipCreated, setSlipCreated] = useState(false);
-  const [activeSlipId, setActiveSlipId] = useState<number | null>(null);
   const [pickupPointCode, setPickupPointCode] = useState('');
+
+  const [step, setStep] = useState<Step>('slip-entry');
+  const [activeSlipId, setActiveSlipId] = useState<number | null>(null);
+  const [activeSlipNo, setActiveSlipNo] = useState('');
+
+  // Captured files per step
+  const [slipFile, setSlipFile] = useState<File | null>(null);
+  const [slipPreview, setSlipPreview] = useState<string | null>(null);
   const [frontFile, setFrontFile] = useState<File | null>(null);
-  const [backFile, setBackFile] = useState<File | null>(null);
   const [frontPreview, setFrontPreview] = useState<string | null>(null);
+  const [backFile, setBackFile] = useState<File | null>(null);
   const [backPreview, setBackPreview] = useState<string | null>(null);
-  const [editorState, setEditorState] = useState<{ file: File; target: EditableImageTarget; title: string } | null>(null);
-  const [currentCheque, setCurrentCheque] = useState<ChequeItemDto | null>(null);
-  const [currentSlipScan, setCurrentSlipScan] = useState<SlipScanDto | null>(null);
+
+  // MICR
   const [micr, setMicr] = useState({ chqNo: '', micr1: '', micr2: '', micr3: '' });
 
-  const hasSlipScanForActiveSlip = useMemo(() => {
-    if (!activeSlipId || !session?.slipGroups) return false;
-    const activeGroup = session.slipGroups.find(g => g.slipEntryId === activeSlipId);
-    return (activeGroup?.slipScans?.length ?? 0) > 0;
-  }, [activeSlipId, session?.slipGroups]);
-
-  const canSwitchToCheque = !session?.withSlip || hasSlipScanForActiveSlip;
+  // Modals
+  const [showSlipForm, setShowSlipForm] = useState(false);
+  const [showCamera, setShowCamera] = useState(false);
+  const [cameraMode, setCameraMode] = useState<'slip' | 'cheque'>('slip');
+  const [editState, setEditState] = useState<{ file: File; target: EditTarget; title: string } | null>(null);
 
   const allCheques = useMemo(
     () => session?.slipGroups?.flatMap(g => g.cheques ?? []) ?? [],
     [session?.slipGroups]
   );
+  const totalSlipScans = useMemo(
+    () => session?.slipGroups?.flatMap(g => g.slipScans ?? []).length ?? 0,
+    [session?.slipGroups]
+  );
 
-  const clearSelectedPhotos = () => {
-    if (frontPreview) URL.revokeObjectURL(frontPreview);
-    if (backPreview) URL.revokeObjectURL(backPreview);
-    setFrontFile(null);
-    setBackFile(null);
-    setFrontPreview(null);
-    setBackPreview(null);
-  };
+  // ── Load session ─────────────────────────────────────────────────────────────
 
-  const openImageEditor = (file: File, target: EditableImageTarget) => {
-    const titleMap: Record<EditableImageTarget, string> = {
-      'slip-front': 'Edit slip image',
-      'cheque-front': 'Edit cheque front image',
-      'cheque-back': 'Edit cheque back image',
+  useEffect(() => {
+    const init = async () => {
+      if (!batchNo) {
+        toast.error('Batch number not found');
+        setLoading(false);
+        return;
+      }
+      try {
+        const batch = await getBatchByNumber(batchNo);
+        const batchId = batch.batchID;
+        setId(batchId);
+
+        const scanSession = await getScanSession(batchId);
+        setSession(scanSession);
+        setPickupPointCode(batch.pickupPointCode ?? '');
+
+        // Resume — find latest active slip
+        if (scanSession.slipGroups?.length) {
+          const latest = scanSession.slipGroups[scanSession.slipGroups.length - 1];
+          setActiveSlipId(latest.slipEntryId);
+          setActiveSlipNo(latest.depositSlipNo ?? latest.slipNo ?? '');
+        }
+
+        // Auto-start if not started yet
+        if (scanSession.batchStatus === BatchStatus.Created || scanSession.batchStatus === BatchStatus.ScanningPending) {
+          setBusy(true);
+          try {
+            await startScan(batchId, scanSession.withSlip ?? false, scanSession.scanType ?? 'Scan');
+            setStep(scanSession.withSlip ? 'slip-entry' : 'cheque-front');
+            if (scanSession.withSlip) setShowSlipForm(true);
+          } catch (e: any) {
+            toast.error(e?.response?.data?.message ?? 'Failed to start scan');
+          } finally {
+            setBusy(false);
+          }
+        } else {
+          // Already in progress
+          setStep(scanSession.withSlip ? 'slip-done' : 'cheque-front');
+        }
+      } catch {
+        toast.error('Failed to load scan session');
+      } finally {
+        setLoading(false);
+      }
     };
-    setEditorState({ file, target, title: titleMap[target] });
+    init();
+  }, [batchNo]);
+
+  useEffect(() => () => { if (slipPreview) URL.revokeObjectURL(slipPreview); }, [slipPreview]);
+  useEffect(() => () => { if (frontPreview) URL.revokeObjectURL(frontPreview); }, [frontPreview]);
+  useEffect(() => () => { if (backPreview) URL.revokeObjectURL(backPreview); }, [backPreview]);
+
+  // ── Capture actions ──────────────────────────────────────────────────────────
+
+  const openCamera = (mode: 'slip' | 'cheque') => {
+    setCameraMode(mode);
+    setShowCamera(true);
   };
 
-  const applyEditedImage = (target: EditableImageTarget, file: File, previewUrl: string) => {
-    if (target === 'slip-front' || target === 'cheque-front') {
-      if (frontPreview) URL.revokeObjectURL(frontPreview);
+  const onCameraCapture = (file: File, _position: 'front' | 'back') => {
+    setShowCamera(false);
+    if (step === 'slip-capture') {
+      setSlipFile(file);
+      setSlipPreview(URL.createObjectURL(file));
+    } else if (step === 'cheque-front') {
       setFrontFile(file);
-      setFrontPreview(previewUrl);
-      return;
+      setFrontPreview(URL.createObjectURL(file));
+      // Auto-open camera for back
+      setTimeout(() => {
+        setStep('cheque-back');
+        openCamera('cheque');
+      }, 300);
+    } else if (step === 'cheque-back') {
+      setBackFile(file);
+      setBackPreview(URL.createObjectURL(file));
+      setStep('cheque-review');
     }
-
-    if (backPreview) URL.revokeObjectURL(backPreview);
-    setBackFile(file);
-    setBackPreview(previewUrl);
   };
 
-  const loadSession = useCallback(async () => {
-    try {
-      const [scanSession, batch] = await Promise.all([getScanSession(id), getBatch(id)]);
-      setSession(scanSession);
-      setPickupPointCode(batch.pickupPointCode ?? '');
-
-      if (scanSession.slipGroups && scanSession.slipGroups.length > 0) {
-        setSlipCreated(true);
-        const latest = scanSession.slipGroups[scanSession.slipGroups.length - 1];
-        setActiveSlipId(latest.slipEntryId);
-      }
-
-      if (scanSession.batchStatus === BatchStatus.Created || scanSession.batchStatus === BatchStatus.ScanningPending) {
-        setShowStartModal(true);
-        setStartStep('scanType');
-      }
-    } catch {
-      toast.error('Failed to load mobile scan session');
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
-
-  useEffect(() => {
-    loadSession();
-    return () => {
-      // Mobile camera/file picker can temporarily background/unmount this page on some devices.
-      // Releasing lock here causes the batch to jump back to Scan/Rescan start unexpectedly.
-    };
-  }, [id, loadSession]);
-
-  useEffect(() => {
-    return () => { if (frontPreview) URL.revokeObjectURL(frontPreview); };
-  }, [frontPreview]);
-
-  useEffect(() => {
-    return () => { if (backPreview) URL.revokeObjectURL(backPreview); };
-  }, [backPreview]);
-
-  const handleStart = async (withSlip: boolean) => {
+  const saveSlipImage = async () => {
+    if (!slipFile || !activeSlipId) return;
     setBusy(true);
     try {
-      await startScan(id, withSlip, selectedScanType);
-      setShowStartModal(false);
-      setSlipCreated(!withSlip);
-      setActiveSlipId(null);
-      setScanTarget(withSlip ? 'Slip' : 'Cheque');
-      if (withSlip) setShowSlipForm(true);
-      await loadSession();
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? 'Failed to start scanning');
+      const group = session?.slipGroups?.find(g => g.slipEntryId === activeSlipId);
+      const order = (group?.slipScans?.length ?? 0) + 1;
+      await uploadMobileSlipScan(id, { slipEntryId: activeSlipId, scanOrder: order, image: slipFile });
+      toast.success('Slip image saved');
+      setSlipFile(null);
+      setSlipPreview(null);
+      if (id > 0) {
+        const fresh = await getScanSession(id);
+        setSession(fresh);
+      }
+      setStep('slip-done');
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message ?? 'Upload failed');
     } finally {
       setBusy(false);
     }
   };
 
-  const handleCapture = async () => {
-    if (!session) return;
-    if (session.withSlip && !activeSlipId) {
-      toast.error('Create slip entry first');
-      return;
-    }
-    if (!frontFile && !backFile) {
-      toast.error('Capture at least one image');
-      return;
-    }
+  const saveCheque = async () => {
+    if (!frontFile && !backFile) return;
     setBusy(true);
     try {
-      if (scanStep === 'SlipScan') {
-        // Slip scanning - only front image needed
-        if (!activeSlipId) { toast.error('No active slip'); return; }
-        if (!frontFile) { toast.error('Capture slip image first'); return; }
-        
-        const activeGroup = session.slipGroups?.find(g => g.slipEntryId === activeSlipId);
-        const nextScanOrder = (activeGroup?.slipScans?.length ?? 0) + 1;
-        const slipScan = await uploadMobileSlipScan(id, {
-          slipEntryId: activeSlipId,
-          scanOrder: nextScanOrder,
-          image: frontFile,
-        });
-        toast.success('Slip image uploaded');
-        setCurrentSlipScan(slipScan);
-        setCurrentCheque(null);
-        clearSelectedPhotos();
-        setSlipScansCount(prev => prev + 1);
-        await loadSession();
-        // Stay in slip mode - user can capture multiple slip images
-      } else {
-        // Cheque scanning - front and/or back images
-        const slipEntryId = session.withSlip
-          ? activeSlipId ?? session.slipGroups?.[0]?.slipEntryId ?? 0
-          : session.slipGroups?.[0]?.slipEntryId ?? 0;
-        const activeGroup = session.slipGroups?.find(g => g.slipEntryId === slipEntryId);
-        const nextChqSeq = (activeGroup?.cheques?.length ?? 0) + 1;
-        const cheque = await uploadMobileCheque(id, {
-          slipEntryId,
-          chqSeq: nextChqSeq,
-          imageFront: frontFile ?? undefined,
-          imageBack: backFile ?? undefined,
-          chqNo: micr.chqNo || undefined,
-          scanMICR1: micr.micr1 || undefined,
-          scanMICR2: micr.micr2 || undefined,
-          scanMICR3: micr.micr3 || undefined,
-        });
-        toast.success('Cheque image uploaded');
-        setCurrentCheque(cheque);
-        setCurrentSlipScan(null);
-        clearSelectedPhotos();
-        setMicr({ chqNo: '', micr1: '', micr2: '', micr3: '' });
-        await loadSession();
-        // Stay in cheque mode - user can capture multiple cheques
+      const slipEntryId = activeSlipId ?? session?.slipGroups?.[0]?.slipEntryId ?? 0;
+      const group = session?.slipGroups?.find(g => g.slipEntryId === slipEntryId);
+      const seq = (group?.cheques?.length ?? 0) + 1;
+      await uploadMobileCheque(id, {
+        slipEntryId,
+        chqSeq: seq,
+        imageFront: frontFile ?? undefined,
+        imageBack: backFile ?? undefined,
+        chqNo: micr.chqNo || undefined,
+        scanMICR1: micr.micr1 || undefined,
+        scanMICR2: micr.micr2 || undefined,
+        scanMICR3: micr.micr3 || undefined,
+      });
+      toast.success(`Cheque #${seq} saved`);
+      setFrontFile(null); setFrontPreview(null);
+      setBackFile(null); setBackPreview(null);
+      setMicr({ chqNo: '', micr1: '', micr2: '', micr3: '' });
+      if (id > 0) {
+        const fresh = await getScanSession(id);
+        setSession(fresh);
       }
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? 'Upload failed');
+      setStep('cheque-front');
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message ?? 'Upload failed');
     } finally {
       setBusy(false);
     }
-  };
-
-  const moveToChequeScan = () => {
-    if (slipScansCount === 0) {
-      toast.warning('Please capture at least one slip image first');
-      return;
-    }
-    clearSelectedPhotos();
-    setScanStep('ChequeScan');
-    toast.success('Now capturing cheques');
-  };
-
-  const startNewSlipEntry = () => {
-    setActiveSlipId(null);
-    setSlipScansCount(0);
-    clearSelectedPhotos();
-    setScanStep('SlipScan');
-    setShowSlipForm(true);
   };
 
   const handleComplete = async () => {
@@ -236,282 +247,465 @@ export function MobileScanPage() {
       await completeScan(id);
       toast.success('Scanning completed');
       navigate('/');
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? 'Failed to complete scanning');
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message ?? 'Failed to complete');
     } finally {
       setBusy(false);
     }
   };
 
-  const latestFrontPath = currentCheque?.frontImagePath ?? currentSlipScan?.imagePath ?? null;
-  const latestBackPath = currentCheque?.backImagePath ?? null;
+  // ── Render helpers ────────────────────────────────────────────────────────────
 
-  if (loading) return <div className="p-6 text-center text-gray-400 animate-pulse">Loading mobile scan...</div>;
-  if (!session) return <div className="p-6 text-center text-red-500">Session not found</div>;
+  if (loading) return (
+    <div style={{ padding: 32, textAlign: 'center', color: 'var(--fg-muted)' }}>Loading scan session…</div>
+  );
+  if (!session) return (
+    <div style={{ padding: 32, textAlign: 'center', color: 'var(--danger)' }}>Session not found</div>
+  );
+
+  const withSlip = session.withSlip ?? false;
 
   return (
-    <div className="space-y-4 pb-20">
-      <div className="bg-white rounded-lg shadow-sm p-4">
-        <h1 className="text-lg font-bold text-gray-900">Mobile Scan - {session.batchNo}</h1>
-        <p className="text-xs text-gray-500 mt-1">
-          {session.withSlip ? 'With Slip' : 'Without Slip'} | Cheques: {session.totalCheques} | Slips: {session.totalSlipEntries}
-        </p>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingBottom: 32 }}>
+
+      {/* ── Header card ── */}
+      <div style={card}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+          <div>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 600 }}>
+              Mobile Scanner
+            </div>
+            <div style={{ fontSize: 'var(--text-lg)', fontWeight: 700, color: 'var(--fg)', marginTop: 2 }}>
+              {session.batchNo}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Chip icon="receipt" label={withSlip ? 'With Slip' : 'No Slip'} />
+            <Chip icon="credit_card" label={`${allCheques.length} cheques`} />
+            <Chip icon="article" label={`${totalSlipScans} slip imgs`} />
+          </div>
+        </div>
       </div>
 
-      {session.withSlip && !slipCreated && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-          <p className="text-sm text-amber-800 font-medium">Create slip entry before capturing images.</p>
-          <button
-            type="button"
-            onClick={() => setShowSlipForm(true)}
-            className="mt-3 w-full bg-amber-600 text-white py-2 rounded-lg"
-          >
-            Open Slip Entry
-          </button>
+      {/* ── Active slip indicator ── */}
+      {withSlip && activeSlipNo && (
+        <div style={{ ...card, background: 'var(--accent-50)', border: '1px solid var(--accent-200)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 18, color: 'var(--accent-600)' }}>receipt</span>
+            <div>
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--accent-600)', fontWeight: 600 }}>Active Slip</div>
+              <div style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--fg)' }}>{activeSlipNo}</div>
+            </div>
+          </div>
         </div>
       )}
 
-      {(!session.withSlip || slipCreated) && (
-        <div className="bg-white rounded-lg shadow-sm p-4 space-y-3">
-          {/* Step Indicator */}
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex-1">
-              <div className="text-xs font-semibold text-gray-500">
-                {scanStep === 'SlipScan' ? 'SLIP SCANNING' : 'CHEQUE SCANNING'}
-              </div>
-              {session.withSlip && scanStep === 'SlipScan' && (
-                <div className="text-xs text-gray-400 mt-0.5">
-                  {slipScansCount} image(s) captured
+      {/* ── Step panel ── */}
+      <div style={card}>
+        {/* Step: Slip entry */}
+        {step === 'slip-entry' && (
+          <StepPanel
+            icon="edit_note"
+            title="Fill Slip Entry"
+            subtitle="Enter deposit slip details before capturing images"
+            accent="var(--warning)"
+          >
+            <ActionBtn icon="edit_note" label="Open Slip Form" onClick={() => setShowSlipForm(true)} />
+          </StepPanel>
+        )}
+
+        {/* Step: Capture slip image */}
+        {step === 'slip-capture' && (
+          <StepPanel icon="article" title="Capture Slip Image" subtitle={`Slip ${activeSlipNo} — open camera to scan`} accent="var(--accent-500)">
+            {slipFile ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <img src={slipPreview!} alt="slip" style={{ width: '100%', aspectRatio: '1/1.4', objectFit: 'contain', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg-subtle)' }} />
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                  <OutlineBtn icon="camera_alt" label="Retake" onClick={() => openCamera('slip')} />
+                  <OutlineBtn icon="edit" label="Edit" onClick={() => setEditState({ file: slipFile, target: 'slip', title: 'Edit Slip' })} />
+                  <PrimaryBtn icon="check" label={busy ? 'Saving…' : 'Save'} onClick={saveSlipImage} disabled={busy} />
                 </div>
-              )}
-            </div>
-          </div>
+              </div>
+            ) : (
+              <ActionBtn icon="camera_alt" label="Open Camera" onClick={() => openCamera('slip')} />
+            )}
+          </StepPanel>
+        )}
 
-          <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700">
-              Collaborator Mobile Scanner
+        {/* Step: Slip done — choose next */}
+        {step === 'slip-done' && (
+          <StepPanel icon="check_circle" title="Slip Image Saved" subtitle="What would you like to do next?" accent="var(--success)">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <OutlineBtn icon="add_a_photo" label="Capture Another Slip Image" onClick={() => { setSlipFile(null); setSlipPreview(null); setStep('slip-capture'); }} />
+              <PrimaryBtn icon="credit_card" label="Scan Cheques for This Slip" onClick={() => setStep('cheque-front')} />
+              <OutlineBtn icon="receipt_long" label="New Slip Entry" onClick={() => { setActiveSlipId(null); setActiveSlipNo(''); setShowSlipForm(true); setStep('slip-entry'); }} />
             </div>
-            <div className="mt-1 text-sm font-semibold text-slate-900">
-              {scanStep === 'SlipScan' ? 'Slip capture mode' : 'Cheque capture mode'}
-            </div>
-            <p className="mt-1 text-xs leading-5 text-slate-600">
-              Capture with a mobile device, edit the image in the next modal, then save it back into the batch.
-            </p>
+          </StepPanel>
+        )}
 
-            <div className="mt-4">
-              <CameraCapture
-                mode={scanStep === 'SlipScan' ? 'slip' : 'cheque'}
-                isMockMode={false}
-                onCaptureFront={(file) => openImageEditor(file, scanStep === 'SlipScan' ? 'slip-front' : 'cheque-front')}
-                onCaptureBack={scanStep === 'ChequeScan' ? (file) => openImageEditor(file, 'cheque-back') : undefined}
-                frontPreview={frontPreview}
-                backPreview={scanStep === 'ChequeScan' ? backPreview : undefined}
-                disabled={busy}
-              />
+        {/* Step: Cheque front */}
+        {step === 'cheque-front' && (
+          <StepPanel icon="credit_card" title="Capture Cheque Front" subtitle="Open camera — after front captured, back will open automatically" accent="var(--accent-500)">
+            {frontFile ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <img src={frontPreview!} alt="front" style={{ width: '100%', aspectRatio: '85.6/54', objectFit: 'contain', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg-subtle)' }} />
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <OutlineBtn icon="camera_alt" label="Retake Front" onClick={() => { setFrontFile(null); setFrontPreview(null); openCamera('cheque'); }} />
+                  <PrimaryBtn icon="flip" label="Capture Back →" onClick={() => { setStep('cheque-back'); openCamera('cheque'); }} />
+                </div>
+              </div>
+            ) : (
+              <ActionBtn icon="camera_alt" label="Open Camera (Front)" onClick={() => openCamera('cheque')} />
+            )}
+          </StepPanel>
+        )}
+
+        {/* Step: Cheque back */}
+        {step === 'cheque-back' && (
+          <StepPanel icon="flip" title="Capture Cheque Back" subtitle="Now capture the back/reverse side of the cheque" accent="var(--info)">
+            {backFile ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <img src={backPreview!} alt="back" style={{ width: '100%', aspectRatio: '85.6/54', objectFit: 'contain', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg-subtle)' }} />
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <OutlineBtn icon="camera_alt" label="Retake Back" onClick={() => { setBackFile(null); setBackPreview(null); openCamera('cheque'); }} />
+                  <PrimaryBtn icon="check_circle" label="Review Both" onClick={() => setStep('cheque-review')} />
+                </div>
+              </div>
+            ) : (
+              <ActionBtn icon="camera_alt" label="Open Camera (Back)" onClick={() => openCamera('cheque')} />
+            )}
+          </StepPanel>
+        )}
+
+        {/* Step: Review both images + MICR + save */}
+        {step === 'cheque-review' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 20, color: 'var(--success)' }}>check_circle</span>
+              <div>
+                <div style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--fg)' }}>Review Cheque Images</div>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-muted)' }}>Edit or retake if needed, then save</div>
+              </div>
             </div>
 
-            {(frontFile || backFile) && (
-              <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
-                <button
-                  type="button"
-                  onClick={() => frontFile && openImageEditor(frontFile, scanStep === 'SlipScan' ? 'slip-front' : 'cheque-front')}
-                  disabled={!frontFile}
-                  className="rounded-xl border border-emerald-300 px-4 py-2.5 text-sm font-medium text-emerald-800 hover:bg-emerald-100 disabled:opacity-40"
-                >
-                  Edit front
-                </button>
-                {scanStep === 'ChequeScan' ? (
-                  <button
-                    type="button"
-                    onClick={() => backFile && openImageEditor(backFile, 'cheque-back')}
-                    disabled={!backFile}
-                    className="rounded-xl border border-emerald-300 px-4 py-2.5 text-sm font-medium text-emerald-800 hover:bg-emerald-100 disabled:opacity-40"
-                  >
-                    Edit back
-                  </button>
+            {/* Thumbnails */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <div>
+                <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--fg-muted)', marginBottom: 4 }}>FRONT</div>
+                {frontFile ? (
+                  <div style={{ position: 'relative' }}>
+                    <img src={frontPreview!} alt="front" style={{ width: '100%', aspectRatio: '85.6/54', objectFit: 'contain', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-subtle)' }} />
+                    <button onClick={() => frontFile && setEditState({ file: frontFile, target: 'cheque-front', title: 'Edit Cheque Front' })} style={thumbBtn}>
+                      <span className="material-symbols-outlined" style={{ fontSize: 14 }}>edit</span>
+                    </button>
+                  </div>
                 ) : (
-                  <div className="rounded-xl border border-dashed border-emerald-200 px-4 py-2.5 text-center text-sm text-emerald-700">
-                    Single image slip scan
+                  <div style={missingThumb}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 24, color: 'var(--fg-faint)' }}>image_not_supported</span>
                   </div>
                 )}
-                <button
-                  type="button"
-                  onClick={handleCapture}
-                  disabled={busy || (!frontFile && !backFile)}
-                  className="rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-50"
-                >
-                  {busy ? 'Uploading...' : (scanStep === 'SlipScan' ? 'Save slip image' : 'Save cheque image(s)')}
-                </button>
+                <OutlineBtn icon="camera_alt" label="Retake" onClick={() => { setFrontFile(null); setFrontPreview(null); setStep('cheque-front'); openCamera('cheque'); }} style={{ marginTop: 6, fontSize: 12 }} />
               </div>
-            )}
+              <div>
+                <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--fg-muted)', marginBottom: 4 }}>BACK</div>
+                {backFile ? (
+                  <div style={{ position: 'relative' }}>
+                    <img src={backPreview!} alt="back" style={{ width: '100%', aspectRatio: '85.6/54', objectFit: 'contain', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-subtle)' }} />
+                    <button onClick={() => backFile && setEditState({ file: backFile, target: 'cheque-back', title: 'Edit Cheque Back' })} style={thumbBtn}>
+                      <span className="material-symbols-outlined" style={{ fontSize: 14 }}>edit</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div style={missingThumb}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 24, color: 'var(--fg-faint)' }}>image_not_supported</span>
+                  </div>
+                )}
+                <OutlineBtn icon="camera_alt" label="Retake" onClick={() => { setBackFile(null); setBackPreview(null); setStep('cheque-back'); openCamera('cheque'); }} style={{ marginTop: 6, fontSize: 12 }} />
+              </div>
+            </div>
+
+            {/* MICR */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              {[
+                { key: 'chqNo', label: 'Cheque No', max: 6 },
+                { key: 'micr1', label: 'MICR 1', max: 9 },
+                { key: 'micr2', label: 'MICR 2', max: 6 },
+                { key: 'micr3', label: 'MICR 3', max: 3 },
+              ].map(f => (
+                <div key={f.key}>
+                  <label style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--fg-muted)', display: 'block', marginBottom: 4 }}>{f.label}</label>
+                  <input
+                    value={micr[f.key as keyof typeof micr]}
+                    onChange={e => setMicr(m => ({ ...m, [f.key]: e.target.value }))}
+                    maxLength={f.max}
+                    style={{
+                      width: '100%', boxSizing: 'border-box', padding: '8px 10px',
+                      background: 'var(--bg-input)', border: '1px solid var(--border-strong)',
+                      borderRadius: 'var(--r-md)', fontSize: 'var(--text-sm)',
+                      fontFamily: 'var(--font-mono)', color: 'var(--fg)', outline: 'none',
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+
+            {/* Save / next actions */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 4 }}>
+              <PrimaryBtn icon="save" label={busy ? 'Saving…' : 'Save Cheque'} onClick={saveCheque} disabled={busy || (!frontFile && !backFile)} />
+              {withSlip && (
+                <OutlineBtn icon="receipt_long" label="New Slip Entry" onClick={() => { setActiveSlipId(null); setActiveSlipNo(''); setShowSlipForm(true); setStep('slip-entry'); }} />
+              )}
+              <DangerBtn icon="task_alt" label={busy ? 'Completing…' : 'Complete Batch'} onClick={handleComplete} disabled={busy} />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Scanned items — mobile card list ── */}
+      {session.slipGroups && session.slipGroups.length > 0 && (
+        <div style={card}>
+          <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 12 }}>
+            Scanned Items
           </div>
 
-          {/* MICR fields for cheque scanning */}
-          {scanStep === 'ChequeScan' && (
-            <div className="grid grid-cols-2 gap-2">
-              <input
-                value={micr.chqNo}
-                onChange={(e) => setMicr(m => ({ ...m, chqNo: e.target.value }))}
-                placeholder="Cheque No"
-                maxLength={6}
-                className="border rounded px-2 py-2 text-sm"
-              />
-              <input
-                value={micr.micr1}
-                onChange={(e) => setMicr(m => ({ ...m, micr1: e.target.value }))}
-                placeholder="MICR1"
-                maxLength={9}
-                className="border rounded px-2 py-2 text-sm"
-              />
-              <input
-                value={micr.micr2}
-                onChange={(e) => setMicr(m => ({ ...m, micr2: e.target.value }))}
-                placeholder="MICR2"
-                maxLength={6}
-                className="border rounded px-2 py-2 text-sm"
-              />
-              <input
-                value={micr.micr3}
-                onChange={(e) => setMicr(m => ({ ...m, micr3: e.target.value }))}
-                placeholder="MICR3"
-                maxLength={3}
-                className="border rounded px-2 py-2 text-sm"
-              />
-            </div>
-          )}
+          {session.slipGroups.map(group => (
+            <div key={group.slipEntryId} style={{ marginBottom: 12 }}>
+              {/* Slip header row */}
+              {withSlip && (
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6,
+                  padding: '6px 10px', borderRadius: 'var(--r-md)',
+                  background: 'var(--bg-subtle)', border: '1px solid var(--border)',
+                }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 16, color: 'var(--fg-muted)' }}>receipt</span>
+                  <span style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--fg)', flex: 1 }}>
+                    Slip {group.depositSlipNo ?? group.slipNo}
+                  </span>
+                  <span style={pill}>{group.slipScans?.length ?? 0} img</span>
+                  <span style={pill}>{group.cheques?.length ?? 0} chq</span>
+                </div>
+              )}
 
-          {/* Navigation Buttons */}
-          {session.withSlip && scanStep === 'SlipScan' && slipScansCount > 0 && (
-            <button
-              type="button"
-              onClick={moveToChequeScan}
-              className="w-full bg-blue-700 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-blue-800"
-            >
-              Start Cheque Scanning →
-            </button>
-          )}
+              {/* Slip scan thumbnails */}
+              {(group.slipScans ?? []).length > 0 && (
+                <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 4, marginBottom: 6 }}>
+                  {group.slipScans.map(s => (
+                    <img key={s.slipScanId}
+                      src={getSlipImageUrl(s)}
+                      alt="slip"
+                      style={{ height: 56, width: 40, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border)', flexShrink: 0 }}
+                    />
+                  ))}
+                </div>
+              )}
 
-          {scanStep === 'ChequeScan' && (
-            <div className="grid grid-cols-2 gap-2 pt-2">
-              <button
-                type="button"
-                onClick={startNewSlipEntry}
-                className="bg-orange-500 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-orange-600"
-              >
-                + New Slip Entry
-              </button>
-              <button
-                type="button"
-                onClick={handleComplete}
-                disabled={busy}
-                className="bg-green-700 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-green-800 disabled:opacity-50"
-              >
-                {busy ? 'Completing...' : '✓ Complete Batch'}
-              </button>
-            </div>
-          )}
-        </div>
-      )}
+              {/* Cheque rows */}
+              {(group.cheques ?? []).map(chq => (
+                <div key={chq.chequeItemId} style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  padding: '8px', borderRadius: 'var(--r-md)',
+                  border: '1px solid var(--border)', background: 'var(--bg)', marginBottom: 4,
+                }}>
+                  {/* Thumbnail */}
+                  <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                    {chq.imageBaseName && (
+                      <img src={getChequeImageUrl(chq, 'front')} alt="F"
+                        style={{ width: 44, height: 28, objectFit: 'cover', borderRadius: 4, border: '1px solid var(--border)' }} />
+                    )}
+                    {chq.imageBaseName && (
+                      <img src={getChequeImageUrl(chq, 'back')} alt="B"
+                        style={{ width: 44, height: 28, objectFit: 'cover', borderRadius: 4, border: '1px solid var(--border)', opacity: 0.7 }} />
+                    )}
+                  </div>
 
-      <div className="bg-white rounded-lg shadow-sm p-4">
-        <div className="text-xs font-semibold text-gray-500 mb-2">
-          Scanned Items ({allCheques.length} cheques)
-        </div>
-        <div className="space-y-2 max-h-56 overflow-y-auto">
-          {session.slipGroups?.map(slip => (
-            <div key={slip.slipEntryId} className="border border-gray-200 rounded p-2">
-              <div className="text-xs font-semibold text-gray-700 mb-1">
-                Slip {slip.slipNo} — {slip.cheques?.length ?? 0} cheques, {slip.slipScans?.length ?? 0} slip images
-              </div>
-              {slip.cheques?.map(cheque => (
-                <button
-                  type="button"
-                  key={cheque.chequeItemId}
-                  onClick={() => setCurrentCheque(cheque)}
-                  className="w-full text-left px-2 py-1 rounded hover:bg-gray-50 text-xs text-gray-600"
-                >
-                  Cheque #{String(cheque.chqSeq).padStart(2, '0')} — {cheque.scanStatus}
-                </button>
+                  {/* Info */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--fg)' }}>
+                      #{String(chq.chqSeq).padStart(3, '0')}
+                      <span style={{ marginLeft: 6, color: 'var(--fg-muted)', fontWeight: 500 }}>
+                        Scan: {chq.scanChqNo || chq.chqNo || '—'}
+                      </span>
+                      {chq.rrChqNo && chq.rrChqNo !== chq.scanChqNo && (
+                        <span style={{ marginLeft: 8, color: 'var(--success)', fontWeight: 600 }}>
+                          RR: {chq.rrChqNo}
+                        </span>
+                      )}
+                    </div>
+                    {(chq.scanMICR1 || chq.scanMICR2 || chq.scanMICRRaw) && (
+                      <div style={{ fontSize: 10, color: 'var(--fg-muted)', fontFamily: 'var(--font-mono)', marginTop: 1 }}>
+                        {chq.scanMICRRaw ? (
+                          <div style={{ color: 'var(--accent)', fontSize: 9, opacity: 0.8, marginBottom: 2 }}>RAW: {chq.scanMICRRaw}</div>
+                        ) : null}
+                        {[chq.scanMICR1, chq.scanMICR2, chq.scanMICR3].filter(Boolean).join(' · ')}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Status */}
+                  <StatusPill status={chq.scanStatus} />
+                </div>
               ))}
             </div>
           ))}
-          {(!session.slipGroups || session.slipGroups.length === 0) && (
-            <p className="text-sm text-gray-400">No captures yet</p>
-          )}
-        </div>
-      </div>
-
-      {showStartModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6">
-            <h2 className="text-lg font-bold text-gray-900 mb-2">Start Mobile Scanning</h2>
-            {startStep === 'scanType' ? (
-              <div className="space-y-3">
-                <button
-                  onClick={() => { setSelectedScanType('Scan'); setStartStep('slipMode'); }}
-                  className="w-full bg-blue-700 text-white py-3 rounded-lg font-medium"
-                >
-                  Scan
-                </button>
-                <button
-                  onClick={() => { setSelectedScanType('Rescan'); setStartStep('slipMode'); }}
-                  className="w-full bg-indigo-700 text-white py-3 rounded-lg font-medium"
-                >
-                  Rescan
-                </button>
-                <button onClick={() => navigate('/')} className="w-full text-gray-500 text-sm py-2">Cancel</button>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <button
-                  onClick={() => handleStart(true)}
-                  disabled={busy}
-                  className="w-full bg-blue-700 text-white py-3 rounded-lg font-medium"
-                >
-                  With Slip
-                </button>
-                <button
-                  onClick={() => handleStart(false)}
-                  disabled={busy}
-                  className="w-full bg-gray-100 text-gray-800 py-3 rounded-lg font-medium"
-                >
-                  Without Slip
-                </button>
-                <button onClick={() => setStartStep('scanType')} className="w-full text-gray-500 text-sm py-2">Back</button>
-              </div>
-            )}
-          </div>
         </div>
       )}
 
+      {/* ── Modals ── */}
       {showSlipForm && (
         <SlipFormModal
           batchId={id}
           defaultPickupPoint={pickupPointCode}
           onClose={() => setShowSlipForm(false)}
-          onSaved={(slip) => {
+          onSaved={slip => {
             setShowSlipForm(false);
-            setSlipCreated(true);
             setActiveSlipId(slip.slipEntryId);
-            setScanTarget('Slip');
-            loadSession();
+            setActiveSlipNo(slip.depositSlipNo ?? slip.slipNo ?? '');
+            if (id > 0) {
+              getScanSession(id).then(fresh => setSession(fresh)).catch(() => {});
+            }
             toast.success('Slip entry saved');
+            setStep('slip-capture');
           }}
         />
       )}
 
-      {editorState && (
-        <ImageEditModal
-          file={editorState.file}
-          title={editorState.title}
-          onClose={() => setEditorState(null)}
+      {editState && (
+        <ImageEditModalMobile
+          file={editState.file}
+          title={editState.title}
+          onClose={() => setEditState(null)}
           onSave={(file, previewUrl) => {
-            applyEditedImage(editorState.target, file, previewUrl);
-            setEditorState(null);
-            toast.success('Edited image saved');
+            if (editState.target === 'slip') { setSlipFile(file); setSlipPreview(previewUrl); }
+            else if (editState.target === 'cheque-front') { setFrontFile(file); setFrontPreview(previewUrl); }
+            else { setBackFile(file); setBackPreview(previewUrl); }
+            setEditState(null);
+            toast.success('Image updated');
           }}
         />
       )}
+
+      {showCamera && (
+        <CameraCapturePro
+          mode={cameraMode}
+          onCapture={onCameraCapture}
+          onClose={() => setShowCamera(false)}
+        />
+      )}
     </div>
+  );
+}
+
+// ── Small Components ──────────────────────────────────────────────────────────
+
+function StepPanel({ icon, title, subtitle, accent, children }: {
+  icon: string; title: string; subtitle: string; accent: string; children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+        <div style={{ width: 36, height: 36, borderRadius: 'var(--r-md)', background: accent, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <span className="material-symbols-outlined" style={{ fontSize: 20, color: '#fff' }}>{icon}</span>
+        </div>
+        <div>
+          <div style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--fg)' }}>{title}</div>
+          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-muted)' }}>{subtitle}</div>
+        </div>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function ActionBtn({ icon, label, onClick }: { icon: string; label: string; onClick: () => void }) {
+  return (
+    <button onClick={onClick} style={{
+      width: '100%', padding: '14px', borderRadius: 'var(--r-lg)',
+      background: 'var(--accent-500)', color: 'var(--fg-on-accent)',
+      border: 'none', fontSize: 'var(--text-sm)', fontWeight: 600,
+      cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+      fontFamily: 'inherit',
+    }}>
+      <span className="material-symbols-outlined" style={{ fontSize: 20 }}>{icon}</span>
+      {label}
+    </button>
+  );
+}
+
+function PrimaryBtn({ icon, label, onClick, disabled }: { icon: string; label: string; onClick: () => void; disabled?: boolean }) {
+  return (
+    <button onClick={onClick} disabled={disabled} style={{
+      width: '100%', padding: '11px', borderRadius: 'var(--r-md)',
+      background: disabled ? 'var(--bg-subtle)' : 'var(--accent-500)',
+      color: disabled ? 'var(--fg-muted)' : 'var(--fg-on-accent)',
+      border: '1px solid transparent', fontSize: 'var(--text-sm)', fontWeight: 600,
+      cursor: disabled ? 'not-allowed' : 'pointer',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+      fontFamily: 'inherit',
+    }}>
+      <span className="material-symbols-outlined" style={{ fontSize: 18 }}>{icon}</span>
+      {label}
+    </button>
+  );
+}
+
+function OutlineBtn({ icon, label, onClick, style: extraStyle }: { icon: string; label: string; onClick: () => void; style?: React.CSSProperties }) {
+  return (
+    <button onClick={onClick} style={{
+      width: '100%', padding: '11px', borderRadius: 'var(--r-md)',
+      background: 'var(--bg)', color: 'var(--fg)',
+      border: '1px solid var(--border-strong)', fontSize: 'var(--text-sm)', fontWeight: 500,
+      cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+      fontFamily: 'inherit', ...extraStyle,
+    }}>
+      <span className="material-symbols-outlined" style={{ fontSize: 18 }}>{icon}</span>
+      {label}
+    </button>
+  );
+}
+
+function DangerBtn({ icon, label, onClick, disabled }: { icon: string; label: string; onClick: () => void; disabled?: boolean }) {
+  return (
+    <button onClick={onClick} disabled={disabled} style={{
+      width: '100%', padding: '11px', borderRadius: 'var(--r-md)',
+      background: 'var(--bg)', color: 'var(--danger)',
+      border: '1px solid var(--danger)', fontSize: 'var(--text-sm)', fontWeight: 600,
+      cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+      fontFamily: 'inherit',
+    }}>
+      <span className="material-symbols-outlined" style={{ fontSize: 18 }}>{icon}</span>
+      {label}
+    </button>
+  );
+}
+
+function Chip({ icon, label }: { icon: string; label: string }) {
+  return (
+    <div style={{
+      display: 'inline-flex', alignItems: 'center', gap: 4,
+      padding: '3px 8px', borderRadius: 'var(--r-full)',
+      background: 'var(--bg-subtle)', border: '1px solid var(--border)',
+      fontSize: 'var(--text-xs)', color: 'var(--fg-muted)', fontWeight: 500,
+    }}>
+      <span className="material-symbols-outlined" style={{ fontSize: 12 }}>{icon}</span>
+      {label}
+    </div>
+  );
+}
+
+function StatusPill({ status }: { status: string }) {
+  const map: Record<string, { bg: string; color: string }> = {
+    Captured:      { bg: 'var(--success-bg)', color: 'var(--success)' },
+    Failed:        { bg: 'var(--danger-bg)',  color: 'var(--danger)'  },
+    RetryPending:  { bg: 'var(--warning-bg)', color: 'var(--warning)' },
+    Pending:       { bg: 'var(--bg-subtle)',  color: 'var(--fg-muted)'},
+  };
+  const s = map[status] ?? map['Pending'];
+  return (
+    <span style={{
+      padding: '2px 7px', borderRadius: 'var(--r-full)',
+      fontSize: 10, fontWeight: 600,
+      background: s.bg, color: s.color, whiteSpace: 'nowrap',
+    }}>{status}</span>
   );
 }

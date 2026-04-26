@@ -15,7 +15,7 @@ namespace CPS.API.Controllers;
 
 [ApiController]
 [Route("api/locations")]
-[Authorize]
+[Authorize(Roles = "Scanner,Mobile Scanner,Maker,Checker,Admin,Developer")]
 public class LocationController : ControllerBase
 {
     private readonly ILocationRepository _locationRepo;
@@ -24,12 +24,14 @@ public class LocationController : ControllerBase
 
     [HttpGet]
     public async Task<IActionResult> GetAll(
+        [FromQuery] string? q,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20)
     {
         pageSize = Math.Min(pageSize, 100);
-        var locs = await _locationRepo.GetPagedAsync(page, pageSize);
-        var total = await _locationRepo.GetCountAsync();
+        var locs = await _locationRepo.GetPagedAsync(page, pageSize, q);
+        var total = await _locationRepo.GetCountAsync(q);
+
         
         var dtos = locs.Select(l => new LocationDto
         {
@@ -121,4 +123,24 @@ public class LocationController : ControllerBase
         }).ToList();
         return Ok(ApiResponse<List<ScannerDto>>.Ok(dtos));
     }
+
+    [HttpPut("{id:int}")]
+
+    [Authorize(Roles = "Admin,Developer")]
+    public async Task<IActionResult> UpdateLocation(int id, [FromBody] LocationDto dto)
+    {
+        var l = await _locationRepo.GetByIdAsync(id);
+        if (l == null) return NotFound(ApiResponse<object>.Fail("NOT_FOUND", "Location not found."));
+
+        l.LocationName = dto.LocationName;
+        l.LocationCode = dto.LocationCode;
+        l.State = dto.State;
+        l.Zone = dto.Zone;
+        l.IsActive = dto.IsActive;
+        l.UpdatedAt = DateTime.UtcNow;
+
+        await _locationRepo.UpdateAsync(l);
+        return Ok(ApiResponse<string>.Ok("Updated successfully."));
+    }
 }
+

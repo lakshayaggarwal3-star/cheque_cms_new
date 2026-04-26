@@ -36,7 +36,7 @@ export enum BatchStatus {
 export const BatchStatusLabels: Record<number, string> = {
   0: 'Created — Scanning Not Started',
   1: 'Scanning In Progress',
-  2: 'Scanning Pending',
+  2: 'Pending Batches',
   3: 'Scanning Completed',
   4: 'RR Pending',
   5: 'RR Completed',
@@ -72,6 +72,7 @@ export interface BatchDto {
   locationID: number;
   locationName: string;
   locationCode: string;
+  clusterCode?: string;
   scannerMappingID?: number;
   scannerID?: string;
   pickupPointCode?: string;
@@ -132,10 +133,11 @@ export interface SlipScanDto {
   slipScanId: number;
   slipEntryId: number;
   scanOrder: number;
-  imagePath?: string;
-  scanStatus: string;
-  scanError?: string;
   retryCount: number;
+  imageBaseName?: string;
+  fileExtension?: string;
+  imageHash?: string;
+  scanStatus: string;
 }
 
 export interface ChequeItemDto {
@@ -145,24 +147,25 @@ export interface ChequeItemDto {
   seqNo: number;
   chqSeq: number;
   chqNo?: string;
+  scanChqNo?: string;
+  rrChqNo?: string;
   micrRaw?: string;
+  scanMICRRaw?: string;
   // Scanner MICR — raw from scanner, read-only
   scanMICR1?: string;
   scanMICR2?: string;
   scanMICR3?: string;
-  scanAmount?: number;
   // RR MICR — set during repair
   rrmicr1?: string;
   rrmicr2?: string;
   rrmicr3?: string;
-  rrAmount?: number;
   rrNotes?: string;
   rrState: number;
-  frontImagePath?: string;
-  backImagePath?: string;
-  scanStatus: string;
-  scanError?: string;
   retryCount: number;
+  imageBaseName?: string;
+  fileExtension?: string;
+  imageHash?: string;
+  scanStatus: string;
 }
 
 export interface SlipEntryDto {
@@ -207,6 +210,7 @@ export interface ScanSessionDto {
   totalSlipEntries: number;
   totalAmount: number;
   slipGroups: SlipEntryDto[];
+  slipScans?: SlipScanDto[];
   resumeState: ScanResumeStateDto;
 }
 
@@ -217,18 +221,17 @@ export interface RRItemDto {
   slipEntryId: number;
   seqNo: number;
   chqSeq: number;
-  imageFrontPath?: string;
-  imageBackPath?: string;
   micrRaw?: string;
+  scanMICRRaw?: string;
   chqNo?: string;
+  scanChqNo?: string;
+  rrChqNo?: string;
   scanMICR1?: string;
   scanMICR2?: string;
   scanMICR3?: string;
-  scanAmount?: number;
   rrmicr1?: string;
   rrmicr2?: string;
   rrmicr3?: string;
-  rrAmount?: number;
   rrNotes?: string;
   rrState: number;
   rrStateLabel?: string;
@@ -236,6 +239,8 @@ export interface RRItemDto {
   clientName?: string;
   slipAmount?: number;
   totalInstruments?: number;
+  imageBaseName?: string;
+  fileExtension?: string;
   rowVersion: string;
 }
 
@@ -247,11 +252,7 @@ export interface UserDto {
   email?: string;
   isActive: boolean;
   isLocked: boolean;
-  roleScanner: boolean;
-  roleMobileScanner: boolean;
-  roleMaker: boolean;
-  roleChecker: boolean;
-  roleAdmin: boolean;
+  roles: string[];
   isDeveloper: boolean;
   defaultLocationID?: number;
   defaultLocationName?: string;
@@ -266,4 +267,7 @@ export interface ClientAutoFillDto {
   pickupPointDesc?: string;
   rcmsCode?: string;
   status?: string; // 'A' = Active, 'X' = Inactive
+  globalClientID?: number;
+  globalCode?: string;
+  isPriority?: boolean;
 }

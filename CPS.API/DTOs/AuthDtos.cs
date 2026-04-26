@@ -25,6 +25,7 @@ public class LoginResponse
     public string LocationName { get; set; } = string.Empty;
     public string EodDate { get; set; } = string.Empty;
     public bool IsDeveloper { get; set; }
+    public string? SessionToken { get; set; }
 }
 
 public class ChangePasswordRequest

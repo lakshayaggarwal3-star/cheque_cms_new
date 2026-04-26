@@ -1,43 +1,60 @@
 // =============================================================================
-// File        : ScanPage.tsx (REFACTORED)
+// File        : ScanPage.tsx
 // Project     : CPS — Cheque Processing System
 // Module      : Scanning
-// Description : Scanning screen with slip entry → slip scan → cheque scan flow.
-//               REFACTORED: Components and logic extracted to separate files.
+// Description : Thin orchestrator — wires together hooks and layout components.
+//               All business logic lives in:
+//                 pages/scan/useScanPageState.ts    — UI state
+//                 pages/scan/useScanPageSession.ts  — session & step transitions
+//               All layout lives in:
+//                 pages/scan/ScanViewport.tsx
+//                 pages/scan/ScanControlPanel.tsx
+//                 pages/scan/ScanFullscreenOverlay.tsx
+//                 pages/scan/ScanConfirmCompleteModal.tsx
 // Created     : 2026-04-17
-// Refactored  : 2026-04-19
+// Refactored  : 2026-04-22  (split into sub-module)
 // =============================================================================
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getScanSession, releaseScanLock, startScan } from '../services/scanService';
-import { getBatch } from '../services/batchService';
 import { useAuthStore } from '../store/authStore';
 import { toast } from '../store/toastStore';
-import { getImageUrl } from '../utils/imageUtils';
-import { BatchStatus, type ScanSessionDto } from '../types';
-import { SlipFormModal } from '../components/SlipFormModal';
+import { getChequeImageUrl, getSlipImageUrl } from '../utils/imageUtils';
 import { useSettingsStore } from '../store/settingsStore';
-import { CameraCapture } from '../components/CameraCapture';
-import { RangerFeedControl } from '../components/RangerFeedControl';
-import { ImageEditModal } from '../components/ImageEditModal';
 import { useScannerLogic } from '../hooks/useScannerLogic';
+import { SlipFormModal } from '../components/SlipFormModal';
+import { ImageEditModal } from '../components/ImageEditModal';
 import {
-  Icon, Pill, IconBtn, ImagePlaceholder, StepDot, ControlCard, DevMockSection,
-  SlipGroupList, ScannerSettingsModal, ScanItemsTable,
+  Pill, Icon, ScanItemsTable, ScannerSettingsModal,
 } from '../components/scan';
+import { uploadBulkSlipScans } from '../services/scanService';
+import { BatchStatus } from '../types';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+import {
+  useScanPageState,
+  useScanPageSession,
+  ScanViewport,
+  ScanControlPanel,
+  ScanFullscreenOverlay,
+  ScanConfirmCompleteModal,
+} from './scan';
 
-type ScanStep = 'SlipEntry' | 'SlipScan' | 'ChequeScan';
-type EditableImageTarget = 'slip-front' | 'cheque-front' | 'cheque-back';
 
-const sessionInitBatchIds = new Set<number>();
+// ── ScanPage ──────────────────────────────────────────────────────────────────
+
+// ── Upload Slip Images Panel ─────────────────────────────────────────────────
+
+type UploadViewMode = 'grid' | 'preview';
+
+interface UploadFile {
+  file: File;
+  previewUrl: string;
+}
 
 // ── ScanPage ──────────────────────────────────────────────────────────────────
 
 export function ScanPage() {
-  const { batchId } = useParams<{ batchId: string }>();
+  const { batchNo } = useParams<{ batchNo: string }>();
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const {
@@ -46,118 +63,50 @@ export function ScanPage() {
     rangerEndorsementEnabled, setRangerEndorsementEnabled,
     rangerEndorsementUseImageName, setRangerEndorsementUseImageName,
     rangerEndorsementCustomText, setRangerEndorsementCustomText,
+    rangerEndorsementBatchName, setRangerEndorsementBatchName,
   } = useSettingsStore();
-  const id = parseInt(batchId!);
 
-  const [session, setSession] = useState<ScanSessionDto | null>(null);
-  const [batchDetails, setBatchDetails] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [showSlipForm, setShowSlipForm] = useState(false);
-  const [showScanSettings, setShowScanSettings] = useState(false);
+  // ── All UI state ────────────────────────────────────────────────────────────
+  // ── Upload panel state ────────────────────────────────────────────────────
+  const [showUploadPanel, setShowUploadPanel] = useState(false);
+  const [uploadFiles, setUploadFiles] = useState<UploadFile[]>([]);
+  const [uploadViewMode, setUploadViewMode] = useState<UploadViewMode>('grid');
+  const [uploadPreviewIdx, setUploadPreviewIdx] = useState(0);
+  const [uploading, setUploading] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
 
-  // Active slip
-  const [activeSlipEntryId, setActiveSlipEntryId] = useState<number | null>(null);
-  const [activeSlipNo, setActiveSlipNo] = useState<string>('');
-  const [nextSlipScanOrder, setNextSlipScanOrder] = useState(1);
-  const [nextChqSeq, setNextChqSeq] = useState(1);
-  const [newSlipSaved, setNewSlipSaved] = useState(false);
+  const state = useScanPageState();
 
-  // Scan step
-  const [scanStep, setScanStep] = useState<ScanStep>('SlipEntry');
-  const scanStepRef = useRef<ScanStep>('SlipEntry');
-  scanStepRef.current = scanStep;
+  const {
+    id, session, batchDetails, loading,
+    scanStep, setScanStep,
+    activeSlipEntryId,
+    nextSlipScanOrder, nextChqSeq, setNextChqSeq,
+    frontFile, backFile, frontPreview, backPreview,
+    flipped, setFlipped, zoom, setZoom,
+    isFullscreen, setIsFullscreen,
+    panning, hasMoved, viewerRef, viewerFsRef,
+    panOffset, setPanOffset, fsPanOffset, setFsPanOffset, makePanHandlers,
+    viewerFront, setViewerFront, viewerBack, setViewerBack,
+    viewerType, setViewerType,
+    sidebarOpen, setSidebarOpen,
+    expandedGroups, setExpandedGroups,
+    completing,
+    showSlipForm, setShowSlipForm,
+    showScanSettings, setShowScanSettings,
+    showTable, setShowTable,
+    confirmComplete, setConfirmComplete,
+    pickupPointCode,
+    editorState, setEditorState,
+    clearCameraFiles, openImageEditor, applyEditedImage,
+    toImageSrc,
+  } = state;
 
-  // Preview
-  const [frontFile, setFrontFile] = useState<File | null>(null);
-  const [backFile, setBackFile] = useState<File | null>(null);
-  const [frontPreview, setFrontPreview] = useState<string | null>(null);
-  const [backPreview, setBackPreview] = useState<string | null>(null);
-  const [editorState, setEditorState] = useState<{ file: File; target: EditableImageTarget; title: string } | null>(null);
-
-  // Cheque viewer
-  const [flipped, setFlipped] = useState(false);
-  const [zoom, setZoom] = useState(1);
-
-  // Pan/drag state
-  const viewerRef = useRef<HTMLDivElement>(null);
-  const viewerFsRef = useRef<HTMLDivElement>(null);
-  const panRef = useRef({ active: false, startX: 0, startY: 0, scrollLeft: 0, scrollTop: 0 });
-  const hasMoved = useRef(false);
-  const [panning, setPanning] = useState(false);
-
-  const makePanHandlers = (scrollRef: React.RefObject<HTMLDivElement>) => ({
-    onMouseDown: (e: React.MouseEvent) => {
-      const el = scrollRef.current;
-      if (!el) return;
-      hasMoved.current = false;
-      panRef.current = { active: true, startX: e.clientX, startY: e.clientY, scrollLeft: el.scrollLeft, scrollTop: el.scrollTop };
-      setPanning(true);
-    },
-    onMouseMove: (e: React.MouseEvent) => {
-      if (!panRef.current.active) return;
-      const el = scrollRef.current;
-      if (!el) return;
-      e.preventDefault();
-      const dx = e.clientX - panRef.current.startX;
-      const dy = e.clientY - panRef.current.startY;
-      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) hasMoved.current = true;
-      el.scrollLeft = panRef.current.scrollLeft - dx;
-      el.scrollTop = panRef.current.scrollTop - dy;
-    },
-    onMouseUp: () => { panRef.current.active = false; setPanning(false); },
-    onMouseLeave: () => { panRef.current.active = false; setPanning(false); },
-  });
-
-  // Viewer override
-  const [viewerFront, setViewerFront] = useState<string | null>(null);
-  const [viewerBack, setViewerBack] = useState<string | null>(null);
-  const [viewerType, setViewerType] = useState<string | null>(null);
-
-  // Clear viewer when moving steps
-  useEffect(() => { setViewerFront(null); setViewerBack(null); setViewerType(null); }, [scanStep]);
-
-  const [completing, setCompleting] = useState(false);
-  const [pickupPointCode, setPickupPointCode] = useState('');
-  const [showStartModal, setShowStartModal] = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-
-  // ─── Helpers ──────────────────────────────────────────────────────────────
-
-  const toImageSrc = (path?: string, fallback?: string) => {
-    if (!path) return fallback;
-    if (path.startsWith('data:')) return path;
-    return getImageUrl(path);
-  };
-
-  const clearCameraFiles = useCallback(() => {
-    if (frontPreview) URL.revokeObjectURL(frontPreview);
-    if (backPreview) URL.revokeObjectURL(backPreview);
-    setFrontFile(null); setBackFile(null);
-    setFrontPreview(null); setBackPreview(null);
-  }, [frontPreview, backPreview]);
-
-  const openImageEditor = (file: File, target: EditableImageTarget) => {
-    const titleMap: Record<EditableImageTarget, string> = {
-      'slip-front': 'Edit slip image',
-      'cheque-front': 'Edit cheque front image',
-      'cheque-back': 'Edit cheque back image',
-    };
-    setEditorState({ file, target, title: titleMap[target] });
-  };
-
-  const applyEditedImage = (target: EditableImageTarget, file: File, previewUrl: string) => {
-    if (target === 'slip-front' || target === 'cheque-front') {
-      if (frontPreview) URL.revokeObjectURL(frontPreview);
-      setFrontFile(file); setFrontPreview(previewUrl);
-      return;
-    }
-    if (backPreview) URL.revokeObjectURL(backPreview);
-    setBackFile(file); setBackPreview(previewUrl);
-  };
-
-  // Use scanner logic hook
+  // ── Scanner logic ───────────────────────────────────────────────────────────
   const scanner = useScannerLogic({
     batchId: id,
+    batchNo: session?.batchNo || '',
     activeSlipEntryId,
     nextSlipScanOrder,
     nextChqSeq,
@@ -167,12 +116,13 @@ export function ScanPage() {
     rangerEndorsementEnabled,
     rangerEndorsementUseImageName,
     rangerEndorsementCustomText,
+    rangerEndorsementBatchName,
     onCaptureSuccess: async () => {
       setNextChqSeq(s => s + 1);
       setViewerFront(null);
       setViewerBack(null);
       setViewerType(null);
-      await loadSession();
+      await session_hooks.loadSession();
     },
     onClearCameraFiles: clearCameraFiles,
     frontFile,
@@ -180,122 +130,25 @@ export function ScanPage() {
     openImageEditor,
   });
 
-  // ─── Session load ─────────────────────────────────────────────────────────
+  // ── Session logic ───────────────────────────────────────────────────────────
+  const session_hooks = useScanPageSession({ state, scanner });
 
-  const loadSession = useCallback(async () => {
-    try {
-      const [s, batch] = await Promise.all([getScanSession(id), getBatch(id)]);
-      setSession(s);
-      setBatchDetails(batch);
-      setPickupPointCode(batch.pickupPointCode ?? '');
-      const rs = s.resumeState;
-      if (rs.activeSlipEntryId) {
-        setActiveSlipEntryId(rs.activeSlipEntryId);
-        setActiveSlipNo(rs.activeSlipNo ?? '');
-        setNextSlipScanOrder(rs.nextSlipScanOrder);
-        setNextChqSeq(rs.nextChqSeq);
-      }
-    } catch {
-      toast.error('Failed to load scan session');
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
-
+  // Clear viewer when scan step changes
   useEffect(() => {
-    const init = async () => {
-      try {
-        const [s, batch] = await Promise.all([getScanSession(id), getBatch(id)]);
-        setSession(s);
-        setBatchDetails(batch);
-        setPickupPointCode(batch.pickupPointCode ?? '');
+    setViewerFront(null);
+    setViewerBack(null);
+    setViewerType(null);
+  }, [scanStep]); // eslint-disable-line react-hooks/exhaustive-deps
 
-        const isStartable =
-          s.batchStatus === BatchStatus.Created || s.batchStatus === BatchStatus.ScanningPending;
-
-        if (isStartable) {
-          try {
-            await startScan(id, s.withSlip!, s.scanType);
-            const fresh = await getScanSession(id);
-            setSession(fresh);
-            applyResumeState(fresh, s.withSlip!);
-          } catch (err: any) {
-            toast.error(err?.response?.data?.message ?? 'Failed to resume scan session');
-            setShowStartModal(true);
-          }
-        } else {
-          const rs = s.resumeState;
-          if (rs.activeSlipEntryId) {
-            setActiveSlipEntryId(rs.activeSlipEntryId);
-            setActiveSlipNo(rs.activeSlipNo ?? '');
-            setNextSlipScanOrder(rs.nextSlipScanOrder);
-            setNextChqSeq(rs.nextChqSeq);
-            setScanStep(rs.resumeStep as ScanStep ?? 'ChequeScan');
-          }
-        }
-      } catch {
-        toast.error('Failed to load scan session');
-      } finally {
-        setLoading(false);
-      }
-    };
-    init();
-    return () => {
-      releaseScanLock(id).catch(() => {});
-      scanner.cleanup();
-    };
-  }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Auto-connect flatbed scanner on mount
+  // Init on mount
   useEffect(() => {
+    if (!batchNo) { toast.error('Batch number not found'); return; }
+    session_hooks.init(batchNo);
     scanner.autoInitScanner();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    return session_hooks.cleanup;
+  }, [batchNo]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const applyResumeState = (s: ScanSessionDto, withSlip: boolean) => {
-    if (!sessionInitBatchIds.has(id)) sessionInitBatchIds.add(id);
-    const rs = s.resumeState;
-    if (rs.activeSlipEntryId) {
-      setActiveSlipEntryId(rs.activeSlipEntryId);
-      setActiveSlipNo(rs.activeSlipNo ?? '');
-      setNextSlipScanOrder(rs.nextSlipScanOrder);
-      setNextChqSeq(rs.nextChqSeq);
-      const step = (rs.resumeStep as ScanStep) ?? 'SlipEntry';
-      setScanStep(step);
-      if (step === 'ChequeScan') scanner.setScannerChoice('Ranger');
-    } else {
-      setScanStep('SlipEntry');
-      setShowSlipForm(true);
-    }
-  };
-
-  // ─── Step transitions ─────────────────────────────────────────────────────
-
-  const moveToSlipScan = () => { setScanStep('SlipScan'); scanner.setScannerChoice(null); scanner.setScanRoundActive(false); };
-  const moveToChequeScan = () => { setScanStep('ChequeScan'); scanner.setScannerChoice('Ranger'); scanner.setScanRoundActive(false); };
-
-  const startNewSlip = () => {
-    setNewSlipSaved(false);
-    setActiveSlipEntryId(null);
-    setActiveSlipNo('');
-    setNextSlipScanOrder(1);
-    setNextChqSeq(1);
-    setScanStep('SlipEntry');
-    scanner.setScanRoundActive(false);
-    scanner.setFeedRunning({ Cheque: false, Slip: false });
-    scanner.setCurrentSlipScan(null);
-    scanner.setCurrentCheque(null);
-    scanner.setMockPreview(null);
-    clearCameraFiles();
-    setShowSlipForm(true);
-  };
-
-  const handleSaveSettings = () => {
-    scanner.handleSaveSettings();
-    setShowScanSettings(false);
-  };
-
-  // ─── Render ───────────────────────────────────────────────────────────────
-
+  // ── Derived values ──────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', color: 'var(--fg-subtle)', fontSize: 'var(--text-sm)' }}>
@@ -314,606 +167,437 @@ export function ScanPage() {
   const withSlip = session.withSlip ?? false;
   const activeGroup = session.slipGroups.find(g => g.slipEntryId === activeSlipEntryId);
   const slipScansForActive = activeGroup?.slipScans ?? [];
-  const chequesDoneForActive = activeGroup?.cheques.length ?? 0;
   const isCurrentSlipScanDone = withSlip && slipScansForActive.length > 0;
   const canMoveToChequeScan = !withSlip || isCurrentSlipScanDone;
 
   const isSlipView = viewerType === 'slip' || (viewerType === null && scanStep === 'SlipScan');
+  const viewItems = isSlipView ? slipScansForActive : (activeGroup?.cheques ?? []);
+  const lastActiveItem = viewItems.length > 0 ? viewItems[viewItems.length - 1] as any : null;
 
   const previewFront = viewerFront
-    ?? toImageSrc(scanner.currentCheque?.frontImagePath, scanner.mockPreview?.front)
-    ?? toImageSrc(scanner.currentSlipScan?.imagePath, scanner.mockPreview?.front);
+    ?? (lastActiveItem ? (isSlipView ? getSlipImageUrl(lastActiveItem) : getChequeImageUrl(lastActiveItem, 'front')) : null)
+    ?? (scanner.currentCheque ? getChequeImageUrl(scanner.currentCheque, 'front') : scanner.mockPreview?.front)
+    ?? (scanner.currentSlipScan ? getSlipImageUrl(scanner.currentSlipScan) : scanner.mockPreview?.front);
+
   const previewBack = viewerBack
-    ?? toImageSrc(scanner.currentCheque?.backImagePath, scanner.mockPreview?.back);
+    ?? (lastActiveItem && !isSlipView ? getChequeImageUrl(lastActiveItem, 'back') : null)
+    ?? (scanner.currentCheque ? getChequeImageUrl(scanner.currentCheque, 'back') : scanner.mockPreview?.back);
 
+  const currentViewIdx = (() => {
+    if (!viewerFront) return viewItems.length;
+    if (isSlipView) return (viewItems as any[]).findIndex(s => getSlipImageUrl(s) === viewerFront);
+    return (viewItems as any[]).findIndex(c => getChequeImageUrl(c, 'front') === viewerFront);
+  })();
+
+  const handleNavLeft = () => {
+    const idx = currentViewIdx === -1 ? viewItems.length : currentViewIdx;
+    if (idx > 0) {
+      const item = viewItems[idx - 1] as any;
+      if (isSlipView) { setViewerFront(getSlipImageUrl(item)); setViewerBack(null); setViewerType('slip'); setFlipped(false); }
+      else { setViewerFront(getChequeImageUrl(item, 'front')); setViewerBack(getChequeImageUrl(item, 'back')); setViewerType('cheque'); setFlipped(false); }
+    }
+  };
+
+  const handleNavRight = () => {
+    const idx = currentViewIdx === -1 ? viewItems.length : currentViewIdx;
+    if (idx < viewItems.length - 1) {
+      const item = viewItems[idx + 1] as any;
+      if (isSlipView) { setViewerFront(getSlipImageUrl(item)); setViewerBack(null); setViewerType('slip'); setFlipped(false); }
+      else { setViewerFront(getChequeImageUrl(item, 'front')); setViewerBack(getChequeImageUrl(item, 'back')); setViewerType('cheque'); setFlipped(false); }
+    } else if (idx === viewItems.length - 1) {
+      setViewerFront(null); setViewerBack(null); setViewerType(isSlipView ? 'slip' : 'cheque'); setFlipped(false);
+    }
+  };
+
+  const handleSaveSettings = () => { scanner.handleSaveSettings(); setShowScanSettings(false); };
+
+  // ── Upload panel handlers ────────────────────────────────────────────────
+  const addUploadFiles = (files: FileList | File[]) => {
+    const arr = Array.from(files).filter(f => f.type.startsWith('image/') || f.name.match(/\.(pdf|tif|tiff)$/i));
+    const mapped: UploadFile[] = arr.map(f => ({ file: f, previewUrl: URL.createObjectURL(f) }));
+    setUploadFiles(prev => [...prev, ...mapped]);
+  };
+
+  const removeUploadFile = (idx: number) => {
+    setUploadFiles(prev => { URL.revokeObjectURL(prev[idx].previewUrl); return prev.filter((_, i) => i !== idx); });
+    if (uploadPreviewIdx >= uploadFiles.length - 1) setUploadPreviewIdx(Math.max(0, uploadFiles.length - 2));
+  };
+
+  const handleUploadSubmit = async () => {
+    if (uploadFiles.length === 0) { toast.error('No files selected.'); return; }
+    setUploading(true);
+    try {
+      // Pass 0 if no active slip; the server will handle global batch association
+      await uploadBulkSlipScans(id, activeSlipEntryId || 0, uploadFiles.map(f => f.file));
+      toast.success(`${uploadFiles.length} slip image(s) uploaded globally to batch`);
+      uploadFiles.forEach(f => URL.revokeObjectURL(f.previewUrl));
+      setUploadFiles([]);
+      setShowUploadPanel(false);
+      session_hooks.loadSession();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? 'Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // ── Render ──────────────────────────────────────────────────────────────────
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', background: 'var(--bg)' }}>
+    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg)', overflow: 'hidden' }}>
 
-      {/* ── Scan viewport — fills screen; table below is scrolled to ─────── */}
-      <div style={{ height: 'calc(100dvh - 56px)', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+      {/* Scan viewport (action bar + 2-column grid) */}
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
 
-      {/* ── Action bar ─────────────────────────────────────────────────────── */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 10,
-        padding: '10px 20px', borderBottom: '1px solid var(--border)',
-        background: 'var(--bg-raised)', flexShrink: 0, flexWrap: 'wrap',
-      }}>
-        <button
-          onClick={() => navigate('/')}
-          className="btn-ghost"
-          style={{ gap: 6, padding: '6px 10px', height: 32 }}
-        >
-          <Icon name="arrow_back" size={15} />
-          Exit
-        </button>
+        {/* ── Action bar ──────────────────────────────────────────────────── */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10,
+          padding: '10px 32px', borderBottom: '1px solid var(--border)',
+          background: 'var(--bg-raised)', flexShrink: 0, flexWrap: 'wrap',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0, flexWrap: 'wrap' }}>
+            <Pill icon="receipt_long" mono title="Batch Number" style={{ flex: '0 1 auto' }}>Batch: {session.batchNo}</Pill>
+            <Pill icon="analytics" title="Summary Reference No" style={{ flex: '0 1 auto' }}>Sum Ref: {batchDetails?.summRefNo || '—'}</Pill>
+            <Pill icon="apartment" title="Location" style={{ flex: '0 1 auto' }}>Loc:{batchDetails?.locationCode}</Pill>
+            <Pill icon="account_tree" title="Cluster" style={{ flex: '0 1 auto' }}>Cluster: {batchDetails?.clusterCode || '—'}</Pill>
+            <Pill icon="print" title="Scanner Code" style={{ flex: '0 1 auto' }}>Scanner ID: {batchDetails?.scannerID || '—'}</Pill>
+            {batchDetails?.isPDC && <Pill icon="event_upcoming" title="PDC" style={{ flex: '0 1 auto' }}>PDC: True</Pill>}
+            {session.batchStatus === BatchStatus.ScanningCompleted && (
+              <Pill icon="check_circle" title="Scanning completed" style={{ flex: '0 1 auto', background: 'var(--success-bg, #f0fdf4)', color: 'var(--success, #16a34a)', borderColor: 'var(--success, #16a34a)' }}>Scanning Complete</Pill>
+            )}
+            {session.batchStatus === BatchStatus.RRPending && (
+              <Pill icon="build" title="Reject Repair pending" style={{ flex: '0 1 auto', background: 'var(--warning-bg, #fffbeb)', color: 'var(--warning, #d97706)', borderColor: 'var(--warning, #d97706)' }}>RR Pending</Pill>
+            )}
+            {session.batchStatus === BatchStatus.RRCompleted && (
+              <Pill icon="done_all" title="Reject Repair completed" style={{ flex: '0 1 auto', background: 'var(--success-bg, #f0fdf4)', color: 'var(--success, #16a34a)', borderColor: 'var(--success, #16a34a)' }}>RR Complete</Pill>
+            )}
+          </div>
 
-        <span style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0 }} />
+          <button
+            onClick={() => setShowScanSettings(true)}
+            className="btn-secondary"
+            style={{ height: 32, padding: '0 12px', gap: 6, fontSize: 'var(--text-xs)', display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}
+          >
+            <Icon name="tune" size={14} />
+            Scanner settings
+          </button>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0, flexWrap: 'wrap' }}>
-          <Pill icon="receipt_long" mono>{session.batchNo}</Pill>
-          <Pill icon="category">
-            {session.scanType || 'Scan'} · {' '}
-            {batchDetails?.clearingType === '01' ? 'Regular' :
-             batchDetails?.clearingType === '02' ? 'High Value' :
-             batchDetails?.clearingType === '03' ? 'CTS' :
-             batchDetails?.clearingType === '11' ? 'Non-CTS' : 
-             batchDetails?.clearingType || 'Scan'}
-          </Pill>
-          {batchDetails?.scannerID && <Pill icon="print">{batchDetails.scannerID}</Pill>}
-          {activeSlipNo && <Pill icon="description">Slip {activeGroup?.depositSlipNo || activeSlipNo}</Pill>}
-          <Pill>
-            {(() => {
-              const n = session.totalSlipEntries;
-              if (n === 0) return '0 slips';
-              const s = ["th", "st", "nd", "rd"], v = n % 100;
-              const ord = s[(v - 20) % 10] || s[v] || s[0];
-              return `${n}${ord} slip batch`;
-            })()}
-          </Pill>
-          <Pill mono>₹{session.totalAmount.toLocaleString('en-IN')}</Pill>
+          {!withSlip && (
+            <button
+              onClick={() => { setUploadFiles([]); setUploadViewMode('grid'); setShowUploadPanel(true); }}
+              className="btn-secondary"
+              style={{ height: 32, padding: '0 12px', gap: 6, fontSize: 'var(--text-xs)', display: 'inline-flex', alignItems: 'center', flexShrink: 0, borderColor: 'var(--accent-400)', color: 'var(--accent-400)' }}
+            >
+              <Icon name="upload_file" size={14} />
+              Upload Slip Images
+            </button>
+          )}
+
+          {(() => {
+            const isScanningDone = session.batchStatus >= BatchStatus.ScanningCompleted;
+            const incompleteSlips = session?.slipGroups?.filter(g => (g.slipScans?.length ?? 0) === 0) || [];
+            const hasIncompleteSlips = incompleteSlips.length > 0;
+            const activeSlipIncomplete = activeGroup ? activeGroup.cheques.length !== activeGroup.totalInstruments : false;
+
+            let tooltip: string | undefined;
+            if (isScanningDone) {
+              tooltip = 'Scanning already completed for this batch';
+            } else if (activeSlipIncomplete && activeGroup) {
+              tooltip = `Active slip needs ${activeGroup.totalInstruments} cheques (scanned ${activeGroup.cheques.length})`;
+            } else if (hasIncompleteSlips) {
+              tooltip = `Missing slip images for: ${incompleteSlips.map(s => s.depositSlipNo || s.slipNo).join(', ')}`;
+            }
+
+            return (
+              <button
+                onClick={() => setConfirmComplete('batch')}
+                disabled={scanner.isBusy || completing || activeSlipIncomplete || hasIncompleteSlips || isScanningDone}
+                className="btn-primary"
+                style={{ height: 32, padding: '0 14px', gap: 6, fontSize: 'var(--text-xs)' }}
+                title={tooltip}
+              >
+                <Icon name={isScanningDone ? 'check_circle' : 'check'} size={14} />
+                {scanner.isBusy || completing ? 'Completing…' : isScanningDone ? 'Scanning done' : 'Complete batch'}
+              </button>
+            );
+          })()}
         </div>
 
-        {/* Scanner settings */}
-        <button
-          onClick={() => setShowScanSettings(true)}
-          className="btn-secondary"
-          style={{ height: 32, padding: '0 12px', gap: 6, fontSize: 'var(--text-xs)', display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}
-        >
-          <Icon name="tune" size={14} />
-          Scanner settings
-        </button>
+        {/* ── 2-column grid (viewer | controls) — sidebar is an overlay inside viewer ── */}
+        <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr minmax(500px, 40%)', minHeight: 0 }}>
 
-        {/* New slip */}
-        <button onClick={startNewSlip} className="btn-secondary" style={{ height: 32, padding: '0 12px', gap: 6, fontSize: 'var(--text-xs)' }}>
-          <Icon name="add" size={14} />
-          New slip
-        </button>
+          {/* Center: image viewer — sidebar is an absolute overlay inside here */}
+          <ScanViewport
+            session={session}
+            sidebarOpen={sidebarOpen}
+            setSidebarOpen={setSidebarOpen}
+            activeSlipEntryId={activeSlipEntryId}
+            activeGroup={activeGroup}
+            scanStep={scanStep}
+            isSlipView={isSlipView}
+            viewItems={viewItems}
+            currentViewIdx={currentViewIdx}
+            previewFront={previewFront}
+            previewBack={previewBack}
+            flipped={flipped}
+            setFlipped={setFlipped}
+            zoom={zoom}
+            setZoom={setZoom}
+            panning={panning}
+            hasMoved={hasMoved}
+            panOffset={panOffset}
+            setPanOffset={setPanOffset}
+            viewerRef={viewerRef}
+            makePanHandlers={makePanHandlers}
+            setIsFullscreen={setIsFullscreen}
+            handleNavLeft={handleNavLeft}
+            handleNavRight={handleNavRight}
+            setViewerFront={setViewerFront}
+            setViewerBack={setViewerBack}
+            setViewerType={setViewerType}
+          />
 
-        {/* Complete */}
-        <button
-          onClick={() => scanner.handleCompleteScan(() => navigate('/'))}
-          disabled={scanner.isBusy || completing}
-          className="btn-primary"
-          style={{ height: 32, padding: '0 14px', gap: 6, fontSize: 'var(--text-xs)' }}
-        >
-          <Icon name="check" size={14} />
-          {scanner.isBusy || completing ? 'Completing…' : 'Complete batch'}
-        </button>
+          {/* Right: scan controls + recent sequences */}
+          <ScanControlPanel
+            session={session}
+            scanner={scanner}
+            scanStep={scanStep}
+            activeSlipEntryId={activeSlipEntryId}
+            activeGroup={activeGroup}
+            slipScansForActive={slipScansForActive}
+            canMoveToChequeScan={canMoveToChequeScan}
+            withSlip={withSlip}
+            isDeveloper={user?.isDeveloper}
+            mockScanEnabled={mockScanEnabled}
+            completing={completing}
+            frontFile={frontFile}
+            backFile={backFile}
+            frontPreview={frontPreview}
+            backPreview={backPreview}
+            showTable={showTable}
+            setShowTable={setShowTable}
+            expandedGroups={expandedGroups}
+            setExpandedGroups={setExpandedGroups}
+            viewerFront={viewerFront}
+            setViewerFront={setViewerFront}
+            setViewerBack={setViewerBack}
+            setViewerType={setViewerType}
+            setFlipped={setFlipped}
+            setActiveSlipEntryId={state.setActiveSlipEntryId}
+            setScanStep={setScanStep}
+            setShowSlipForm={setShowSlipForm}
+            setConfirmComplete={setConfirmComplete}
+            openImageEditor={openImageEditor}
+            startNewSlip={() => session_hooks.startNewSlip(activeGroup)}
+          />
+        </div>
+
+        {/* Scanned items table overlay */}
+        {showTable && (
+          <div style={{
+            position: 'absolute', inset: 0, zIndex: 10,
+            background: 'var(--bg)', display: 'flex', flexDirection: 'column', overflow: 'hidden',
+          }}>
+            <div style={{ flex: 1, overflow: 'auto' }}>
+              <ScanItemsTable
+                session={session}
+                onImageSelect={(front, back, type) => {
+                  setViewerFront(front); setViewerBack(back ?? null); setViewerType(type ?? null);
+                  setFlipped(false);
+                  setIsFullscreen(true);
+                }}
+                onClose={() => setShowTable(false)}
+                pickupPoint={pickupPointCode}
+              />
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* ── Main layout ─────────────────────────────────────────────────────── */}
-      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 480px', minHeight: 0 }}>
-
-        {/* Left: cheque viewer ─────────────────────────────────────────────── */}
+      {/* ── Upload Slip Images Panel ────────────────────────────────────── */}
+      {showUploadPanel && (
         <div style={{
-          position: 'relative',
-          display: 'flex', flexDirection: 'column',
-          background: 'var(--bg)', borderRight: '1px solid var(--border)',
-          backgroundImage: 'radial-gradient(circle at 25% 25%, var(--bg-subtle), var(--bg) 60%)',
-          overflow: 'hidden',
+          position: 'fixed', inset: 0, zIndex: 200, display: 'flex', pointerEvents: 'none',
         }}>
-          {/* Top-left: sequence label */}
-          <div style={{
-            position: 'absolute', top: 16, left: 20, zIndex: 2,
-            display: 'flex', gap: 8, alignItems: 'center',
-            color: 'var(--fg-subtle)', fontSize: 'var(--text-xs)',
-          }}>
-            <Icon name="image" size={14} />
-            <span>Sequence</span>
-            <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--fg)', fontWeight: 500 }}>
-              #{String(Math.max(1, nextChqSeq - 1)).padStart(4, '0')}
-            </span>
-            <span>·</span>
-            <span style={{
-              padding: '2px 7px', borderRadius: 'var(--r-full)',
-              fontSize: 'var(--text-xs)', fontWeight: 500,
-              background: flipped ? 'var(--info-bg)' : 'var(--bg-subtle)',
-              color: flipped ? 'var(--info)' : 'var(--fg-muted)',
-              border: `1px solid ${flipped ? 'var(--info)' : 'var(--border)'}`,
-            }}>
-              {isSlipView ? 'Slip' : flipped ? 'Back' : 'Front'}
-            </span>
-          </div>
-
-          {/* Top-right: zoom + flip controls */}
-          <div style={{ position: 'absolute', top: 12, right: 16, zIndex: 2, display: 'flex', gap: 2, background: 'var(--bg-raised)', borderRadius: 'var(--r-md)', border: '1px solid var(--border)', padding: 2 }}>
-            <IconBtn icon="zoom_out" tooltip="Zoom out" onClick={() => setZoom(z => Math.max(0.25, +(z - 0.25).toFixed(2)))} />
-            <IconBtn icon="zoom_in" tooltip="Zoom in" onClick={() => setZoom(z => Math.min(4, +(z + 0.25).toFixed(2)))} />
-            {!isSlipView && (
-              <IconBtn icon="flip" tooltip="Flip (click image)" onClick={() => setFlipped(f => !f)} />
-            )}
-            <IconBtn icon="fullscreen" tooltip="Fullscreen" onClick={() => setIsFullscreen(true)} />
-          </div>
-
-          {/* Scrollable image area */}
+          {/* Backdrop */}
           <div
-            ref={viewerRef}
-            {...makePanHandlers(viewerRef as React.RefObject<HTMLDivElement>)}
-            style={{
-              flex: 1,
-              overflow: 'auto',
-              display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
-              padding: 40,
-              boxSizing: 'border-box',
-              cursor: panning ? 'grabbing' : 'grab',
-              userSelect: 'none',
-            }}
-          >
-            {/* Flip card — pixel-width so zoom works correctly */}
-            <div style={{
-              width: `${Math.max(200, Math.round(640 * zoom))}px`,
-              flexShrink: 0,
-              transition: 'width 0.15s ease',
-            }}>
-              <div
-                style={{
-                  position: 'relative', width: '100%',
-                  transformStyle: 'preserve-3d',
-                  perspective: '2000px',
-                  transition: 'transform var(--dur-slow) var(--ease)',
-                  transform: flipped ? 'rotateY(180deg)' : 'rotateY(0)',
-                  cursor: !isSlipView ? (panning ? 'grabbing' : 'pointer') : (panning ? 'grabbing' : 'default'),
-                }}
-                onClick={() => !isSlipView && !hasMoved.current && setFlipped(f => !f)}
-              >
-                {/* Front face */}
-                <div style={{ position: 'relative', width: '100%', backfaceVisibility: 'hidden' }}>
-                  {previewFront
-                    ? <img src={previewFront} alt="Front" style={{ display: 'block', width: '100%', height: 'auto', background: 'var(--bg-raised)', border: '1px solid var(--border)', borderRadius: '4px', boxShadow: 'var(--shadow-lg)' }} />
-                    : <ImagePlaceholder label={isSlipView ? 'SLIP IMAGE' : 'FRONT'} />}
-                </div>
-
-                {/* Back face */}
-                {!isSlipView && (
-                  <div style={{
-                    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                    backfaceVisibility: 'hidden',
-                    transform: 'rotateY(180deg)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}>
-                    {previewBack
-                      ? <img src={previewBack} alt="Back" style={{ display: 'block', width: '100%', height: 'auto', background: 'var(--bg-raised)', border: '1px solid var(--border)', borderRadius: '4px', boxShadow: 'var(--shadow-lg)' }} />
-                      : <ImagePlaceholder label="BACK" />}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Bottom nav controls */}
-          {scanStep !== 'SlipScan' && (
-            <div style={{
-              position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)',
-              display: 'flex', alignItems: 'center', gap: 6, zIndex: 2,
-              background: 'var(--bg-raised)', border: '1px solid var(--border)',
-              borderRadius: 'var(--r-full)', padding: '4px 8px',
-              boxShadow: 'var(--shadow-sm)',
-            }}>
-              <IconBtn icon="chevron_left" size={28} />
-              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-muted)', padding: '0 4px', fontVariantNumeric: 'tabular-nums' }}>
-                {Math.max(1, nextChqSeq - 1)} / {session.totalCheques || '—'}
-              </span>
-              <IconBtn icon="chevron_right" size={28} />
-              <span style={{ width: 1, height: 18, background: 'var(--border)', margin: '0 2px' }} />
-              <IconBtn icon="delete" tooltip="Delete sequence" size={28} />
-              <IconBtn icon="flag" tooltip="Flag for RR" size={28} />
-            </div>
-          )}
-        </div>
-
-        {/* Right: scan controls ─────────────────────────────────────────────── */}
-        <div style={{ display: 'flex', flexDirection: 'column', background: '#fff', minWidth: 0, overflowY: 'auto' }}>
-
-          {/* Step header */}
-          <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-subtle)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 6 }}>
-              Scan step
-            </div>
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              <StepDot active={scanStep === 'SlipEntry'} done={scanStep !== 'SlipEntry'} label="Entry" n={1} />
-              <span style={{ flex: 1, height: 1, background: 'var(--border)' }} />
-              <StepDot active={scanStep === 'SlipScan'} done={scanStep === 'ChequeScan'} label="Slip Scan" n={2} disabled={!withSlip} />
-              <span style={{ flex: 1, height: 1, background: 'var(--border)' }} />
-              <StepDot active={scanStep === 'ChequeScan'} done={false} label="Cheques" n={3} />
-            </div>
-          </div>
-
-          {/* ── Flatbed scanner status banner — only on SlipScan step ────── */}
-          {scanner.useFlatbedWs && scanner.flatbedStatus !== 'idle' && scanStep === 'SlipScan' && (
-            <div style={{
-              flexShrink: 0,
-              display: 'flex', alignItems: 'flex-start', gap: 8,
-              padding: '9px 14px',
-              borderBottom: '1px solid var(--border)',
-              borderLeft: `3px solid ${scanner.flatbedStatus === 'error' ? 'var(--danger)' : 'var(--border-strong)'}`,
-              background: scanner.flatbedStatus === 'error' ? 'var(--danger-bg, #fff1f0)' : 'var(--bg-raised)',
-            }}>
-              <span className="material-symbols-outlined" style={{
-                fontSize: 15, marginTop: 1, flexShrink: 0,
-                fontVariationSettings: `'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 15`,
-                color: scanner.flatbedStatus === 'error' ? 'var(--danger)' : 'var(--fg-muted)',
-                animation: scanner.flatbedStatus === 'connecting' ? 'spin 1s linear infinite' : 'none',
-              }}>
-                {scanner.flatbedStatus === 'connecting' ? 'sync' : scanner.flatbedStatus === 'ready' ? 'scanner' : 'error'}
-              </span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                {scanner.flatbedStatus === 'connecting' && (
-                  <span style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-muted)' }}>Connecting to scanner…</span>
-                )}
-                {scanner.flatbedStatus === 'ready' && (
-                  <span style={{ fontSize: 'var(--text-xs)', color: 'var(--fg)', fontWeight: 500 }}>
-                    {scanner.selectedScannerId || 'Scanner ready'}
+            style={{ flex: 1, background: 'rgba(0,0,0,0.4)', pointerEvents: 'all' }}
+            onClick={() => !uploading && setShowUploadPanel(false)}
+          />
+          {/* Panel */}
+          <div style={{
+            width: 420, background: 'var(--bg-raised)', borderLeft: '1px solid var(--border)',
+            display: 'flex', flexDirection: 'column', pointerEvents: 'all', height: '100%',
+          }}>
+            {/* Panel Header */}
+            <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Icon name="upload_file" size={18} style={{ color: 'var(--accent-500)' }} />
+                <span style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>Upload Slip Images</span>
+                {uploadFiles.length > 0 && (
+                  <span style={{ fontSize: 10, padding: '2px 8px', background: 'var(--accent-bg)', color: 'var(--accent-500)', borderRadius: 'var(--r-full)', fontWeight: 700 }}>
+                    {uploadFiles.length} file{uploadFiles.length !== 1 ? 's' : ''}
                   </span>
                 )}
-                {scanner.flatbedStatus === 'error' && (
-                  <>
-                    <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--danger)' }}>Scanner not available</div>
-                    <div style={{ fontSize: 10, color: 'var(--danger)', marginTop: 2, wordBreak: 'break-word', opacity: 0.85 }}>{scanner.flatbedError}</div>
-                  </>
-                )}
               </div>
-              {scanner.flatbedStatus === 'error' && (
-                <button
-                  onClick={scanner.handleDetectScanners}
-                  disabled={scanner.flatbedConnecting}
-                  className="btn-ghost"
-                  style={{ fontSize: 'var(--text-xs)', height: 24, padding: '0 8px', flexShrink: 0, color: 'var(--danger)' }}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {/* View toggle */}
+                {uploadFiles.length > 0 && (
+                  <div style={{ display: 'flex', background: 'var(--bg-subtle)', borderRadius: 'var(--r-md)', padding: 2, gap: 2 }}>
+                    <button
+                      onClick={() => setUploadViewMode('grid')}
+                      style={{ padding: '4px 8px', borderRadius: 'var(--r-sm)', background: uploadViewMode === 'grid' ? 'var(--bg-raised)' : 'transparent', border: 'none', cursor: 'pointer', color: uploadViewMode === 'grid' ? 'var(--fg)' : 'var(--fg-faint)', display: 'flex', alignItems: 'center' }}
+                      title="Grid view"
+                    >
+                      <Icon name="grid_view" size={16} />
+                    </button>
+                    <button
+                      onClick={() => { setUploadViewMode('preview'); setUploadPreviewIdx(0); }}
+                      style={{ padding: '4px 8px', borderRadius: 'var(--r-sm)', background: uploadViewMode === 'preview' ? 'var(--bg-raised)' : 'transparent', border: 'none', cursor: 'pointer', color: uploadViewMode === 'preview' ? 'var(--fg)' : 'var(--fg-faint)', display: 'flex', alignItems: 'center' }}
+                      title="Preview view"
+                    >
+                      <Icon name="crop_original" size={16} />
+                    </button>
+                  </div>
+                )}
+                <button onClick={() => { if (!uploading) { uploadFiles.forEach(f => URL.revokeObjectURL(f.previewUrl)); setUploadFiles([]); setShowUploadPanel(false); } }} className="btn-ghost" style={{ color: 'var(--fg-faint)', padding: 4 }}>
+                  <Icon name="close" size={20} />
+                </button>
+              </div>
+            </div>
+
+            {/* Upload button row */}
+            <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => uploadInputRef.current?.click()}
+                className="btn-secondary"
+                style={{ flex: 1, height: 34, gap: 6, fontSize: 'var(--text-xs)' }}
+              >
+                <Icon name="add_photo_alternate" size={14} /> Add Images
+              </button>
+              <input
+                ref={uploadInputRef}
+                type="file"
+                hidden
+                multiple
+                accept="image/*,.pdf,.tif,.tiff"
+                onChange={e => { if (e.target.files) addUploadFiles(e.target.files); e.target.value = ''; }}
+              />
+              {uploadFiles.length > 0 && (
+                <button onClick={() => { uploadFiles.forEach(f => URL.revokeObjectURL(f.previewUrl)); setUploadFiles([]); }} className="btn-ghost" style={{ height: 34, color: 'var(--danger)', fontSize: 'var(--text-xs)' }}>
+                  Clear All
+                </button>
+              )}
+            </div>
+
+            {/* Drop Zone / Content */}
+            <div
+              style={{ flex: 1, overflow: 'auto', position: 'relative' }}
+              onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
+              onDragLeave={() => setIsDragOver(false)}
+              onDrop={e => { e.preventDefault(); setIsDragOver(false); if (e.dataTransfer.files) addUploadFiles(e.dataTransfer.files); }}
+            >
+              {isDragOver && (
+                <div style={{ position: 'absolute', inset: 0, background: 'rgba(var(--accent-500-rgb),0.12)', border: '2px dashed var(--accent-500)', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 'var(--r-md)', margin: 12, pointerEvents: 'none' }}>
+                  <span style={{ color: 'var(--accent-500)', fontWeight: 700, fontSize: 'var(--text-sm)' }}>Drop images here</span>
+                </div>
+              )}
+
+              {uploadFiles.length === 0 ? (
+                /* Empty drop zone */
+                <div
+                  style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: 32, cursor: 'pointer' }}
+                  onClick={() => uploadInputRef.current?.click()}
                 >
-                  Retry
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* ── Scan controls ─────────────────────────────────────────────── */}
-          <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 12, padding: '14px 16px', borderBottom: '1px solid var(--border)' }}>
-
-            {/* SlipEntry step */}
-            {scanStep === 'SlipEntry' && !showSlipForm && (
-              <ControlCard tone="warning">
-                <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--fg)', marginBottom: 4 }}>
-                  Slip entry required
+                  <div style={{ width: 72, height: 72, borderRadius: '50%', background: 'var(--bg-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Icon name="cloud_upload" size={32} style={{ color: 'var(--accent-400)' }} />
+                  </div>
+                  <div style={{ textAlign: 'center' }}>
+                    <p style={{ fontWeight: 600, margin: 0, color: 'var(--fg)' }}>Drag &amp; drop images here</p>
+                    <p style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-subtle)', marginTop: 4 }}>or click to browse • JPEG, PNG, TIFF, PDF</p>
+                  </div>
                 </div>
-                <p style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-muted)', margin: '0 0 12px' }}>
-                  Fill in the deposit slip details before scanning {withSlip ? 'slip images and ' : ''}cheques.
-                </p>
-                <button onClick={() => setShowSlipForm(true)} className="btn-primary" style={{ width: '100%' }}>
-                  <Icon name="edit_note" size={16} />
-                  Open slip entry form
-                </button>
-              </ControlCard>
-            )}
-
-            {/* SlipScan step */}
-            {scanStep === 'SlipScan' && (
-              <>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-subtle)', textTransform: 'uppercase', letterSpacing: '.04em' }}>Slip scan</div>
-                    <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--fg)', marginTop: 2 }}>{activeGroup?.depositSlipNo || activeSlipNo}</div>
-                  </div>
-                  <span style={{
-                    padding: '2px 8px', borderRadius: 'var(--r-full)',
-                    fontSize: 10, fontWeight: 600,
-                    background: 'var(--bg-subtle)', border: '1px solid var(--border)',
-                    color: 'var(--fg-muted)', fontVariantNumeric: 'tabular-nums',
-                  }}>
-                    {slipScansForActive.length} img
-                  </span>
+              ) : uploadViewMode === 'grid' ? (
+                /* Grid view */
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, padding: 14 }}>
+                  {uploadFiles.map((uf, i) => (
+                    <div key={i} style={{ position: 'relative', borderRadius: 'var(--r-md)', overflow: 'hidden', border: '1px solid var(--border)', background: 'var(--bg-subtle)', cursor: 'pointer' }} onClick={() => { setUploadPreviewIdx(i); setUploadViewMode('preview'); }}>
+                      <img src={uf.previewUrl} alt={uf.file.name} style={{ width: '100%', aspectRatio: '3/4', objectFit: 'cover', display: 'block' }} onError={e => { (e.target as HTMLImageElement).style.display='none'; }} />
+                      <div style={{ padding: '6px 8px', fontSize: 9, color: 'var(--fg-subtle)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{uf.file.name}</div>
+                      <button
+                        onClick={e => { e.stopPropagation(); removeUploadFile(i); }}
+                        style={{ position: 'absolute', top: 4, right: 4, width: 20, height: 20, borderRadius: '50%', background: 'rgba(0,0,0,0.6)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}
+                      >
+                        <Icon name="close" size={12} />
+                      </button>
+                      <div style={{ position: 'absolute', top: 4, left: 4, background: 'rgba(0,0,0,0.5)', color: '#fff', fontSize: 9, padding: '1px 5px', borderRadius: 4, fontWeight: 700 }}>{i + 1}</div>
+                    </div>
+                  ))}
                 </div>
-
-                {slipScansForActive.length === 0 && (
-                  <div style={{ padding: '10px 12px', borderRadius: 'var(--r-md)', background: 'var(--bg-raised)', border: '1px solid var(--border)', fontSize: 'var(--text-xs)', color: 'var(--fg-muted)' }}>
-                    Scan at least one slip image before moving to cheques.
-                  </div>
-                )}
-
-                <ControlCard>
-                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-subtle)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 8 }}>
-                    {scanner.useFlatbedWs ? 'Flatbed Scanner (WebSocket)' : 'Document Scanner'}
-                  </div>
-                  <p style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-muted)', margin: '0 0 12px' }}>
-                    Place the slip on the flatbed and press Scan.
-                  </p>
-                  <button
-                    onClick={scanner.handleCaptureSlipScan}
-                    disabled={scanner.isBusy || (scanner.flatbedStatus !== 'ready' && !(user?.isDeveloper && mockScanEnabled && !!frontFile))}
-                    className="btn-primary"
-                    style={{ width: '100%', justifyContent: 'center' }}
-                    title={scanner.flatbedStatus === 'error' ? 'Scanner not connected — see status above' : scanner.flatbedStatus === 'connecting' ? 'Connecting to scanner…' : undefined}
-                  >
-                    <Icon name="document_scanner" size={16} />
-                    {scanner.isBusy ? 'Scanning…' : scanner.flatbedStatus === 'connecting' ? 'Connecting…' : 'Scan Slip'}
-                  </button>
-                </ControlCard>
-
-                {user?.isDeveloper && mockScanEnabled && (
-                  <DevMockSection title="Mock — Slip Capture">
-                    <CameraCapture
-                      mode="slip"
-                      isMockMode={true}
-                      onCaptureFront={file => openImageEditor(file, 'slip-front')}
-                      frontPreview={frontPreview}
-                      disabled={scanner.isBusy}
-                    />
-                    {frontFile && (
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
-                        <button type="button" onClick={() => frontFile && openImageEditor(frontFile, 'slip-front')} className="btn-secondary" style={{ fontSize: 'var(--text-xs)' }}>
-                          Edit image
-                        </button>
-                        <button onClick={scanner.handleCaptureSlipScan} disabled={scanner.isBusy} className="btn-primary" style={{ fontSize: 'var(--text-xs)' }}>
-                          {scanner.isBusy ? 'Uploading…' : 'Upload'}
-                        </button>
-                      </div>
-                    )}
-                  </DevMockSection>
-                )}
-
-                {slipScansForActive.length > 0 && (
-                  <button onClick={moveToChequeScan} className="btn-secondary" style={{ width: '100%', justifyContent: 'center' }}>
-                    Scan cheques for this slip
-                    <Icon name="arrow_forward" size={15} />
-                  </button>
-                )}
-              </>
-            )}
-
-            {/* ChequeScan step */}
-            {scanStep === 'ChequeScan' && canMoveToChequeScan && (
-              <>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-subtle)', textTransform: 'uppercase', letterSpacing: '.04em' }}>Cheque scan</div>
-                    <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--fg)', marginTop: 2 }}>Slip {activeGroup?.depositSlipNo || activeSlipNo}</div>
-                  </div>
-                  <span style={{
-                    padding: '2px 8px', borderRadius: 'var(--r-full)',
-                    fontSize: 10, fontWeight: 600,
-                    background: 'var(--bg-subtle)', border: '1px solid var(--border)',
-                    color: 'var(--fg-muted)', fontVariantNumeric: 'tabular-nums',
-                  }}>
-                    {chequesDoneForActive} chq
-                  </span>
-                </div>
-
-                <ControlCard>
-                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-subtle)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 8 }}>
-                    Cheque Scanner (Ranger)
-                  </div>
-                  <p style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-muted)', margin: '0 0 12px' }}>
-                    Place cheques in the hopper. Start feed, then stop to capture.
-                  </p>
-                  <RangerFeedControl
-                    isRunning={scanner.feedRunning.Cheque}
-                    scanType="Cheque"
-                    onStartFeed={() => { scanner.setScannerChoice('Ranger'); scanner.handleStartFeed('Cheque'); }}
-                    onStopFeed={scanner.handleRangerStopAndCapture}
-                    isMockMode={false}
-                    disabled={scanner.isBusy}
-                  />
-                </ControlCard>
-
-                {user?.isDeveloper && mockScanEnabled && (
-                  <DevMockSection title="Mock — Cheque Capture">
-                    <CameraCapture
-                      mode="cheque"
-                      isMockMode={true}
-                      onCaptureFront={file => openImageEditor(file, 'cheque-front')}
-                      onCaptureBack={file => openImageEditor(file, 'cheque-back')}
-                      frontPreview={frontPreview}
-                      backPreview={backPreview}
-                      disabled={scanner.isBusy}
-                    />
-                    {(frontFile || backFile) && (
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, marginTop: 8 }}>
-                        <button type="button" onClick={() => frontFile && openImageEditor(frontFile, 'cheque-front')} disabled={!frontFile} className="btn-secondary" style={{ fontSize: 'var(--text-xs)' }}>Front</button>
-                        <button type="button" onClick={() => backFile && openImageEditor(backFile, 'cheque-back')} disabled={!backFile} className="btn-secondary" style={{ fontSize: 'var(--text-xs)' }}>Back</button>
-                        <button onClick={scanner.handleCaptureCheque} disabled={scanner.isBusy} className="btn-primary" style={{ fontSize: 'var(--text-xs)' }}>
-                          {scanner.isBusy ? '…' : 'Upload'}
-                        </button>
-                      </div>
-                    )}
-                  </DevMockSection>
-                )}
-
-                {chequesDoneForActive > 0 && (
-                  <button onClick={startNewSlip} disabled={scanner.isBusy} className="btn-primary" style={{ width: '100%', justifyContent: 'center' }}>
-                    <Icon name="check" size={15} />
-                    Complete Slip
-                  </button>
-                )}
-              </>
-            )}
-
-            {/* Guard: slip scan required before cheque */}
-            {scanStep === 'ChequeScan' && !canMoveToChequeScan && (
-              <ControlCard tone="warning">
-                <p style={{ fontSize: 'var(--text-sm)', color: 'var(--fg)', margin: '0 0 10px' }}>
-                  Scan at least one slip image before scanning cheques.
-                </p>
-                <button onClick={() => setScanStep('SlipScan')} className="btn-secondary" style={{ width: '100%', justifyContent: 'center' }}>
-                  <Icon name="arrow_back" size={15} />
-                  Back to slip scan
-                </button>
-              </ControlCard>
-            )}
-          </div>
-
-          {/* ── Recent sequences ──────────────────────────────────────────── */}
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <div style={{ padding: '8px 16px', flexShrink: 0, borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--fg-subtle)', textTransform: 'uppercase', letterSpacing: '.04em' }}>
-                Recent sequences
-              </span>
-              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-muted)', fontVariantNumeric: 'tabular-nums' }}>
-                {session.slipGroups.length} of {Math.max(session.slipGroups.length, session.totalSlipEntries)}
-              </span>
-            </div>
-            <div>
-              {session.slipGroups.length > 0 ? (
-                <SlipGroupList
-                  groups={session.slipGroups}
-                  activeSlipEntryId={activeSlipEntryId}
-                  newSlipSaved={newSlipSaved}
-                  onSelect={(group) => {
-                    setActiveSlipEntryId(group.slipEntryId);
-                    setActiveSlipNo(group.slipNo);
-                    setNewSlipSaved(false);
-                  }}
-                  onLockedSelect={() => toast.warning('Cannot return to this slip — a new slip entry was created')}
-                  onImageSelect={(front, back, type) => { setViewerFront(front); setViewerBack(back ?? null); setViewerType(type ?? null); setFlipped(false); }}
-                />
               ) : (
-                <div style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--fg-faint)', fontSize: 'var(--text-xs)' }}>
-                  No sequences yet — create a new slip to begin.
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-      </div>{/* end scan viewport */}
-
-      {/* ── Scanned items table — scroll down to review ───────────────────── */}
-      <ScanItemsTable
-        session={session}
-        onImageSelect={(front, back, type) => {
-          setViewerFront(front);
-          setViewerBack(back ?? null);
-          setViewerType(type ?? null);
-          setFlipped(false);
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        }}
-      />
-
-      {/* ── Fullscreen overlay ─────────────────────────────────────────────── */}
-      {isFullscreen && (
-        <div style={{
-          position: 'fixed', inset: 0, background: '#000', zIndex: 1000,
-          display: 'flex', flexDirection: 'column',
-        }}>
-          {/* Fullscreen toolbar */}
-          <div style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '8px 16px', background: 'rgb(0 0 0 / 80%)', flexShrink: 0, gap: 8,
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#ccc', fontSize: 'var(--text-xs)' }}>
-              <Icon name="image" size={14} style={{ color: '#aaa' }} />
-              <span>Sequence</span>
-              <span style={{ fontFamily: 'var(--font-mono)', color: '#fff', fontWeight: 500 }}>
-                #{String(Math.max(1, nextChqSeq - 1)).padStart(4, '0')}
-              </span>
-              <span style={{
-                padding: '2px 7px', borderRadius: 'var(--r-full)',
-                fontSize: 'var(--text-xs)', fontWeight: 500,
-                background: flipped ? 'rgb(96 165 250 / 20%)' : 'rgb(255 255 255 / 10%)',
-                color: flipped ? '#60a5fa' : '#aaa',
-                border: `1px solid ${flipped ? '#60a5fa' : 'rgb(255 255 255 / 15%)'}`,
-              }}>
-                {isSlipView ? 'Slip' : flipped ? 'Back' : 'Front'}
-              </span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'rgb(255 255 255 / 8%)', borderRadius: 'var(--r-md)', padding: 4 }}>
-              <IconBtn icon="zoom_out" tooltip="Zoom out" onClick={() => setZoom(z => Math.max(0.25, +(z - 0.25).toFixed(2)))} />
-              <span style={{ fontSize: 'var(--text-xs)', color: '#aaa', minWidth: 36, textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}>
-                {Math.round(zoom * 100)}%
-              </span>
-              <IconBtn icon="zoom_in" tooltip="Zoom in" onClick={() => setZoom(z => Math.min(4, +(z + 0.25).toFixed(2)))} />
-              {!isSlipView && (
-                <IconBtn icon="flip" tooltip="Flip" onClick={() => setFlipped(f => !f)} />
-              )}
-              <span style={{ width: 1, height: 18, background: 'rgb(255 255 255 / 20%)', margin: '0 4px' }} />
-              <IconBtn icon="fullscreen_exit" tooltip="Exit fullscreen" onClick={() => setIsFullscreen(false)} />
-            </div>
-          </div>
-
-          {/* Fullscreen scrollable image area */}
-          <div
-            ref={viewerFsRef}
-            {...makePanHandlers(viewerFsRef as React.RefObject<HTMLDivElement>)}
-            style={{ flex: 1, overflow: 'auto', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 32, cursor: panning ? 'grabbing' : 'grab', userSelect: 'none' }}
-          >
-            <div style={{
-              width: `${Math.max(300, Math.round(900 * zoom))}px`,
-              flexShrink: 0,
-              transition: 'width 0.15s ease',
-            }}>
-              <div
-                style={{
-                  position: 'relative', width: '100%',
-                  transformStyle: 'preserve-3d',
-                  perspective: '2000px',
-                  transition: 'transform var(--dur-slow) var(--ease)',
-                  transform: flipped ? 'rotateY(180deg)' : 'rotateY(0)',
-                  cursor: !isSlipView ? (panning ? 'grabbing' : 'pointer') : (panning ? 'grabbing' : 'default'),
-                }}
-                onClick={() => !isSlipView && !hasMoved.current && setFlipped(f => !f)}
-              >
-                <div style={{ position: 'relative', width: '100%', backfaceVisibility: 'hidden' }}>
-                  {previewFront
-                    ? <img src={previewFront} alt="Front" style={{ display: 'block', width: '100%', height: 'auto', background: '#111', border: '1px solid #333', borderRadius: 4 }} />
-                    : <ImagePlaceholder label={isSlipView ? 'SLIP IMAGE' : 'FRONT'} />}
-                </div>
-                {!isSlipView && (
-                  <div style={{
-                    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                    backfaceVisibility: 'hidden',
-                    transform: 'rotateY(180deg)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}>
-                    {previewBack
-                      ? <img src={previewBack} alt="Back" style={{ display: 'block', width: '100%', height: 'auto', background: '#111', border: '1px solid #333', borderRadius: 4 }} />
-                      : <ImagePlaceholder label="BACK" />}
+                /* Preview view */
+                <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+                    <img
+                      src={uploadFiles[uploadPreviewIdx]?.previewUrl}
+                      alt="preview"
+                      style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 'var(--r-md)', boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}
+                    />
                   </div>
-                )}
-              </div>
+                  <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <button onClick={() => setUploadPreviewIdx(i => Math.max(0, i - 1))} disabled={uploadPreviewIdx === 0} className="btn-ghost" style={{ height: 28 }}><Icon name="chevron_left" size={18} /></button>
+                    <span style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-subtle)' }}>{uploadPreviewIdx + 1} / {uploadFiles.length} — {uploadFiles[uploadPreviewIdx]?.file.name}</span>
+                    <button onClick={() => setUploadPreviewIdx(i => Math.min(uploadFiles.length - 1, i + 1))} disabled={uploadPreviewIdx === uploadFiles.length - 1} className="btn-ghost" style={{ height: 28 }}><Icon name="chevron_right" size={18} /></button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', background: 'var(--bg)', display: 'flex', gap: 10 }}>
+              <button onClick={() => { if (!uploading) { uploadFiles.forEach(f => URL.revokeObjectURL(f.previewUrl)); setUploadFiles([]); setShowUploadPanel(false); } }} className="btn-secondary" style={{ flex: 1, height: 36, fontSize: 'var(--text-xs)' }} disabled={uploading}>
+                Cancel
+              </button>
+              <button
+                onClick={handleUploadSubmit}
+                disabled={uploadFiles.length === 0 || uploading}
+                className="btn-primary"
+                style={{ flex: 2, height: 36, fontSize: 'var(--text-xs)', gap: 6 }}
+              >
+                <Icon name="upload" size={14} />
+                {uploading ? `Uploading ${uploadFiles.length} image(s)…` : `Upload ${uploadFiles.length} Image${uploadFiles.length !== 1 ? 's' : ''}`}
+              </button>
             </div>
           </div>
-
-          {/* Fullscreen bottom nav */}
-          {scanStep !== 'SlipScan' && (
-            <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-              padding: '8px 16px', background: 'rgb(0 0 0 / 80%)', flexShrink: 0,
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgb(255 255 255 / 8%)', borderRadius: 'var(--r-full)', padding: '4px 8px' }}>
-                <IconBtn icon="chevron_left" size={28} />
-                <span style={{ fontSize: 'var(--text-xs)', color: '#aaa', padding: '0 4px', fontVariantNumeric: 'tabular-nums' }}>
-                  {Math.max(1, nextChqSeq - 1)} / {session.totalCheques || '—'}
-                </span>
-                <IconBtn icon="chevron_right" size={28} />
-                <span style={{ width: 1, height: 18, background: 'rgb(255 255 255 / 20%)', margin: '0 2px' }} />
-                <IconBtn icon="delete" tooltip="Delete sequence" size={28} />
-                <IconBtn icon="flag" tooltip="Flag for RR" size={28} />
-              </div>
-            </div>
-          )}
         </div>
       )}
 
-      {/* ── Scanner settings modal ─────────────────────────────────────────── */}
+      {/* ── Fullscreen overlay ───────────────────────────────────────────── */}
+      {isFullscreen && (
+        <ScanFullscreenOverlay
+          session={session}
+          isSlipView={isSlipView}
+          scanStep={scanStep}
+          previewFront={previewFront}
+          previewBack={previewBack}
+          flipped={flipped}
+          setFlipped={setFlipped}
+          zoom={zoom}
+          setZoom={setZoom}
+          nextChqSeq={nextChqSeq}
+          panning={panning}
+          hasMoved={hasMoved}
+          fsPanOffset={fsPanOffset}
+          setFsPanOffset={setFsPanOffset}
+          viewerFsRef={viewerFsRef}
+          makePanHandlers={makePanHandlers}
+          onClose={() => setIsFullscreen(false)}
+        />
+      )}
+
+      {/* ── Scanner settings modal ───────────────────────────────────────── */}
       {showScanSettings && (
         <ScannerSettingsModal
+          scanner={scanner}
           rangerWsUrl={scanner.rangerWsUrl}
           flatbedWsUrl={scanner.flatbedWsUrl}
           useFlatbedWs={scanner.useFlatbedWs}
@@ -923,10 +607,12 @@ export function ScanPage() {
           selectedScannerId={scanner.selectedScannerId}
           flatbedResolution={scanner.flatbedResolution}
           flatbedMode={scanner.flatbedMode}
+          flatbedFormat={scanner.flatbedFormat}
           rangerMicrEnabled={rangerMicrEnabled}
           rangerEndorsementEnabled={rangerEndorsementEnabled}
           rangerEndorsementUseImageName={rangerEndorsementUseImageName}
           rangerEndorsementCustomText={rangerEndorsementCustomText}
+          rangerEndorsementBatchName={rangerEndorsementBatchName}
           onRangerUrlChange={scanner.setRangerWsUrl}
           onFlatbedUrlChange={scanner.setFlatbedWsUrl}
           onFlatbedWsToggle={scanner.setUseFlatbedWs}
@@ -935,41 +621,44 @@ export function ScanPage() {
           onSelectScanner={scanner.setSelectedScannerId}
           onResolutionChange={scanner.setFlatbedResolution}
           onModeChange={scanner.setFlatbedMode}
+          onFormatChange={scanner.setFlatbedFormat}
           onRangerMicrChange={setRangerMicrEnabled}
           onRangerEndorsementChange={setRangerEndorsementEnabled}
           onRangerEndorsementModeChange={setRangerEndorsementUseImageName}
           onRangerEndorsementTextChange={setRangerEndorsementCustomText}
+          onRangerEndorsementBatchNameChange={setRangerEndorsementBatchName}
           onSave={handleSaveSettings}
           onClose={() => setShowScanSettings(false)}
         />
       )}
 
-      {/* ── Slip form modal ────────────────────────────────────────────────── */}
+      {/* ── Slip form modal ──────────────────────────────────────────────── */}
       {showSlipForm && (
         <SlipFormModal
           batchId={id}
           defaultPickupPoint={pickupPointCode}
+          existingSlips={session?.slipGroups}
           onClose={() => setShowSlipForm(false)}
           onSaved={slip => {
             setShowSlipForm(false);
-            setNewSlipSaved(true);
-            setActiveSlipEntryId(slip.slipEntryId);
-            setActiveSlipNo(slip.slipNo);
-            setNextSlipScanOrder(1);
-            setNextChqSeq(1);
+            state.setNewSlipSaved(true);
+            state.setActiveSlipEntryId(slip.slipEntryId);
+            state.setActiveSlipNo(slip.slipNo);
+            state.setNextSlipScanOrder(1);
+            state.setNextChqSeq(1);
             if (withSlip) {
-              moveToSlipScan();
+              session_hooks.moveToSlipScan();
               toast.success(`Slip ${slip.depositSlipNo || slip.slipNo} saved — scan slip images`);
             } else {
-              moveToChequeScan();
+              session_hooks.moveToChequeScan(slip.slipEntryId);
               toast.success(`Slip ${slip.depositSlipNo || slip.slipNo} saved — scan cheques`);
             }
-            loadSession();
+            session_hooks.loadSession();
           }}
         />
       )}
 
-      {/* ── Image editor ───────────────────────────────────────────────────── */}
+      {/* ── Image editor modal ───────────────────────────────────────────── */}
       {editorState && (
         <ImageEditModal
           file={editorState.file}
@@ -979,6 +668,28 @@ export function ScanPage() {
             applyEditedImage(editorState.target, file, previewUrl);
             setEditorState(null);
             toast.success('Edited image saved');
+          }}
+        />
+      )}
+
+      {/* ── Confirm complete modal ───────────────────────────────────────── */}
+      {confirmComplete && (
+        <ScanConfirmCompleteModal
+          type={confirmComplete}
+          onCancel={() => setConfirmComplete(null)}
+          onConfirm={async () => {
+            const type = confirmComplete;
+            setConfirmComplete(null);
+            if (type === 'slip') {
+              await session_hooks.moveToChequeScan();
+            } else if (type === 'cheque') {
+              // Finish this slip's cheque phase and prepare for the next slip.
+              await session_hooks.startNewSlip(activeGroup);
+              toast.success('Slip scanning completed. Ready for next slip.');
+            } else if (type === 'batch') {
+              // Finalize the entire batch explicitly
+              await scanner.handleCompleteScan(() => navigate('/'));
+            }
           }}
         />
       )}

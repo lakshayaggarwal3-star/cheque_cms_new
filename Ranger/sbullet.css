@@ -1,0 +1,108 @@
+/* Copyright © 2014-2018, Silver Bullet Technology, Inc. */
+
+body {
+background-color: #e1ddd9;
+font-size: 11px;
+font-family: Verdana, Arial, SunSans-Regular, Sans-Serif;
+color:#564b47;
+padding:0px;
+margin:0px;
+}
+
+h1 {
+font-size: 11px;
+text-transform:uppercase;
+background-color: #666699;
+border-top:1px solid #564b47;
+border-bottom:1px solid #564b47;
+padding:5px 15px;
+margin:0px;
+color: white; }
+
+h2 {
+font-size:20px;
+font-weight: normal;
+padding: 5px 10px;
+margin:0px;}
+
+/* ----------container to center the layout-------------- */
+#container {
+width: 800px;
+margin-bottom: 10px;
+margin-left: auto;
+margin-right: auto;
+background-color: #f5f5f5;
+}
+
+/* ----------banner for logo-------------- */
+#banner {
+background-color: #666699;
+text-align: right;
+padding: 0px;
+margin: 0px;
+color: white;
+}
+
+
+/* -----------------content--------------------- */
+#content {
+background-color: #ffffff;
+padding: 3px;
+margin-left: 200px;
+margin-right: 0px;
+}
+div#content { 
+min-height:600px;
+height:expression(this.scrollHeight > 600 ? "auto":"600px"); 
+}
+
+/* --------------left navi------------- */
+#left {
+float: left;
+width: 200px;
+margin: 2px;
+padding: 2px;
+}
+
+/* -----------footer--------------------------- */
+#footer {
+clear: both;
+margin: 0px;
+padding: 0px;
+text-align: right; }
+
+/* -----------Controls---------------------------   */
+.controlbutton {
+	width: 150px; 
+	height: auto; 
+	text-align: center; 
+	top: 3px;
+	margin: 3px;
+	padding: 2px;
+}
+
+/*-----------Options Dialog--------------------------*/
+td.datacellone {
+	background-color: #f5f5f5; 
+	color: black;
+	width: 300px;
+	padding: 0px 10px;
+}
+td.datacelltwo {
+	background-color: #efefef; 
+	color: black;
+	width: 300px;
+	padding: 0px 10px;
+}
+td.SectionTitle {
+	background-color: #666699; 
+	color: white;
+	width: 300px;
+	padding: 5px 10px;	
+	font-weight: bold;
+	text-align: left;
+}
+div#editsettings { 
+	width: 350px;
+	text-align: center; 
+}

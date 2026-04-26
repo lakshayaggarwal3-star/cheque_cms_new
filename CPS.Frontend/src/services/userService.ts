@@ -36,11 +36,7 @@ export interface CreateUserRequest {
   password: string;
   email?: string;
   defaultLocationID?: number;
-  roleScanner: boolean;
-  roleMobileScanner: boolean;
-  roleMaker: boolean;
-  roleChecker: boolean;
-  roleAdmin: boolean;
+  roles: string[];
   isDeveloper: boolean;
 }
 
@@ -48,11 +44,7 @@ export interface UpdateUserRequest {
   username: string;
   email?: string;
   defaultLocationID?: number;
-  roleScanner: boolean;
-  roleMobileScanner: boolean;
-  roleMaker: boolean;
-  roleChecker: boolean;
-  roleAdmin: boolean;
+  roles: string[];
   isDeveloper: boolean;
 }
 

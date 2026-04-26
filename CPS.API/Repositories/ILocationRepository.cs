@@ -13,8 +13,9 @@ namespace CPS.API.Repositories;
 public interface ILocationRepository
 {
     Task<List<Location>> GetAllAsync();
-    Task<List<Location>> GetPagedAsync(int page, int pageSize);
-    Task<int> GetCountAsync();
+    Task<List<Location>> GetPagedAsync(int page, int pageSize, string? q = null);
+    Task<int> GetCountAsync(string? q = null);
+
     Task<Location?> GetByIdAsync(int locationId);
     Task<Location?> GetByCodeAsync(string code);
     Task<List<LocationScanner>> GetScannersAsync(int locationId);

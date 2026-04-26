@@ -14,7 +14,7 @@ public interface ISlipService
 {
     Task<List<SlipEntryDto>> GetByBatchAsync(long batchId);
     Task<SlipEntryDto> CreateSlipEntryAsync(CreateSlipEntryRequest request, int userId);
-    Task<SlipEntryDto> UpdateSlipEntryAsync(int slipEntryId, UpdateSlipEntryRequest request, int userId);
+    Task<SlipEntryDto> UpdateSlipEntryAsync(long slipEntryId, UpdateSlipEntryRequest request, int userId);
     Task<ClientAutoFillDto?> GetClientAutoFillAsync(string clientCode, int userLocationId);
     Task<List<ClientAutoFillDto>> GetClientsByLocationAsync(int userLocationId);
     Task<string> GenerateNextSlipNoAsync(long batchId);

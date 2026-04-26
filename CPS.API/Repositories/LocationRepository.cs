@@ -25,18 +25,42 @@ public class LocationRepository : ILocationRepository
             .OrderBy(l => l.LocationName)
             .ToListAsync();
 
-    public async Task<List<Location>> GetPagedAsync(int page, int pageSize) =>
-        await _db.Locations
+    public async Task<List<Location>> GetPagedAsync(int page, int pageSize, string? q = null)
+    {
+        var query = _db.Locations
             .Include(l => l.Scanners.Where(s => s.IsActive))
             .Include(l => l.Finance)
-            .Where(l => !l.IsDeleted)
-            .OrderBy(l => l.LocationName)
+            .Where(l => !l.IsDeleted);
+
+        if (!string.IsNullOrWhiteSpace(q))
+        {
+            query = query.Where(l => 
+                l.LocationName.ToUpper().Contains(q.ToUpper()) ||
+                l.LocationCode.ToUpper().Contains(q.ToUpper()) ||
+                (l.State != null && l.State.ToUpper().Contains(q.ToUpper())) ||
+                (l.Zone != null && l.Zone.ToUpper().Contains(q.ToUpper())));
+        }
+
+        return await query.OrderBy(l => l.LocationName)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync();
+    }
 
-    public async Task<int> GetCountAsync() =>
-        await _db.Locations.CountAsync(l => !l.IsDeleted);
+    public async Task<int> GetCountAsync(string? q = null)
+    {
+        var query = _db.Locations.Where(l => !l.IsDeleted);
+        if (!string.IsNullOrWhiteSpace(q))
+        {
+            query = query.Where(l => 
+                l.LocationName.ToUpper().Contains(q.ToUpper()) ||
+                l.LocationCode.ToUpper().Contains(q.ToUpper()) ||
+                (l.State != null && l.State.ToUpper().Contains(q.ToUpper())) ||
+                (l.Zone != null && l.Zone.ToUpper().Contains(q.ToUpper())));
+        }
+        return await query.CountAsync();
+    }
+
 
     public async Task<Location?> GetByIdAsync(int locationId) =>
         await _db.Locations

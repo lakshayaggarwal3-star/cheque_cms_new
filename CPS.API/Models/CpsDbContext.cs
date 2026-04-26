@@ -15,20 +15,39 @@ public class CpsDbContext : DbContext
     public CpsDbContext(DbContextOptions<CpsDbContext> options) : base(options) { }
 
     public DbSet<UserMaster> Users { get; set; }
+    public DbSet<Role> Roles { get; set; }
+    public DbSet<UserRole> UserRoles { get; set; }
     public DbSet<UserLocationHistory> UserLocationHistories { get; set; }
     public DbSet<Location> Locations { get; set; }
     public DbSet<LocationScanner> LocationScanners { get; set; }
     public DbSet<LocationFinance> LocationFinances { get; set; }
+    public DbSet<GlobalClient> GlobalClients { get; set; }
     public DbSet<ClientMaster> Clients { get; set; }
+    public DbSet<BackgroundJob> Jobs { get; set; }
+    public DbSet<JobError> JobErrors { get; set; }
     public DbSet<BatchSequence> BatchSequences { get; set; }
     public DbSet<BatchSlipSequence> BatchSlipSequences { get; set; }
+    public DbSet<BatchItemSequence> BatchItemSequences { get; set; }
     public DbSet<Batch> Batches { get; set; }
     public DbSet<SlipEntry> SlipEntries { get; set; }
     public DbSet<SlipScan> SlipScans { get; set; }
     public DbSet<ChequeItem> ChequeItems { get; set; }
     public DbSet<MasterUploadLog> MasterUploadLogs { get; set; }
     public DbSet<AppSetting> AppSettings { get; set; }
+    public DbSet<UserSetting> UserSettings { get; set; }
+    public DbSet<ErrorLog> ErrorLogs { get; set; }
     public DbSet<AuditLog> AuditLogs { get; set; }
+
+    // --- SCB Master (CHM) ---
+    public DbSet<ScbMasterStatus> ScbMasterStatuses { get; set; }
+    public DbSet<ScbBank> ScbBanks { get; set; }
+    public DbSet<ScbBranch> ScbBranches { get; set; }
+    public DbSet<ScbReturnReason> ScbReturnReasons { get; set; }
+    public DbSet<ScbSessionDefinition> ScbSessionDefinitions { get; set; }
+    public DbSet<ScbCityMaster> ScbCities { get; set; }
+    public DbSet<ScbTranslationRule> ScbTranslationRules { get; set; }
+    public DbSet<InternalBankMaster> InternalBankMasters { get; set; }
+    public DbSet<ClientCaptureRule> ClientCaptureRules { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -39,6 +58,10 @@ public class CpsDbContext : DbContext
             .HasIndex(u => u.EmployeeID).IsUnique();
         modelBuilder.Entity<UserMaster>()
             .HasIndex(u => u.Username).IsUnique();
+
+        // UserRole
+        modelBuilder.Entity<UserRole>()
+            .HasIndex(ur => new { ur.UserID, ur.RoleID }).IsUnique();
 
         // Location
         modelBuilder.Entity<Location>()
@@ -52,11 +75,27 @@ public class CpsDbContext : DbContext
         modelBuilder.Entity<UserLocationHistory>()
             .HasIndex(h => new { h.UserID, h.AssignedDate });
 
-        // ClientMaster: indexes for searching
+        // GlobalClient: unique GlobalCode
+        modelBuilder.Entity<GlobalClient>()
+            .HasIndex(g => g.GlobalCode).IsUnique();
+
+        // ClientMaster: FK to GlobalClient (no cascade delete — protect client data)
         modelBuilder.Entity<ClientMaster>()
-            .HasIndex(c => c.RCMSCode);
+            .HasOne(c => c.GlobalClient)
+            .WithMany(g => g.Clients)
+            .HasForeignKey(c => c.GlobalClientID)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // ClientMaster: unique combination of CityCode + RCMSCode + PickupPointCode
         modelBuilder.Entity<ClientMaster>()
-            .HasIndex(c => c.CityCode);
+            .HasIndex(c => new { c.CityCode, c.RCMSCode, c.PickupPointCode })
+            .IsUnique()
+            .HasFilter("[IsDeleted] = 0");
+
+        modelBuilder.Entity<ClientMaster>()
+            .HasIndex(c => c.GlobalClientID);
+        modelBuilder.Entity<ClientMaster>()
+            .HasIndex(c => c.IsPriority);
 
         // BatchSequence: unique per date+location+scanner
         modelBuilder.Entity<BatchSequence>()
@@ -111,14 +150,19 @@ public class CpsDbContext : DbContext
             .HasIndex(c => new { c.BatchId, c.SeqNo });
         modelBuilder.Entity<ChequeItem>()
             .HasIndex(c => new { c.SlipEntryId, c.ChqSeq });
-        modelBuilder.Entity<ChequeItem>()
-            .Property(c => c.ScanAmount).HasColumnType("decimal(15,3)");
-        modelBuilder.Entity<ChequeItem>()
-            .Property(c => c.RRAmount).HasColumnType("decimal(15,3)");
 
         // AppSettings: unique key
         modelBuilder.Entity<AppSetting>()
             .HasIndex(a => a.SettingKey).IsUnique();
+
+        // UserSetting: one value per key per user
+        modelBuilder.Entity<UserSetting>()
+            .HasIndex(s => new { s.UserID, s.SettingKey }).IsUnique();
+        modelBuilder.Entity<UserSetting>()
+            .HasOne(s => s.User)
+            .WithMany()
+            .HasForeignKey(s => s.UserID)
+            .OnDelete(DeleteBehavior.Cascade);
 
         // AuditLog indexes
         modelBuilder.Entity<AuditLog>()
@@ -127,5 +171,17 @@ public class CpsDbContext : DbContext
             .HasIndex(a => a.ChangedBy);
         modelBuilder.Entity<AuditLog>()
             .HasIndex(a => a.ChangedAt);
+
+        // ErrorLog indexes
+        modelBuilder.Entity<ErrorLog>()
+            .HasIndex(e => e.Timestamp);
+        modelBuilder.Entity<ErrorLog>()
+            .HasIndex(e => e.UserID);
+
+        // --- SCB Master Indexes ---
+        modelBuilder.Entity<ScbBranch>()
+            .HasIndex(b => b.BankRoutingNo);
+        modelBuilder.Entity<ScbTranslationRule>()
+            .HasIndex(t => t.PayorBankRoutingNo);
     }
 }

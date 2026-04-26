@@ -71,15 +71,15 @@ namespace CPS.API.Migrations
                         .HasMaxLength(10)
                         .HasColumnType("nvarchar(10)");
 
+                    b.Property<string>("BatchNo")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
                     b.Property<DateTime>("ChangedAt")
                         .HasColumnType("datetime2");
 
                     b.Property<int>("ChangedBy")
                         .HasColumnType("int");
-
-                    b.Property<string>("IPAddress")
-                        .HasMaxLength(45)
-                        .HasColumnType("nvarchar(45)");
 
                     b.Property<string>("NewValues")
                         .HasColumnType("nvarchar(max)");
@@ -89,10 +89,6 @@ namespace CPS.API.Migrations
 
                     b.Property<string>("RecordID")
                         .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<string>("SessionID")
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
@@ -110,6 +106,73 @@ namespace CPS.API.Migrations
                     b.HasIndex("TableName", "RecordID");
 
                     b.ToTable("AuditLogs");
+                });
+
+            modelBuilder.Entity("CPS.API.Models.BackgroundJob", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ErrorFilePath")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("FailedCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<int>("InsertedCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("JobType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("LogsJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("ProcessedRows")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ProgressPercent")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("StartedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TotalRows")
+                        .HasColumnType("int");
+
+                    b.Property<int>("UpdatedCount")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedBy");
+
+                    b.ToTable("Jobs");
                 });
 
             modelBuilder.Entity("CPS.API.Models.Batch", b =>
@@ -148,6 +211,15 @@ namespace CPS.API.Migrations
                     b.Property<int?>("DeletedBy")
                         .HasColumnType("int");
 
+                    b.Property<string>("EntryMode")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("GlobalSlipNo")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
@@ -168,10 +240,22 @@ namespace CPS.API.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
+                    b.Property<DateTime?>("RRCompletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("RRCompletedBy")
+                        .HasColumnType("int");
+
                     b.Property<DateTime?>("RRLockedAt")
                         .HasColumnType("datetime2");
 
                     b.Property<int?>("RRLockedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("RRStartedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("RRStartedBy")
                         .HasColumnType("int");
 
                     b.Property<byte[]>("RowVersion")
@@ -180,10 +264,22 @@ namespace CPS.API.Migrations
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("rowversion");
 
+                    b.Property<DateTime?>("ScanCompletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("ScanCompletedBy")
+                        .HasColumnType("int");
+
                     b.Property<DateTime?>("ScanLockedAt")
                         .HasColumnType("datetime2");
 
                     b.Property<int?>("ScanLockedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("ScanStartedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("ScanStartedBy")
                         .HasColumnType("int");
 
                     b.Property<string>("ScanType")
@@ -228,6 +324,27 @@ namespace CPS.API.Migrations
                     b.HasIndex("LocationID", "BatchDate");
 
                     b.ToTable("Batches");
+                });
+
+            modelBuilder.Entity("CPS.API.Models.BatchItemSequence", b =>
+                {
+                    b.Property<int>("BatchItemSeqId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("BatchItemSeqId"));
+
+                    b.Property<long>("BatchId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("LastSeqNo")
+                        .HasColumnType("int");
+
+                    b.HasKey("BatchItemSeqId");
+
+                    b.HasIndex("BatchId");
+
+                    b.ToTable("BatchItemSequences");
                 });
 
             modelBuilder.Entity("CPS.API.Models.BatchSequence", b =>
@@ -293,10 +410,6 @@ namespace CPS.API.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("ChequeItemId"));
 
-                    b.Property<string>("BackImagePath")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
                     b.Property<long>("BatchId")
                         .HasColumnType("bigint");
 
@@ -313,21 +426,45 @@ namespace CPS.API.Migrations
                     b.Property<int>("CreatedBy")
                         .HasColumnType("int");
 
-                    b.Property<string>("FrontImagePath")
+                    b.Property<string>("FileExtension")
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<string>("ImageBaseName")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
+                    b.Property<string>("ImageHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
+
+                    b.Property<string>("MICR1")
+                        .HasMaxLength(15)
+                        .HasColumnType("nvarchar(15)");
+
+                    b.Property<string>("MICR2")
+                        .HasMaxLength(15)
+                        .HasColumnType("nvarchar(15)");
+
+                    b.Property<string>("MICR3")
+                        .HasMaxLength(5)
+                        .HasColumnType("nvarchar(5)");
 
                     b.Property<string>("MICRRaw")
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
-                    b.Property<decimal?>("RRAmount")
-                        .HasColumnType("decimal(15,3)");
+                    b.Property<string>("RRChqNo")
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
 
-                    b.Property<int?>("RRBy")
+                    b.Property<DateTime?>("RRCompletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("RRCompletedBy")
                         .HasColumnType("int");
 
                     b.Property<string>("RRMICR1")
@@ -346,11 +483,11 @@ namespace CPS.API.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
+                    b.Property<DateTime?>("RRStartedAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<int>("RRState")
                         .HasColumnType("int");
-
-                    b.Property<DateTime?>("RRTime")
-                        .HasColumnType("datetime2");
 
                     b.Property<int>("RetryCount")
                         .HasColumnType("int");
@@ -361,8 +498,9 @@ namespace CPS.API.Migrations
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("rowversion");
 
-                    b.Property<decimal?>("ScanAmount")
-                        .HasColumnType("decimal(15,3)");
+                    b.Property<string>("ScanChqNo")
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
 
                     b.Property<string>("ScanError")
                         .HasMaxLength(500)
@@ -380,6 +518,10 @@ namespace CPS.API.Migrations
                         .HasMaxLength(5)
                         .HasColumnType("nvarchar(5)");
 
+                    b.Property<string>("ScanMICRRaw")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<string>("ScanStatus")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -389,6 +531,15 @@ namespace CPS.API.Migrations
                         .HasMaxLength(10)
                         .HasColumnType("nvarchar(10)");
 
+                    b.Property<DateTime?>("ScannerCompletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("ScannerCompletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("ScannerStartedAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("ScannerType")
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
@@ -396,8 +547,8 @@ namespace CPS.API.Migrations
                     b.Property<int>("SeqNo")
                         .HasColumnType("int");
 
-                    b.Property<int>("SlipEntryId")
-                        .HasColumnType("int");
+                    b.Property<long>("SlipEntryId")
+                        .HasColumnType("bigint");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime2");
@@ -416,6 +567,48 @@ namespace CPS.API.Migrations
                     b.HasIndex("SlipEntryId", "ChqSeq");
 
                     b.ToTable("ChequeItems");
+                });
+
+            modelBuilder.Entity("CPS.API.Models.ClientCaptureRule", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("CEID")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("ClientCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<string>("FieldName1")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("FieldName2")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("FieldName3")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("FieldName4")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("FieldName5")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ClientCaptureRules");
                 });
 
             modelBuilder.Entity("CPS.API.Models.ClientMaster", b =>
@@ -462,7 +655,13 @@ namespace CPS.API.Migrations
                     b.Property<int?>("CreatedBy")
                         .HasColumnType("int");
 
+                    b.Property<int?>("GlobalClientID")
+                        .HasColumnType("int");
+
                     b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsPriority")
                         .HasColumnType("bit");
 
                     b.Property<string>("PickupPointCode")
@@ -492,11 +691,168 @@ namespace CPS.API.Migrations
 
                     b.HasKey("ClientID");
 
-                    b.HasIndex("CityCode");
+                    b.HasIndex("GlobalClientID");
 
-                    b.HasIndex("RCMSCode");
+                    b.HasIndex("IsPriority");
+
+                    b.HasIndex("CityCode", "RCMSCode", "PickupPointCode")
+                        .IsUnique()
+                        .HasFilter("[IsDeleted] = 0");
 
                     b.ToTable("Clients");
+                });
+
+            modelBuilder.Entity("CPS.API.Models.ErrorLog", b =>
+                {
+                    b.Property<long>("ErrorID")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("ErrorID"));
+
+                    b.Property<string>("Endpoint")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<string>("ErrorMessage")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("IPAddress")
+                        .HasMaxLength(45)
+                        .HasColumnType("nvarchar(45)");
+
+                    b.Property<string>("StackTrace")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("Timestamp")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UserID")
+                        .HasColumnType("int");
+
+                    b.HasKey("ErrorID");
+
+                    b.HasIndex("Timestamp");
+
+                    b.HasIndex("UserID");
+
+                    b.ToTable("ErrorLogs");
+                });
+
+            modelBuilder.Entity("CPS.API.Models.GlobalClient", b =>
+                {
+                    b.Property<int>("GlobalClientID")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("GlobalClientID"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<string>("GlobalCode")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("GlobalName")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsPriority")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("GlobalClientID");
+
+                    b.HasIndex("GlobalCode")
+                        .IsUnique();
+
+                    b.ToTable("GlobalClients");
+                });
+
+            modelBuilder.Entity("CPS.API.Models.InternalBankMaster", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("BRANCH")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<string>("EBANK")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("FULLNAME")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("NAME")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("SORTCODE")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("InternalBankMasters");
+                });
+
+            modelBuilder.Entity("CPS.API.Models.JobError", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Field")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("JobId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Message")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("RawData")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("RowNumber")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("JobId");
+
+                    b.ToTable("JobErrors");
                 });
 
             modelBuilder.Entity("CPS.API.Models.Location", b =>
@@ -708,13 +1064,244 @@ namespace CPS.API.Migrations
                     b.ToTable("MasterUploadLogs");
                 });
 
-            modelBuilder.Entity("CPS.API.Models.SlipEntry", b =>
+            modelBuilder.Entity("CPS.API.Models.Role", b =>
                 {
-                    b.Property<int>("SlipEntryId")
+                    b.Property<int>("RoleID")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
 
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("SlipEntryId"));
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("RoleID"));
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<string>("RoleName")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("RoleID");
+
+                    b.ToTable("Roles");
+                });
+
+            modelBuilder.Entity("CPS.API.Models.ScbBank", b =>
+                {
+                    b.Property<string>("BankRoutingNo")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<bool>("CbsEnabled")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("City")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ClearingStatusCode")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Country")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DesignatedBranchRoutingNo")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Name")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Note")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("PostalZipCode")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ServiceBranchRoutingNo")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("StateProvince")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("StreetAddress")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("BankRoutingNo");
+
+                    b.ToTable("ScbBanks");
+                });
+
+            modelBuilder.Entity("CPS.API.Models.ScbBranch", b =>
+                {
+                    b.Property<string>("BranchRoutingNo")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("BankRoutingNo")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("BranchNumber")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("City")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Country")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Name")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Note")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("PostalZipCode")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("StateProvince")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("StreetAddress")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("BranchRoutingNo");
+
+                    b.HasIndex("BankRoutingNo");
+
+                    b.ToTable("ScbBranches");
+                });
+
+            modelBuilder.Entity("CPS.API.Models.ScbCityMaster", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("CityCode")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("CityName")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ClearingType")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ScbCities");
+                });
+
+            modelBuilder.Entity("CPS.API.Models.ScbMasterStatus", b =>
+                {
+                    b.Property<string>("SectionName")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime>("LastUpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RecordCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Version")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("SectionName");
+
+                    b.ToTable("ScbMasterStatuses");
+                });
+
+            modelBuilder.Entity("CPS.API.Models.ScbReturnReason", b =>
+                {
+                    b.Property<string>("ReturnReasonCode")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("ReturnReasonCode");
+
+                    b.ToTable("ScbReturnReasons");
+                });
+
+            modelBuilder.Entity("CPS.API.Models.ScbSessionDefinition", b =>
+                {
+                    b.Property<string>("SessionNbr")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("CalendarCode")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("CloseReceivingTime")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("CurrencyCode")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("OpenReceivingTime")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("SessionNbr");
+
+                    b.ToTable("ScbSessionDefinitions");
+                });
+
+            modelBuilder.Entity("CPS.API.Models.ScbTranslationRule", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Description")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("FromDate")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("LogicalRoutingNo")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("PayorBankRoutingNo")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("ToDate")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PayorBankRoutingNo");
+
+                    b.ToTable("ScbTranslationRules");
+                });
+
+            modelBuilder.Entity("CPS.API.Models.SlipEntry", b =>
+                {
+                    b.Property<long>("SlipEntryId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("SlipEntryId"));
 
                     b.Property<long>("BatchId")
                         .HasColumnType("bigint");
@@ -748,6 +1335,9 @@ namespace CPS.API.Migrations
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
+
+                    b.Property<int>("LastChqSeq")
+                        .HasColumnType("int");
 
                     b.Property<string>("PickupPoint")
                         .HasMaxLength(100)
@@ -807,9 +1397,17 @@ namespace CPS.API.Migrations
                     b.Property<int>("CreatedBy")
                         .HasColumnType("int");
 
-                    b.Property<string>("ImagePath")
+                    b.Property<string>("FileExtension")
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<string>("ImageBaseName")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("ImageHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
@@ -833,8 +1431,8 @@ namespace CPS.API.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
-                    b.Property<int>("SlipEntryId")
-                        .HasColumnType("int");
+                    b.Property<long>("SlipEntryId")
+                        .HasColumnType("bigint");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime2");
@@ -924,9 +1522,6 @@ namespace CPS.API.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
-                    b.Property<bool>("IsDeveloper")
-                        .HasColumnType("bit");
-
                     b.Property<bool>("IsLocked")
                         .HasColumnType("bit");
 
@@ -940,21 +1535,6 @@ namespace CPS.API.Migrations
                         .IsRequired()
                         .HasMaxLength(255)
                         .HasColumnType("nvarchar(255)");
-
-                    b.Property<bool>("RoleAdmin")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("RoleChecker")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("RoleMaker")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("RoleMobileScanner")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("RoleScanner")
-                        .HasColumnType("bit");
 
                     b.Property<Guid?>("SessionToken")
                         .HasColumnType("uniqueidentifier");
@@ -983,6 +1563,73 @@ namespace CPS.API.Migrations
                     b.ToTable("Users");
                 });
 
+            modelBuilder.Entity("CPS.API.Models.UserRole", b =>
+                {
+                    b.Property<int>("UserRoleID")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("UserRoleID"));
+
+                    b.Property<int>("RoleID")
+                        .HasColumnType("int");
+
+                    b.Property<int>("UserID")
+                        .HasColumnType("int");
+
+                    b.HasKey("UserRoleID");
+
+                    b.HasIndex("RoleID");
+
+                    b.HasIndex("UserID", "RoleID")
+                        .IsUnique();
+
+                    b.ToTable("UserRoles");
+                });
+
+            modelBuilder.Entity("CPS.API.Models.UserSetting", b =>
+                {
+                    b.Property<int>("UserSettingId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("UserSettingId"));
+
+                    b.Property<string>("SettingKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("SettingValue")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("UserID")
+                        .HasColumnType("int");
+
+                    b.HasKey("UserSettingId");
+
+                    b.HasIndex("UserID", "SettingKey")
+                        .IsUnique();
+
+                    b.ToTable("UserSettings");
+                });
+
+            modelBuilder.Entity("CPS.API.Models.BackgroundJob", b =>
+                {
+                    b.HasOne("CPS.API.Models.UserMaster", "Creator")
+                        .WithMany()
+                        .HasForeignKey("CreatedBy")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Creator");
+                });
+
             modelBuilder.Entity("CPS.API.Models.Batch", b =>
                 {
                     b.HasOne("CPS.API.Models.Location", "Location")
@@ -998,6 +1645,17 @@ namespace CPS.API.Migrations
                     b.Navigation("Location");
 
                     b.Navigation("Scanner");
+                });
+
+            modelBuilder.Entity("CPS.API.Models.BatchItemSequence", b =>
+                {
+                    b.HasOne("CPS.API.Models.Batch", "Batch")
+                        .WithMany()
+                        .HasForeignKey("BatchId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Batch");
                 });
 
             modelBuilder.Entity("CPS.API.Models.BatchSequence", b =>
@@ -1039,12 +1697,33 @@ namespace CPS.API.Migrations
                     b.HasOne("CPS.API.Models.SlipEntry", "SlipEntry")
                         .WithMany("ChequeItems")
                         .HasForeignKey("SlipEntryId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
                     b.Navigation("Batch");
 
                     b.Navigation("SlipEntry");
+                });
+
+            modelBuilder.Entity("CPS.API.Models.ClientMaster", b =>
+                {
+                    b.HasOne("CPS.API.Models.GlobalClient", "GlobalClient")
+                        .WithMany("Clients")
+                        .HasForeignKey("GlobalClientID")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("GlobalClient");
+                });
+
+            modelBuilder.Entity("CPS.API.Models.JobError", b =>
+                {
+                    b.HasOne("CPS.API.Models.BackgroundJob", "Job")
+                        .WithMany("Errors")
+                        .HasForeignKey("JobId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Job");
                 });
 
             modelBuilder.Entity("CPS.API.Models.LocationFinance", b =>
@@ -1085,7 +1764,7 @@ namespace CPS.API.Migrations
                     b.HasOne("CPS.API.Models.SlipEntry", "SlipEntry")
                         .WithMany("SlipScans")
                         .HasForeignKey("SlipEntryId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
                     b.Navigation("SlipEntry");
@@ -1119,11 +1798,51 @@ namespace CPS.API.Migrations
                     b.Navigation("DefaultLocation");
                 });
 
+            modelBuilder.Entity("CPS.API.Models.UserRole", b =>
+                {
+                    b.HasOne("CPS.API.Models.Role", "Role")
+                        .WithMany("UserRoles")
+                        .HasForeignKey("RoleID")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("CPS.API.Models.UserMaster", "User")
+                        .WithMany("UserRoles")
+                        .HasForeignKey("UserID")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Role");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("CPS.API.Models.UserSetting", b =>
+                {
+                    b.HasOne("CPS.API.Models.UserMaster", "User")
+                        .WithMany()
+                        .HasForeignKey("UserID")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("CPS.API.Models.BackgroundJob", b =>
+                {
+                    b.Navigation("Errors");
+                });
+
             modelBuilder.Entity("CPS.API.Models.Batch", b =>
                 {
                     b.Navigation("ChequeItems");
 
                     b.Navigation("SlipEntries");
+                });
+
+            modelBuilder.Entity("CPS.API.Models.GlobalClient", b =>
+                {
+                    b.Navigation("Clients");
                 });
 
             modelBuilder.Entity("CPS.API.Models.Location", b =>
@@ -1133,11 +1852,21 @@ namespace CPS.API.Migrations
                     b.Navigation("Scanners");
                 });
 
+            modelBuilder.Entity("CPS.API.Models.Role", b =>
+                {
+                    b.Navigation("UserRoles");
+                });
+
             modelBuilder.Entity("CPS.API.Models.SlipEntry", b =>
                 {
                     b.Navigation("ChequeItems");
 
                     b.Navigation("SlipScans");
+                });
+
+            modelBuilder.Entity("CPS.API.Models.UserMaster", b =>
+                {
+                    b.Navigation("UserRoles");
                 });
 #pragma warning restore 612, 618
         }

@@ -6,12 +6,14 @@
 // Created     : 2026-04-14
 // =============================================================================
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getRRItems, saveRRCorrection, completeRR } from '../services/rrService';
 import { toast } from '../store/toastStore';
-import { getImageUrl } from '../utils/imageUtils';
+import { getChequeImageUrl } from '../utils/imageUtils';
 import { RRItemDto, RRState } from '../types';
+import { Icon, Pill } from '../components/scan';
+import { RRViewport } from './rr/RRViewport';
 
 export function RRPage() {
   const { batchId } = useParams<{ batchId: string }>();
@@ -22,6 +24,7 @@ export function RRPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [micr, setMicr] = useState({ chqNo: '', micr1: '', micr2: '', micr3: '' });
+  const firstInputRef = useRef<HTMLInputElement | null>(null);
 
   const id = Number(batchId);
 
@@ -58,6 +61,18 @@ export function RRPage() {
 
   useEffect(() => { loadItems(); }, [loadItems]);
 
+  useEffect(() => {
+    if (!loading && items.length > 0) {
+      const timer = setTimeout(() => {
+        if (firstInputRef.current) {
+          firstInputRef.current.focus();
+          firstInputRef.current.select();
+        }
+      }, 200);
+      return () => clearTimeout(timer);
+    }
+  }, [loading, current, items.length]);
+
   const item = items[current];
   const pendingItems = items.filter(i => i.rrState === RRState.NeedsReview);
   const isLastPending = pendingItems.length <= 1;
@@ -74,6 +89,7 @@ export function RRPage() {
     try {
       await saveRRCorrection(item.chequeItemId, {
         chqNo: micr.chqNo,
+        rrChqNo: micr.chqNo, // Specifically set RRChqNo
         rrmicr1: micr.micr1,
         rrmicr2: micr.micr2,
         rrmicr3: micr.micr3,
@@ -104,6 +120,17 @@ export function RRPage() {
     }
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent, nextId?: string) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (nextId) {
+        document.getElementById(nextId)?.focus();
+      } else {
+        handleApproveAndNext();
+      }
+    }
+  };
+
   const handleComplete = async () => {
     try {
       await completeRR(id);
@@ -114,17 +141,20 @@ export function RRPage() {
     }
   };
 
-  if (loading) return <div className="p-8 text-center text-gray-400 animate-pulse">Loading RR items...</div>;
+  if (loading) {
+    return (
+      <div style={{ padding: 40, textAlign: 'center', color: 'var(--fg-faint)', fontSize: 'var(--text-sm)' }}>
+        Loading RR items...
+      </div>
+    );
+  }
 
   if (loadError) {
     return (
-      <div className="text-center p-12">
-        <h2 className="text-lg font-bold text-gray-900 mb-2">RR Page Unavailable</h2>
-        <p className="text-gray-500 text-sm mb-5">{loadError}</p>
-        <button
-          onClick={() => navigate('/')}
-          className="bg-blue-700 text-white px-6 py-2 rounded-lg font-medium hover:bg-blue-800"
-        >
+      <div style={{ padding: 60, textAlign: 'center' }}>
+        <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 700, color: 'var(--fg)', marginBottom: 8 }}>RR Page Unavailable</h2>
+        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--fg-muted)', marginBottom: 24 }}>{loadError}</p>
+        <button onClick={() => navigate('/')} className="btn-primary">
           Back to Dashboard
         </button>
       </div>
@@ -133,114 +163,159 @@ export function RRPage() {
 
   if (pendingItems.length === 0) {
     return (
-      <div className="text-center p-12">
-        <div className="text-4xl mb-3">&#10003;</div>
-        <h2 className="text-lg font-bold text-gray-900 mb-2">All Items Reviewed</h2>
-        <p className="text-gray-500 text-sm mb-5">No more items need review.</p>
-        <button onClick={handleComplete} className="bg-green-700 text-white px-6 py-2 rounded-lg font-medium hover:bg-green-800">
-          Complete RR
+      <div style={{ padding: 80, textAlign: 'center' }}>
+        <div style={{ fontSize: 48, marginBottom: 16 }}>✓</div>
+        <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 700, color: 'var(--fg)', marginBottom: 8 }}>All Items Reviewed</h2>
+        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--fg-muted)', marginBottom: 32 }}>No more items need repair in this batch.</p>
+        <button onClick={handleComplete} className="btn-primary" style={{ background: 'var(--success)', borderColor: 'var(--success)' }}>
+          Finalize Batch
         </button>
       </div>
     );
   }
 
   return (
-    <div>
-      <div className="mb-4 flex flex-col sm:flex-row sm:items-center gap-2">
-        <h1 className="text-lg font-bold text-gray-900">
-          Reject Repair — Pending {pendingItems.length}
-        </h1>
-        <div className="ml-auto flex gap-2">
-          <button onClick={handleComplete}
-            className="bg-green-700 text-white px-4 py-1.5 rounded text-sm font-medium hover:bg-green-800">
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+      {/* Action Header */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '12px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-raised)', flexShrink: 0
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <h1 style={{ margin: 0, fontSize: 'var(--text-md)', fontWeight: 700, color: 'var(--fg)' }}>
+            Reject Repair
+          </h1>
+          <Pill icon="pending_actions" color="var(--warning)">
+            Pending: {pendingItems.length}
+          </Pill>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={handleComplete} className="btn-primary" style={{ height: 32, padding: '0 14px', fontSize: 'var(--text-xs)', background: 'var(--success)', borderColor: 'var(--success)' }}>
+            <Icon name="verified" size={14} />
             Complete RR
           </button>
         </div>
       </div>
 
       {item && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {/* Images */}
-          <div className="lg:col-span-2 space-y-3">
-            <div className="bg-white rounded-lg shadow-sm p-3">
-              <div className="text-xs font-semibold text-gray-500 mb-2">FRONT</div>
-              <div className="aspect-video bg-gray-100 rounded flex items-center justify-center">
-                {item.imageFrontPath ? (
-                  <img src={getImageUrl(item.imageFrontPath)} alt="Front" className="max-w-full max-h-full object-contain" />
-                ) : <span className="text-gray-400 text-sm">No image</span>}
-              </div>
-            </div>
-            <div className="bg-white rounded-lg shadow-sm p-3">
-              <div className="text-xs font-semibold text-gray-500 mb-2">BACK</div>
-              <div className="aspect-video bg-gray-100 rounded flex items-center justify-center">
-                {item.imageBackPath ? (
-                  <img src={getImageUrl(item.imageBackPath)} alt="Back" className="max-w-full max-h-full object-contain" />
-                ) : <span className="text-gray-400 text-sm">No image</span>}
-              </div>
-            </div>
+        <div style={{ 
+          flex: 1, display: 'grid', gridTemplateColumns: '1fr 380px', 
+          gap: 0, overflow: 'hidden', background: 'var(--bg)' 
+        }}>
+          {/* Main Viewport */}
+          <div style={{ padding: 16, display: 'flex', flexDirection: 'column', minWidth: 0, overflowY: 'auto' }}>
+            <RRViewport 
+              previewFront={getChequeImageUrl(item, 'front')}
+              previewBack={getChequeImageUrl(item, 'back')}
+              filename={`${item.imageBaseName}CF${item.fileExtension}`}
+              itemTitle={`Cheque Seq #${item.chqSeq}`}
+            />
           </div>
 
-          {/* MICR + slip data + actions */}
-          <div className="space-y-3">
-            <div className="bg-white rounded-lg shadow-sm p-4">
-              <div className="text-xs font-semibold text-gray-500 mb-1">RAW SCAN MICR (read-only)</div>
-              <div className="text-xs font-mono text-gray-500 mb-3 bg-gray-50 rounded p-2 space-y-0.5">
-                <div>CHQ: {item.chqNo ?? '—'}</div>
-                <div>MICR1: {item.scanMICR1 ?? '—'}</div>
-                <div>MICR2: {item.scanMICR2 ?? '—'}</div>
-                <div>MICR3: {item.scanMICR3 ?? '—'}</div>
-                <div className="text-gray-400">Raw: {item.micrRaw ?? 'N/A'}</div>
+          {/* Right Sidebar: MICR + Slip info */}
+          {/* Right Sidebar: MICR + Slip info */}
+          <div style={{ 
+            borderLeft: '1px solid var(--border)', background: 'var(--bg-raised)', 
+            padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 12, overflow: 'hidden' 
+          }}>
+            {/* Raw Scan Values */}
+            <div className="card" style={{ padding: 12, background: 'var(--bg-subtle)' }}>
+              <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--fg-faint)', textTransform: 'uppercase', marginBottom: 8, letterSpacing: '.05em' }}>
+                Captured Scan MICR
+              </div>
+              
+              {/* Added: Complete Raw MICR String */}
+              <div style={{ 
+                fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--accent)', 
+                background: 'rgba(0,0,0,0.05)', padding: '4px 8px', borderRadius: 4,
+                marginBottom: 10, wordBreak: 'break-all', border: '1px solid var(--border-subtle)'
+              }}>
+                {item.scanMICRRaw || item.micrRaw || 'No Raw Data'}
               </div>
 
-              <div className="text-xs font-semibold text-gray-500 mb-3">REPAIR VALUES</div>
-              <div className="space-y-2">
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--fg-muted)', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span style={{ fontSize: 9, opacity: 0.6 }}>SCAN CHQ</span>
+                  <span style={{ color: 'var(--fg)', fontWeight: 600 }}>{item.scanChqNo || '—'}</span>
+                  {item.rrChqNo && item.rrChqNo !== item.scanChqNo && (
+                    <span style={{ fontSize: 9, color: 'var(--success)', fontWeight: 700, marginTop: 2 }}>RR: {item.rrChqNo}</span>
+                  )}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span style={{ fontSize: 9, opacity: 0.6 }}>MICR1</span>
+                  <span style={{ color: 'var(--fg)', fontWeight: 600 }}>{item.scanMICR1 ?? '—'}</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span style={{ fontSize: 9, opacity: 0.6 }}>MICR2</span>
+                  <span style={{ color: 'var(--fg)', fontWeight: 600 }}>{item.scanMICR2 ?? '—'}</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span style={{ fontSize: 9, opacity: 0.6 }}>MICR3</span>
+                  <span style={{ color: 'var(--fg)', fontWeight: 600 }}>{item.scanMICR3 ?? '—'}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Repair Inputs */}
+            <div className="card" style={{ padding: 16, flexShrink: 0 }}>
+              <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--fg-faint)', textTransform: 'uppercase', marginBottom: 12, letterSpacing: '.05em' }}>
+                Repair / Correct Values
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 12px' }}>
                 {[
-                  { label: 'Cheque No (6 digits)', key: 'chqNo', maxLen: 6 },
-                  { label: 'MICR1 (9 digits)', key: 'micr1', maxLen: 9 },
-                  { label: 'MICR2 (6 digits)', key: 'micr2', maxLen: 6 },
-                  { label: 'MICR3 (2 digits)', key: 'micr3', maxLen: 2 },
-                ].map(({ label, key, maxLen }) => (
+                  { label: 'Cheque No (6)', key: 'chqNo', maxLen: 6, icon: 'tag', id: 'rr_chqNo', nextId: 'rr_micr1' },
+                  { label: 'MICR1 (9)', key: 'micr1', maxLen: 9, icon: 'numbers', id: 'rr_micr1', nextId: 'rr_micr2' },
+                  { label: 'MICR2 (6)', key: 'micr2', maxLen: 6, icon: 'apartment', id: 'rr_micr2', nextId: 'rr_micr3' },
+                  { label: 'MICR3 (2)', key: 'micr3', maxLen: 2, icon: 'category', id: 'rr_micr3', nextId: '' },
+                ].map(({ label, key, maxLen, icon, id: inputId, nextId }) => (
                   <div key={key}>
-                    <label htmlFor={`rr-${key}`} className="block text-xs text-gray-500 mb-0.5">{label}</label>
-                    <input
-                      id={`rr-${key}`}
-                      value={micr[key as keyof typeof micr]}
-                      onChange={(e) => setMicr(m => ({ ...m, [key]: e.target.value }))}
-                      maxLength={maxLen}
-                      className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
+                    <label style={{ display: 'block', fontSize: 10, fontWeight: 500, color: 'var(--fg-muted)', marginBottom: 4 }}>
+                      {label}
+                    </label>
+                    <div style={{ position: 'relative' }}>
+                      <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--fg-faint)' }}>
+                        <Icon name={icon} size={12} />
+                      </span>
+                      <input
+                        id={inputId}
+                        ref={key === 'chqNo' ? firstInputRef : null}
+                        value={micr[key as keyof typeof micr]}
+                        onChange={(e) => setMicr(m => ({ ...m, [key]: e.target.value }))}
+                        onKeyDown={(e) => handleKeyDown(e, nextId)}
+                        maxLength={maxLen}
+                        className="input-field"
+                        style={{ paddingLeft: 26, paddingRight: 8, height: 32, fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)' }}
+                      />
+                    </div>
                   </div>
                 ))}
               </div>
-            </div>
 
-            {item.slipNo && (
-              <div className="bg-blue-50 rounded-lg p-3 text-sm">
-                <div className="font-semibold text-blue-800 mb-1">Slip Data</div>
-                <div className="text-xs text-blue-700 space-y-0.5">
-                  <div>Slip No: {item.slipNo}</div>
-                  <div>Client: {item.clientName ?? '—'}</div>
-                  <div>Amount: &#8377;{item.slipAmount?.toLocaleString() ?? '—'}</div>
-                  <div>Instruments: {item.totalInstruments ?? '—'}</div>
-                  <div>
-                    Current Cheque in Slip: {currentSlipPosition} of {currentSlipItems.length}
-                  </div>
-                  <div>
-                    Slip Cheques: {currentSlipItems.map(i => String(i.chqSeq).padStart(2, '0')).join(', ') || '—'}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div className="bg-white rounded-lg shadow-sm p-4 space-y-2">
               <button
                 onClick={handleApproveAndNext}
                 disabled={saving}
-                className="w-full bg-green-600 text-white py-2 rounded text-sm font-medium hover:bg-green-700 disabled:opacity-50"
+                className="btn-primary"
+                style={{ width: '100%', height: 38, marginTop: 16, fontSize: 'var(--text-xs)', gap: 6 }}
               >
+                <Icon name="check_circle" size={16} />
                 {saving ? 'Saving...' : (isLastPending ? 'Approve & Finish' : 'Approve & Next')}
               </button>
             </div>
+
+            {/* Slip Context */}
+            {item.slipNo && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--fg-faint)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+                  Slip Context
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                  <Pill icon="receipt" title="Slip Number" style={{ padding: '1px 6px', fontSize: 10 }}>No: {item.slipNo}</Pill>
+                  <Pill icon="payments" title="Slip Amount" style={{ padding: '1px 6px', fontSize: 10 }}>₹ {item.slipAmount?.toLocaleString('en-IN') ?? '—'}</Pill>
+                  <Pill icon="person" title="Client" style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', padding: '1px 6px', fontSize: 10 }}>{item.clientName || '—'}</Pill>
+                  <Pill icon="pin" title="Item position" style={{ padding: '1px 6px', fontSize: 10 }}>{currentSlipPosition} / {currentSlipItems.length}</Pill>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

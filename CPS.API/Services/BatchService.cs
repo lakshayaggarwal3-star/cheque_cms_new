@@ -17,14 +17,19 @@ public class BatchService : IBatchService
 {
     private readonly IBatchRepository _batchRepo;
     private readonly ILocationRepository _locationRepo;
+    private readonly IUserRepository _userRepo;
+    private readonly IUserSettingRepository _userSettingRepo;
     private readonly IAuditService _audit;
     private readonly ILogger<BatchService> _logger;
 
     public BatchService(IBatchRepository batchRepo, ILocationRepository locationRepo,
+        IUserRepository userRepo, IUserSettingRepository userSettingRepo,
         IAuditService audit, ILogger<BatchService> logger)
     {
         _batchRepo = batchRepo;
         _locationRepo = locationRepo;
+        _userRepo = userRepo;
+        _userSettingRepo = userSettingRepo;
         _audit = audit;
         _logger = logger;
     }
@@ -43,13 +48,12 @@ public class BatchService : IBatchService
         if (request.IsPDC && request.PDCDate <= request.BatchDate)
             throw new ValidationException("PDC date must be after batch date.");
 
-        // Determine entry mode (default to "scanner" for backward compatibility)
-        var entryMode = request.EntryMode ?? "scanner";
-        var isMobileMode = entryMode.Equals("mobile", StringComparison.OrdinalIgnoreCase);
+        var entryMode = await DeriveEntryModeAsync(userId);
+        var isMobileMode = entryMode == "mobile";
 
         // BatchNo format requested:
-        // {ScannerID}{ddMMyyyy}{seq:D5}
-        // Example: SCN011404202600001
+        // {ScannerID}{yyyyMMdd}{seq:D5}
+        // Example: SCN012026041400001
         var scanner = request.ScannerMappingID > 0
             ? location.Scanners.FirstOrDefault(s => s.ScannerMappingID == request.ScannerMappingID && s.IsActive)
             : location.Scanners.FirstOrDefault(s => s.IsActive);
@@ -59,7 +63,7 @@ public class BatchService : IBatchService
 
         var scannerMappingId = request.ScannerMappingID > 0 ? request.ScannerMappingID : (int?)scanner.ScannerMappingID;
         var seqNo = await _batchRepo.GetNextSequenceAsync(request.BatchDate, request.LocationID, scannerMappingId);
-        var datePart = request.BatchDate.ToString("ddMMyyyy");
+        var datePart = request.BatchDate.ToString("yyyyMMdd");
         var batchNo = $"{scanner.ScannerID.Trim()}{datePart}{seqNo:D5}";
         
         string? summRefNo = null;
@@ -68,7 +72,7 @@ public class BatchService : IBatchService
         if (!isMobileMode)
         {
             // Scanner Mode: Auto-generate SummRefNo and PIF during batch creation
-            // Pattern: {PIFPrefix-or-LocationCode}{ddMMyyyy}{seq:D2}
+            // Pattern: {PIFPrefix-or-LocationCode}{yyyyMMdd}{seq:D2}
             var pifPrefix = (location.PIFPrefix ?? location.LocationCode).Trim();
             var generatedRefNo = $"{pifPrefix}{datePart}{seqNo:D2}";
             summRefNo = generatedRefNo;
@@ -90,6 +94,7 @@ public class BatchService : IBatchService
             PDCDate = request.PDCDate,
             TotalSlips = request.TotalSlips,
             TotalAmount = request.TotalAmount,
+            EntryMode = entryMode,
             BatchStatus = (int)BatchStatus.Created,
             StatusHistory = $"[{{\"status\":0,\"label\":\"Created\",\"at\":\"{DateTime.UtcNow:O}\",\"by\":{userId}}}]",
             CreatedBy = userId,
@@ -99,7 +104,9 @@ public class BatchService : IBatchService
         await _batchRepo.CreateAsync(batch);
 
         _logger.LogInformation("Batch created: {BatchNo} by UserID={UserId}", batchNo, userId);
-        await _audit.LogAsync("Batch", batch.BatchID.ToString(), "INSERT", null, new { batchNo, userId }, userId);
+        await _audit.LogAsync("Batch", batch.BatchID.ToString(), "INSERT", null, 
+            new { batchNo, userId, locationId = request.LocationID, entryMode, totalSlips = request.TotalSlips, totalAmount = request.TotalAmount }, 
+            userId, batchNo: batchNo);
 
         return await MapToBatchDto(batch);
     }
@@ -152,6 +159,7 @@ public class BatchService : IBatchService
         if (request.WithSlip.HasValue)
         {
             batch.WithSlip = request.WithSlip;
+            await _userSettingRepo.UpsertAsync(userId, "WithSlip", request.WithSlip.Value ? "true" : "false");
         }
         
         batch.UpdatedBy = userId;
@@ -161,7 +169,8 @@ public class BatchService : IBatchService
 
         _logger.LogInformation("Batch updated: BatchID={BatchId} by UserID={UserId}", batchId, userId);
         await _audit.LogAsync("Batch", batchId.ToString(), "UPDATE", old,
-            new { request.TotalSlips, request.TotalAmount, request.SummRefNo, request.PIF, request.ScanType, request.WithSlip }, userId);
+            new { request.TotalSlips, request.TotalAmount, request.SummRefNo, request.PIF, request.ScanType, request.WithSlip }, 
+            userId, batchNo: batch.BatchNo);
 
         return await MapToBatchDto(batch);
     }
@@ -193,6 +202,13 @@ public class BatchService : IBatchService
         return await MapToBatchDto(batch);
     }
 
+    public async Task<BatchDto> GetBatchByNumberAsync(string batchNo)
+    {
+        var batch = await _batchRepo.GetByNoAsync(batchNo)
+            ?? throw new NotFoundException($"Batch {batchNo} not found.");
+        return await MapToBatchDto(batch);
+    }
+
     public async Task<DashboardSummary> GetDashboardAsync(int locationId, DateOnly date)
     {
         var counts = await _batchRepo.GetDashboardCountsAsync(locationId, date);
@@ -215,6 +231,21 @@ public class BatchService : IBatchService
         batch.UpdatedBy = userId;
         batch.UpdatedAt = DateTime.UtcNow;
 
+        if (request.NewStatus == 3) // Scanning Completed
+        {
+            batch.ScanCompletedBy = userId;
+            batch.ScanCompletedAt = DateTime.UtcNow;
+            batch.ScanLockedBy = null;
+            batch.ScanLockedAt = null;
+        }
+        else if (request.NewStatus == 5) // RR Completed
+        {
+            batch.RRCompletedBy = userId;
+            batch.RRCompletedAt = DateTime.UtcNow;
+            batch.RRLockedBy = null;
+            batch.RRLockedAt = null;
+        }
+
         await _batchRepo.UpdateAsync(batch);
 
         _logger.LogInformation("Batch {BatchNo} status: {Old}→{New} by UserID={UserId}",
@@ -223,7 +254,32 @@ public class BatchService : IBatchService
         await _audit.LogAsync("Batch", batchId.ToString(), "UPDATE",
             new { BatchStatus = oldStatus },
             new { BatchStatus = request.NewStatus, Reason = request.Reason },
-            userId);
+            userId, batchNo: batch.BatchNo);
+    }
+
+    // Derives entry mode from user roles — never trust client-supplied value.
+    // Developers read their own "ScanMode" UserSetting (default: "scanner" if not set).
+    // All other roles are determined directly from the role flag.
+    private async Task<string> DeriveEntryModeAsync(int userId)
+    {
+        var user = await _userRepo.GetByIdAsync(userId)
+            ?? throw new NotFoundException($"User {userId} not found.");
+
+        var roles = user.UserRoles
+            .Where(ur => ur.Role != null)
+            .Select(ur => ur.Role!.RoleName)
+            .ToList();
+
+        if (roles.Contains("Developer"))
+        {
+            var setting = await _userSettingRepo.GetAsync(userId, "ScanMode");
+            return setting ?? "scanner";
+        }
+
+        if (roles.Contains("Mobile Scanner")) return "mobile";
+        if (roles.Contains("Scanner")) return "scanner";
+
+        throw new ForbiddenException("User does not have a scanner or mobile scanner role.");
     }
 
     private Task<BatchDto> MapToBatchDto(Batch b)
@@ -247,6 +303,7 @@ public class BatchService : IBatchService
             LocationID = b.LocationID,
             LocationName = b.Location?.LocationName ?? string.Empty,
             LocationCode = b.Location?.LocationCode ?? string.Empty,
+            ClusterCode = b.Location?.ClusterCode ?? string.Empty,
             ScannerMappingID = b.ScannerMappingID,
             ScannerID = b.Scanner?.ScannerID,
             PickupPointCode = b.PickupPointCode,
@@ -257,7 +314,9 @@ public class BatchService : IBatchService
             TotalSlips = b.TotalSlips,
             TotalAmount = b.TotalAmount,
             ScanType = b.ScanType,
+            EntryMode = b.EntryMode,
             WithSlip = b.WithSlip,
+            GlobalSlipNo = b.GlobalSlipNo,
             BatchStatus = b.BatchStatus,
             BatchStatusLabel = statusLabels.TryGetValue(b.BatchStatus, out var lbl) ? lbl : "Unknown",
             CreatedAt = b.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss")

@@ -6,30 +6,40 @@
 // Created     : 2026-04-19
 // =============================================================================
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getLocations, getScanners } from '../services/locationService';
 import { createBatch, updateBatch } from '../services/batchService';
+import { setUserSetting } from '../services/userSettingService';
 import { useAuthStore } from '../store/authStore';
+import { useSettingsStore } from '../store/settingsStore';
 import { toast } from '../store/toastStore';
 import type { LocationDto, ScannerDto } from '../types';
 
 export function useBatchForm() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
+  const { entryMode: storedEntryMode, withSlipDefault, setWithSlipDefault } = useSettingsStore();
 
   const [scanners, setScanners] = useState<ScannerDto[]>([]);
   const [locationDetails, setLocationDetails] = useState<LocationDto | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // Entry Mode
-  const hasBothRoles = !!(user?.roles.includes('Scanner') && user?.roles.includes('MobileScanner'));
-  const onlyMobile = !!(user?.roles.includes('MobileScanner') && !user?.roles.includes('Scanner'));
-  const [entryMode, setEntryMode] = useState<'scanner' | 'mobile'>(onlyMobile ? 'mobile' : 'scanner');
+  // Entry Mode — driven by Settings; strictly follow roles
+  const isDev = !!user?.isDeveloper;
+  const isMobileScanner = !!user?.roles?.includes('Mobile Scanner');
+  const isScanner = !!user?.roles?.includes('Scanner');
+  const hasBothRoles = (isMobileScanner && isScanner) || isDev;
+
+  const entryMode = useMemo(() => {
+    if (isDev || hasBothRoles) return storedEntryMode;
+    if (isMobileScanner) return 'mobile';
+    return 'scanner';
+  }, [isDev, hasBothRoles, isMobileScanner, storedEntryMode]);
 
   // Form State
   const [clearingType, setClearingType] = useState('03');
-  const [batchDate, setBatchDate] = useState(user?.eodDate ?? new Date().toISOString().slice(0, 10));
+  const [batchDate, setBatchDate] = useState(new Date().toISOString().slice(0, 10));
   
   const [summRefNo, setSummRefNo] = useState('');
   const [pif, setPif] = useState('');
@@ -39,7 +49,7 @@ export function useBatchForm() {
 
   // Shared scan options
   const [scanType, setScanType] = useState<'Scan' | 'Rescan'>('Scan');
-  const [withSlip, setWithSlip] = useState<'with' | 'without'>('with');
+  const [withSlip, setWithSlip] = useState<'with' | 'without'>(withSlipDefault);
   const [pdc, setPdc] = useState(false);
   const [pdcDate, setPdcDate] = useState('');
 
@@ -79,7 +89,8 @@ export function useBatchForm() {
 
   const handleModalFill = useCallback((data: { summ: string; pif: string; slips: string; amount: string }) => {
     setSummRefNo(data.summ);
-    setPif(data.pif);
+    // In mobile mode: auto-fill PIF same as summRefNo initially
+    setPif(data.pif || data.summ);
     setTotalSlips(data.slips);
     setTotalAmount(data.amount);
     setShowMobileModal(false);
@@ -111,7 +122,7 @@ export function useBatchForm() {
 
     setSubmitting(true);
     try {
-      // Create initial batch
+      // Create initial batch (PIF = Summary Ref)
       const batch = await createBatch({
         locationID:       user.locationId,
         scannerMappingID: activeScanner.scannerMappingID,
@@ -122,9 +133,8 @@ export function useBatchForm() {
         pdcDate:          pdc ? pdcDate : undefined,
         totalSlips:       0,
         totalAmount:      0,
-        entryMode:        entryMode,
-        summRefNo:        entryMode === 'mobile' ? summRefNo : undefined,
-        pif:              entryMode === 'mobile' ? pif : undefined,
+        summRefNo:        summRefNo || undefined,
+        pif:              summRefNo || undefined,
       });
 
       // Update secondary fields including optional ones
@@ -135,18 +145,22 @@ export function useBatchForm() {
         pdcDate: pdc ? pdcDate : undefined,
         scanType,
         withSlip: withSlip === 'with',
-        summRefNo: entryMode === 'mobile' ? summRefNo : batch.summRefNo,
-        pif: entryMode === 'mobile' ? pif : batch.pif,
+        summRefNo: summRefNo || batch.summRefNo,
+        pif: summRefNo || batch.pif,
       });
 
+      // Persist WithSlip preference so next batch creation defaults to same choice
+      setWithSlipDefault(withSlip);
+      setUserSetting('WithSlip', withSlip === 'with' ? 'true' : 'false').catch(() => {});
+
       toast.success(`Batch ${batch.batchNo} created`);
-      navigate(`/scan/${batch.batchID}`);
+      navigate(`/scan/${batch.batchNo}`);
     } catch (err: any) {
       toast.error(err?.response?.data?.message ?? 'Failed to create batch');
     } finally {
       setSubmitting(false);
     }
-  }, [entryMode, showHiddenFields, totalSlips, totalAmount, pdc, pdcDate, user?.locationId, activeScanner, locationDetails?.locationCode, batchDate, clearingType, summRefNo, pif, scanType, withSlip, navigate]);
+  }, [entryMode, showHiddenFields, totalSlips, totalAmount, pdc, pdcDate, user?.locationId, activeScanner, locationDetails?.locationCode, batchDate, clearingType, summRefNo, pif, scanType, withSlip, setWithSlipDefault, navigate]);
 
   return {
     user,
@@ -169,7 +183,6 @@ export function useBatchForm() {
     showMobileModal,
     activeScanner,
     setShowMobileModal,
-    setEntryMode,
     setClearingType,
     setBatchDate,
     setSummRefNo,

@@ -7,7 +7,7 @@
 // =============================================================================
 
 import React, { useState } from 'react';
-import { getImageUrl } from '../../utils/imageUtils';
+import { getChequeImageUrl, getSlipImageUrl } from '../../utils/imageUtils';
 import type { ScanSessionDto, SlipEntryDto, ChequeItemDto, SlipScanDto } from '../../types';
 import { Icon } from './ScanPageUI';
 
@@ -16,6 +16,8 @@ import { Icon } from './ScanPageUI';
 interface ScanItemsTableProps {
   session: ScanSessionDto;
   onImageSelect: (front: string, back?: string, type?: 'slip' | 'cheque') => void;
+  onClose?: () => void;
+  pickupPoint?: string;
   onRescan?: (item: RescanTarget) => void;
   onDelete?: (item: DeleteTarget) => void;
 }
@@ -30,22 +32,60 @@ type DeleteTarget =
 
 // ── ScanItemsTable ────────────────────────────────────────────────────────────
 
-export function ScanItemsTable({ session, onImageSelect, onRescan, onDelete }: ScanItemsTableProps) {
+export function ScanItemsTable({ session, onImageSelect, onClose, pickupPoint, onRescan, onDelete }: ScanItemsTableProps) {
   const [confirmDelete, setConfirmDelete] = useState<DeleteTarget | null>(null);
 
   const allGroups = session.slipGroups;
   const totalItems = allGroups.reduce((n, g) => n + g.slipScans.length + g.cheques.length, 0);
 
-  if (totalItems === 0) return null;
+  if (totalItems === 0) {
+    return (
+      <div style={{ background: 'var(--bg)', height: '100%', display: 'flex', flexDirection: 'column' }}>
+        {/* Header (Same as main table to maintain consistency) */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '12px 24px', borderBottom: '1px solid var(--border)',
+          background: 'var(--bg-raised)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Icon name="photo_library" size={18} style={{ color: 'var(--fg-muted)' }} />
+            <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--fg)' }}>Scanned Images</span>
+          </div>
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="btn-ghost"
+              style={{ display: 'flex', alignItems: 'center', gap: 6, height: 32, padding: '0 12px', fontSize: 'var(--text-xs)', fontWeight: 600 }}
+            >
+              <Icon name="expand_less" size={16} />
+              Back to scan
+            </button>
+          )}
+        </div>
+        
+        {/* Empty state content */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, opacity: 0.6 }}>
+          <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'var(--bg-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Icon name="image_not_supported" size={32} style={{ color: 'var(--fg-muted)' }} />
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontWeight: 600, color: 'var(--fg)' }}>No images captured yet</div>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-subtle)', marginTop: 4 }}>Capture your first slip or cheque to see it here.</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div style={{ background: 'var(--bg)', borderTop: '2px solid var(--border)' }}>
+    <div style={{ background: 'var(--bg)' }}>
 
       {/* Section header */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '14px 24px', borderBottom: '1px solid var(--border)',
+        padding: '12px 24px', borderBottom: '1px solid var(--border)',
         background: 'var(--bg-raised)',
+        position: 'sticky', top: 0, zIndex: 5,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <Icon name="photo_library" size={18} style={{ color: 'var(--fg-muted)' }} />
@@ -53,25 +93,49 @@ export function ScanItemsTable({ session, onImageSelect, onRescan, onDelete }: S
             <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--fg)' }}>
               Scanned Images
             </div>
-            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-subtle)', marginTop: 1 }}>
-              Review all captured images — scroll down to see this panel
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-subtle)', marginTop: 1, display: 'flex', gap: 8 }}>
+              <span>Review all captured images</span>
+              {pickupPoint && (
+                <>
+                  <span style={{ color: 'var(--border-strong)' }}>|</span>
+                  <span style={{ fontWeight: 600, color: 'var(--accent)' }}>Pickup Point: {pickupPoint}</span>
+                </>
+              )}
             </div>
           </div>
         </div>
-        <span style={{
-          padding: '3px 10px', borderRadius: 'var(--r-full)',
-          fontSize: 'var(--text-xs)', fontWeight: 600,
-          background: 'var(--bg-subtle)', border: '1px solid var(--border)',
-          color: 'var(--fg-muted)', fontVariantNumeric: 'tabular-nums',
-        }}>
-          {totalItems} item{totalItems !== 1 ? 's' : ''}
-        </span>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="btn-ghost"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                height: 32, padding: '0 12px', fontSize: 'var(--text-xs)', fontWeight: 600,
+                color: 'var(--fg-muted)',
+              }}
+            >
+              <Icon name="expand_less" size={16} />
+              Back to scan
+            </button>
+          )}
+
+          <span style={{
+            padding: '3px 10px', borderRadius: 'var(--r-full)',
+            fontSize: 'var(--text-xs)', fontWeight: 600,
+            background: 'var(--bg-subtle)', border: '1px solid var(--border)',
+            color: 'var(--fg-muted)', fontVariantNumeric: 'tabular-nums',
+          }}>
+            {totalItems} item{totalItems !== 1 ? 's' : ''}
+          </span>
+        </div>
       </div>
 
       {/* Table */}
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-xs)' }}>
-          <thead>
+          <thead style={{ display: 'none' }}>
             <tr style={{ background: 'var(--bg-subtle)', borderBottom: '1px solid var(--border)' }}>
               <Th style={{ width: 180 }}>Image</Th>
               <Th style={{ width: 60 }}>Type</Th>
@@ -121,33 +185,85 @@ function GroupRows({ group, onImageSelect, onRescan, onDelete }: {
   onRescan?: (item: RescanTarget) => void;
   onDelete: (item: DeleteTarget) => void;
 }) {
+  const [expanded, setExpanded] = useState(true);
+
+  const slipCount = group.slipScans.length;
+  const chqCount = group.cheques.length;
+  const pickupCode = group.pickupPoint ? group.pickupPoint.split(' - ')[0] : null;
+
+  const countLabel = [
+    slipCount > 0 ? `${slipCount} slip` : null,
+    chqCount > 0 ? `${chqCount} chq` : null,
+  ].filter(Boolean).join(' · ');
+
   return (
     <>
-      {/* Group separator row */}
-      <tr>
+      {/* Group header row — clickable to expand/collapse */}
+      <tr
+        onClick={() => setExpanded(e => !e)}
+        style={{ cursor: 'pointer', userSelect: 'none' }}
+      >
         <td colSpan={9} style={{
-          padding: '6px 16px',
+          padding: '7px 16px',
           background: 'var(--bg-raised)',
-          borderBottom: '1px solid var(--border-subtle)',
+          borderBottom: expanded ? '1px solid var(--border-subtle)' : '1px solid var(--border)',
           borderTop: '1px solid var(--border)',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Icon name="receipt" size={13} style={{ color: 'var(--fg-muted)' }} />
-            <span style={{ fontWeight: 600, color: 'var(--fg)', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)' }}>
+            {/* Expand/collapse chevron */}
+            <Icon
+              name={expanded ? 'expand_more' : 'chevron_right'}
+              size={15}
+              style={{ color: 'var(--fg-muted)', flexShrink: 0, transition: 'transform 0.15s' }}
+            />
+
+            <Icon name="receipt" size={13} style={{ color: 'var(--fg-muted)', flexShrink: 0 }} />
+
+            {/* Slip no */}
+            <span style={{ fontWeight: 700, color: 'var(--fg)', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', flexShrink: 0 }}>
               {group.depositSlipNo || group.slipNo}
             </span>
+
+            {/* Client name */}
             {group.clientName && (
-              <span style={{ color: 'var(--fg-subtle)' }}>— {group.clientName}</span>
+              <span style={{ color: 'var(--fg-subtle)', fontSize: 10, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                — {group.clientName}
+              </span>
             )}
-            <span style={{ color: 'var(--fg-faint)', marginLeft: 'auto', fontSize: 10 }}>
-              ₹{group.slipAmount.toLocaleString('en-IN')} · {group.cheques.length} chq · {group.slipScans.length} slip img
+
+            {/* Pickup point code */}
+            {pickupCode && (
+              <span style={{
+                fontSize: 9, fontWeight: 600, padding: '1px 6px',
+                background: 'var(--bg-subtle)', border: '1px solid var(--border)',
+                borderRadius: 'var(--r-full)', color: 'var(--fg-muted)',
+                flexShrink: 0, fontFamily: 'var(--font-mono)',
+              }}>
+                {pickupCode}
+              </span>
+            )}
+
+            {/* Slip amount */}
+            {group.slipAmount > 0 && (
+              <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--fg)', flexShrink: 0 }}>
+                ₹{group.slipAmount.toLocaleString('en-IN')}
+              </span>
+            )}
+
+            {/* Item counts */}
+            <span style={{
+              fontSize: 9, color: 'var(--fg-muted)', flexShrink: 0,
+              padding: '1px 6px', background: 'var(--bg-subtle)',
+              border: '1px solid var(--border)', borderRadius: 'var(--r-full)',
+            }}>
+              {countLabel || '0 items'}
             </span>
           </div>
         </td>
       </tr>
 
-      {/* Slip scan rows */}
-      {group.slipScans.map((scan, idx) => (
+      {/* Item rows — only when expanded */}
+      {expanded && group.slipScans.map((scan, idx) => (
         <SlipScanRow
           key={scan.slipScanId}
           scan={scan}
@@ -159,8 +275,7 @@ function GroupRows({ group, onImageSelect, onRescan, onDelete }: {
         />
       ))}
 
-      {/* Cheque rows */}
-      {group.cheques.map(cheque => (
+      {expanded && group.cheques.map(cheque => (
         <ChequeRow
           key={cheque.chequeItemId}
           cheque={cheque}
@@ -182,7 +297,7 @@ function SlipScanRow({ scan, idx, group, onImageSelect, onRescan, onDelete }: {
   onRescan?: (item: RescanTarget) => void;
   onDelete: (item: DeleteTarget) => void;
 }) {
-  const imgUrl = scan.imagePath ? getImageUrl(scan.imagePath) : null;
+  const imgUrl = getSlipImageUrl(scan);
 
   return (
     <tr style={{ borderBottom: '1px solid var(--border-subtle)' }} className="scan-table-row">
@@ -192,20 +307,10 @@ function SlipScanRow({ scan, idx, group, onImageSelect, onRescan, onDelete }: {
           <div
             onClick={() => onImageSelect(imgUrl, undefined, 'slip')}
             style={{
-              width: 120, height: 76, borderRadius: 'var(--r-sm)',
-              overflow: 'hidden', cursor: 'pointer', position: 'relative',
-              border: '1px solid var(--border)', background: 'var(--bg-subtle)',
-              flexShrink: 0,
+              width: 130, height: 70, padding: 3, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', cursor: 'pointer', overflow: 'hidden', flexShrink: 0,
             }}
           >
-            <img src={imgUrl} alt="Slip" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            <div style={{
-              position: 'absolute', inset: 0, background: 'transparent',
-              transition: 'background 0.15s',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              <Icon name="open_in_full" size={16} style={{ color: '#fff', opacity: 0, transition: 'opacity 0.15s' }} />
-            </div>
+            <img src={imgUrl} alt="Slip" style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 2 }} />
           </div>
         ) : (
           <NoImage label="Slip" />
@@ -216,30 +321,15 @@ function SlipScanRow({ scan, idx, group, onImageSelect, onRescan, onDelete }: {
         <TypeBadge type="slip" />
       </td>
 
-      <td style={{ padding: '8px 8px', fontFamily: 'var(--font-mono)', color: 'var(--fg-muted)' }}>
-        S_{String(idx + 1).padStart(4, '0')}
-      </td>
 
-      <td style={{ padding: '8px 8px', color: 'var(--fg)', fontFamily: 'var(--font-mono)' }}>
-        {group.depositSlipNo || group.slipNo}
-      </td>
 
-      <td style={{ padding: '8px 8px', color: 'var(--fg-muted)' }}>
-        {group.clientName || '—'}
-      </td>
-
-      <td style={{ padding: '8px 8px', color: 'var(--fg-faint)' }}>—</td>
-
-      <td style={{ padding: '8px 8px', color: 'var(--fg)' }}>
-        ₹{group.slipAmount.toLocaleString('en-IN')}
-      </td>
-
-      <td style={{ padding: '8px 8px' }}>
-        <ScanStatusBadge status={scan.scanStatus} />
+      <td style={{ padding: '8px 8px', color: 'var(--fg-faint)', fontFamily: 'var(--font-mono)', fontSize: 10 }}>
+        {scan.imageBaseName ? scan.imageBaseName.split(/[\\/]/).pop() : '—'}
       </td>
 
       <td style={{ padding: '8px 8px' }}>
         <ActionButtons
+          disabled
           onRescan={onRescan ? () => onRescan({ kind: 'slip', slipScanId: scan.slipScanId, slipEntryId: group.slipEntryId }) : undefined}
           onDelete={() => onDelete({ kind: 'slip', slipScanId: scan.slipScanId })}
         />
@@ -256,8 +346,8 @@ function ChequeRow({ cheque, group, onImageSelect, onRescan, onDelete }: {
   onRescan?: (item: RescanTarget) => void;
   onDelete: (item: DeleteTarget) => void;
 }) {
-  const frontUrl = cheque.frontImagePath ? getImageUrl(cheque.frontImagePath) : null;
-  const backUrl = cheque.backImagePath ? getImageUrl(cheque.backImagePath) : null;
+  const frontUrl = getChequeImageUrl(cheque, 'front');
+  const backUrl = getChequeImageUrl(cheque, 'back');
 
   const micr = [cheque.scanMICR1, cheque.scanMICR2, cheque.scanMICR3].filter(Boolean).join(' / ');
 
@@ -283,32 +373,14 @@ function ChequeRow({ cheque, group, onImageSelect, onRescan, onDelete }: {
         <TypeBadge type="cheque" />
       </td>
 
-      <td style={{ padding: '8px 8px', fontFamily: 'var(--font-mono)', color: 'var(--fg-muted)' }}>
-        #{String(cheque.chqSeq).padStart(4, '0')}
-      </td>
-
-      <td style={{ padding: '8px 8px', color: 'var(--fg)', fontFamily: 'var(--font-mono)' }}>
-        {cheque.chqNo || '—'}
-      </td>
-
-      <td style={{ padding: '8px 8px', color: 'var(--fg-muted)' }}>
-        {group.clientName || '—'}
-      </td>
-
-      <td style={{ padding: '8px 8px', fontFamily: 'var(--font-mono)', color: 'var(--fg-muted)', fontSize: 10 }}>
-        {micr || (cheque.micrRaw || '—')}
-      </td>
-
-      <td style={{ padding: '8px 8px', color: 'var(--fg)' }}>
-        {cheque.scanAmount != null ? `₹${cheque.scanAmount.toLocaleString('en-IN')}` : '—'}
-      </td>
-
-      <td style={{ padding: '8px 8px' }}>
-        <RRStateBadge state={cheque.rrState} scanStatus={cheque.scanStatus} />
+      {/* Front image filename */}
+      <td style={{ padding: '8px 8px', color: 'var(--fg-faint)', fontFamily: 'var(--font-mono)', fontSize: 10 }}>
+        {cheque.imageBaseName ? cheque.imageBaseName.split(/[\\/]/).pop() : '—'}
       </td>
 
       <td style={{ padding: '8px 8px' }}>
         <ActionButtons
+          disabled
           onRescan={onRescan ? () => onRescan({ kind: 'cheque', chequeItemId: cheque.chequeItemId, slipEntryId: cheque.slipEntryId }) : undefined}
           onDelete={() => onDelete({ kind: 'cheque', chequeItemId: cheque.chequeItemId })}
         />
@@ -324,16 +396,15 @@ function Thumb({ url, label, onClick }: { url: string | null; label: string; onC
     <div
       onClick={onClick}
       style={{
-        width: 82, height: 52, borderRadius: 'var(--r-sm)',
-        overflow: 'hidden', position: 'relative',
-        border: `1px solid ${url ? 'var(--border)' : 'var(--border-subtle)'}`,
-        background: 'var(--bg-subtle)',
+        position: 'relative',
+        width: 100, height: 70, padding: 3,
+        background: 'var(--bg)', border: '1px solid var(--border)',
+        borderRadius: 'var(--r-sm)', overflow: 'hidden', flexShrink: 0,
         cursor: url && onClick ? 'pointer' : 'default',
-        flexShrink: 0,
       }}
     >
       {url ? (
-        <img src={url} alt={label} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        <img src={url} alt={label} style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 2 }} />
       ) : (
         <div style={{
           width: '100%', height: '100%',
@@ -343,6 +414,14 @@ function Thumb({ url, label, onClick }: { url: string | null; label: string; onC
           {label}
         </div>
       )}
+      {/* Front / Back label badge */}
+      <span style={{
+        position: 'absolute', bottom: 4, left: 4,
+        fontSize: 9, fontWeight: 700, letterSpacing: '.04em',
+        padding: '1px 4px', borderRadius: 3,
+        background: 'rgba(0,0,0,0.55)', color: '#fff',
+        pointerEvents: 'none',
+      }}>{label}</span>
     </div>
   );
 }
@@ -352,7 +431,7 @@ function Thumb({ url, label, onClick }: { url: string | null; label: string; onC
 function NoImage({ label }: { label: string }) {
   return (
     <div style={{
-      width: 120, height: 76, borderRadius: 'var(--r-sm)',
+      width: 130, height: 70, borderRadius: 'var(--r-sm)',
       border: '1px dashed var(--border)',
       background: 'var(--bg-subtle)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -366,52 +445,44 @@ function NoImage({ label }: { label: string }) {
 
 // ── ActionButtons ─────────────────────────────────────────────────────────────
 
-function ActionButtons({ onRescan, onDelete }: {
+function ActionButtons({ onRescan, onDelete, disabled }: {
   onRescan?: () => void;
   onDelete: () => void;
+  disabled?: boolean;
 }) {
   return (
     <div style={{ display: 'flex', gap: 4 }}>
-      <ActionBtn
-        icon="replay"
-        tooltip={onRescan ? 'Rescan' : 'Rescan not available'}
-        onClick={onRescan}
-        disabled={!onRescan}
-        color="var(--accent-600)"
-      />
-      <ActionBtn
-        icon="delete"
-        tooltip="Delete"
-        onClick={onDelete}
-        color="var(--danger)"
-      />
+      <ActionBtn icon="replay" label="Rescan" onClick={onRescan} disabled={disabled || !onRescan} color="var(--accent-600)" />
+      <ActionBtn icon="delete" label="Delete" onClick={onDelete} disabled={disabled} color="var(--danger)" />
     </div>
   );
 }
 
-function ActionBtn({ icon, tooltip, onClick, disabled, color }: {
-  icon: string; tooltip?: string; onClick?: () => void;
+function ActionBtn({ icon, label, onClick, disabled, color }: {
+  icon: string; label: string; onClick?: () => void;
   disabled?: boolean; color?: string;
 }) {
   return (
     <button
       type="button"
-      title={tooltip}
+      title={label}
       onClick={onClick}
       disabled={disabled}
       style={{
-        width: 28, height: 28,
-        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        height: 26, padding: '0 8px',
+        display: 'inline-flex', alignItems: 'center', gap: 4,
         background: 'transparent',
         border: '1px solid var(--border)',
         borderRadius: 'var(--r-sm)',
         cursor: disabled ? 'not-allowed' : 'pointer',
         color: disabled ? 'var(--fg-faint)' : (color ?? 'var(--fg-muted)'),
+        fontSize: 10, fontWeight: 500, fontFamily: 'var(--font-sans)',
         transition: 'background 0.1s, border-color 0.1s',
-        flexShrink: 0,
+        flexShrink: 0, whiteSpace: 'nowrap',
       }}
     >
-      <Icon name={icon} size={14} />
+      <Icon name={icon} size={12} />
+      {label}
     </button>
   );
 }
@@ -419,17 +490,16 @@ function ActionBtn({ icon, tooltip, onClick, disabled, color }: {
 // ── Type/status badges ────────────────────────────────────────────────────────
 
 function TypeBadge({ type }: { type: 'slip' | 'cheque' }) {
-  const isSlip = type === 'slip';
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center',
       padding: '2px 6px', borderRadius: 'var(--r-full)',
       fontSize: 10, fontWeight: 600, letterSpacing: '.02em',
-      background: isSlip ? 'var(--bg-subtle)' : 'var(--accent-50)',
-      color: isSlip ? 'var(--fg-muted)' : 'var(--accent-700)',
-      border: `1px solid ${isSlip ? 'var(--border)' : 'var(--accent-200)'}`,
+      background: 'var(--bg-raised)',
+      color: 'var(--fg-muted)',
+      border: '1px solid var(--border)',
     }}>
-      {isSlip ? 'Slip' : 'Cheque'}
+      {type === 'slip' ? 'Slip' : 'Cheque'}
     </span>
   );
 }

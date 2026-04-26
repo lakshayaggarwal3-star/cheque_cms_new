@@ -51,6 +51,7 @@ public class MasterPreviewDto
     public int ErrorRows { get; set; }
     public List<UploadErrorDto> Errors { get; set; } = new();
     public List<MasterDataRowDto> Rows { get; set; } = new();
+    public List<string> ParsingLogs { get; set; } = new();
 }
 
 public class MasterApplyRequest

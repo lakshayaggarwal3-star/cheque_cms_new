@@ -35,7 +35,14 @@ export function LoginPage() {
     try {
       const user = await login(data.loginId, data.password, false);
       setUser(user);
-      navigate('/');
+      
+      const params = new URLSearchParams(window.location.search);
+      const returnUrl = params.get('returnUrl');
+      if (returnUrl) {
+        window.location.href = returnUrl; // Use window.location.href for external/API paths
+      } else {
+        navigate('/');
+      }
     } catch (err: any) {
       const msg = err?.response?.data?.message ?? err?.message ?? 'Login failed';
       if (msg.toLowerCase().includes('already logged in') || msg.toLowerCase().includes('session')) {
@@ -56,7 +63,14 @@ export function LoginPage() {
     try {
       const user = await login(loginId, password, true);
       setUser(user);
-      navigate('/');
+
+      const params = new URLSearchParams(window.location.search);
+      const returnUrl = params.get('returnUrl');
+      if (returnUrl) {
+        window.location.href = returnUrl;
+      } else {
+        navigate('/');
+      }
     } catch (err: any) {
       const msg = err?.response?.data?.message ?? err?.message ?? 'Login failed';
       setError(msg);

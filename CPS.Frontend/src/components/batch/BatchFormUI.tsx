@@ -33,7 +33,7 @@ export function Segmented({ options, value, onChange, disabled }: {
 }) {
   return (
     <div style={{
-      display: 'inline-flex', padding: 3,
+      display: 'inline-flex', alignItems: 'center', padding: 3, height: 38,
       background: 'var(--bg-subtle)', borderRadius: 'var(--r-md)',
       border: '1px solid var(--border)', opacity: disabled ? 0.55 : 1,
     }}>
@@ -43,14 +43,14 @@ export function Segmented({ options, value, onChange, disabled }: {
           <button key={o.id} type="button"
             onClick={() => !disabled && onChange(o.id)}
             style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              padding: '5px 12px', fontSize: 'var(--text-sm)', fontWeight: 500,
-              color: active ? 'var(--fg)' : 'var(--fg-muted)',
-              background: active ? 'var(--bg-raised)' : 'transparent',
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              padding: '0 14px', height: '100%', minHeight: 32, fontSize: 'var(--text-sm)', fontWeight: 500,
+              color: active ? 'var(--fg-on-accent)' : 'var(--fg-muted)',
+              background: active ? 'var(--accent-500)' : 'transparent',
               border: 'none', borderRadius: 'calc(var(--r-md) - 3px)',
               cursor: disabled ? 'not-allowed' : 'pointer',
               boxShadow: active ? 'var(--shadow-xs)' : 'none',
-              fontFamily: 'inherit',
+              fontFamily: 'inherit', whiteSpace: 'nowrap',
               transition: 'background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease)',
             }}>
             {o.icon && <Icon name={o.icon} size={14} />}
@@ -66,15 +66,16 @@ export function Segmented({ options, value, onChange, disabled }: {
 
 export function ReadStat({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
-    <div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
       <div style={{
-        fontSize: 'var(--text-xs)', fontWeight: 500,
-        textTransform: 'uppercase', letterSpacing: '.04em',
-        color: 'var(--fg-subtle)', marginBottom: 4,
+        fontSize: '0.6rem', fontWeight: 700,
+        textTransform: 'uppercase', letterSpacing: '.08em',
+        color: 'var(--fg)', lineHeight: 1.2,
       }}>{label}</div>
       <div style={{
-        fontSize: 'var(--text-sm)', fontWeight: 500, color: 'var(--fg)',
-        fontFamily: mono ? 'var(--font-mono)' : undefined,
+        fontSize: '0.9rem', fontWeight: 400, color: 'var(--fg-muted)',
+        fontFamily: mono ? 'var(--font-mono)' : 'inherit',
+        lineHeight: 1.4, letterSpacing: '0.01em',
       }}>{value}</div>
     </div>
   );

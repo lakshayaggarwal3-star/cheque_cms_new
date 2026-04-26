@@ -16,9 +16,12 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import { Layout } from './components/Layout';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
+import { AllBatchesPage } from './pages/AllBatchesPage';
 import { BatchCreatePage } from './pages/BatchCreatePage';
 import { ScanRouterPage } from './pages/ScanRouterPage';
 import { RRPage } from './pages/RRPage';
+import { ScanListPage } from './pages/ScanListPage';
+import { RRListPage } from './pages/RRListPage';
 import { UserManagementPage } from './pages/UserManagementPage';
 import { MastersPage } from './pages/MasterUploadPage';
 import { SettingsPage } from './pages/SettingsPage';
@@ -50,17 +53,20 @@ function AppRoutes() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/unauthorized" element={<UnauthorizedPage />} />
 
-      {/* Protected — require any authenticated user */}
-      <Route element={<ProtectedRoute />}>
+      {/* Protected — require any operational role (Excludes ImageViewer) */}
+      <Route element={<ProtectedRoute roles={['Scanner', 'Mobile Scanner', 'Maker', 'Checker', 'Admin', 'Developer']} />}>
         <Route element={<Layout />}>
           <Route path="/" element={<DashboardPage />} />
+          <Route path="/all-batches" element={<AllBatchesPage />} />
+          <Route path="/rr" element={<RRListPage />} />
           <Route path="/rr/:batchId" element={<RRPage />} />
 
           {/* Scanner / Admin / Developer */}
-          <Route element={<ProtectedRoute roles={['Scanner', 'MobileScanner', 'Admin', 'Developer']} />}>
+          <Route element={<ProtectedRoute roles={['Scanner', 'Mobile Scanner', 'Admin', 'Developer']} />}>
             <Route path="/batch/create" element={<BatchCreatePage />} />
             <Route path="/batch/:batchId/details" element={<BatchCreatePage />} />
-            <Route path="/scan/:batchId" element={<ScanRouterPage />} />
+            <Route path="/scan" element={<ScanListPage />} />
+            <Route path="/scan/:batchNo" element={<ScanRouterPage />} />
           </Route>
 
           {/* Admin / Developer only */}

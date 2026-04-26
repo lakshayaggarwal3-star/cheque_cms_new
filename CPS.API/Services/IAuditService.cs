@@ -11,5 +11,5 @@ namespace CPS.API.Services;
 public interface IAuditService
 {
     Task LogAsync(string tableName, string recordId, string action,
-        object? oldValues, object? newValues, int changedBy, string? ipAddress = null, string? sessionId = null);
+        object? oldValues, object? newValues, int changedBy, string? batchNo = null);
 }

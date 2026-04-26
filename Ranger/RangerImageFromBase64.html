@@ -1,0 +1,870 @@
+﻿<!-- Copyright © 2014-2021, Silver Bullet Technology, Inc. -->
+
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+   <link type="text/css" href="Sbullet.css" rel="stylesheet" media="screen" />
+   <title>Ranger WebSocket Example Page</title>
+   <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+
+
+   <script src="Ranger.js"></script>
+   <script src="DefaultWebSocketUrl.js"></script>
+   <script type="text/javascript">
+
+      var Ranger;
+      var dateObj = new Date();
+      var countTime = 0;
+      var itemCount = 0;
+
+
+      function onLoadFunction()
+      {
+         try{
+            document.getElementById("RangerRemoteJSVersion").innerHTML = "Ranger Remote JS version:" + Ranger.GetRangerRemoteJSVersion();
+            document.getElementById("url").value = GetUserDefinedUrl();
+         }catch (err) {}
+
+      }
+
+      //Downlaod logs from GetRangerLogging() and GetRangerServerLogging()
+      var DownloadLogs = function(filename, data, contenttype)
+      {
+
+         if(!data)
+         {
+            return;
+         }
+
+         if(!filename)
+         {
+            filename = 'RRConsole.txt';
+         }
+
+         var blob = new Blob([data], {type:'text/json'}),
+           e = document.createEvent('MouseEvents'),
+           a = document.createElement('a');
+
+         // detect IE/Edge
+         if (document.documentMode || /Edge/.test(navigator.userAgent))
+         {
+            // msSaveBlob() supported only by IE >= 10 and Edge
+            var retVal = navigator.msSaveBlob(blob, filename);
+         }
+         else
+         {
+            a.download = filename;
+            a.href = window.URL.createObjectURL(blob);
+            a.dataset.downloadurl =  ['text/json', a.download, a.href].join(':');
+            e.initMouseEvent('click', true, false, window, 0, 0, 0, 0, 0, false, false, false, false, 0, null);
+            a.dispatchEvent(e);
+         }
+      };
+
+      async function CallGetRangerLogging() {
+         await Ranger.GetRangerLogging();
+      }
+
+      async function CallGetRangerServerLogging() {
+         await Ranger.GetRangerServerLogging();
+      }
+
+      function myRanger()
+      {
+         return Ranger;
+      }
+      function getstatus()
+      {
+         document.getElementById('Status').innerHTML = 'Status: ' + Ranger.GetTransportStateString();
+      }
+      function popup( obj, L, T )
+      {
+         document.getElementById('EnableRanger').disabled = true;
+         document.getElementById('EditOptions').disabled = true;
+         document.getElementById('StopFeeding').disabled = true;
+         document.getElementById('StartFeeding').disabled = true;
+         document.getElementById('ChangeOptions').disabled = true;
+         document.getElementById('Shutdown').disabled = true;
+
+         if(Ranger.GetGenericOption("OptionalDevices","NeedRearEndorser") == "true")
+         {
+            document.getElementById("NeedRearEndorserTrue").checked = true;
+            document.getElementById("NeedRearEndorserFalse").checked = false;
+         }
+         else
+         {
+            document.getElementById("NeedRearEndorserTrue").checked = false;
+            document.getElementById("NeedRearEndorserFalse").checked = true;
+         }
+
+         if(Ranger.GetGenericOption("OptionalDevices","NeedImaging") == "true")
+         {
+            document.getElementById("EnableImagingTrue").checked = true;
+            document.getElementById("EnableImagingFalse").checked = false;
+         }
+         else
+         {
+            document.getElementById("EnableImagingTrue").checked = false;
+            document.getElementById("EnableImagingFalse").checked = true;
+         }
+
+         if(Ranger.GetGenericOption("OptionalDevices","NeedFrontImage1") == "true")
+         {
+            document.getElementById("FrontBitonalTrue").checked = true;
+            document.getElementById("FrontBitonalFalse").checked = false;
+         }
+         else
+         {
+            document.getElementById("FrontBitonalTrue").checked = false;
+            document.getElementById("FrontBitonalFalse").checked = true;
+         }
+
+         if(Ranger.GetGenericOption("OptionalDevices","NeedRearImage1") == "true")
+         {
+            document.getElementById("RearBitonalTrue").checked = true;
+            document.getElementById("RearBitonalFalse").checked = false;
+         }
+         else
+         {
+            document.getElementById("RearBitonalTrue").checked = false;
+            document.getElementById("RearBitonalFalse").checked = true;
+         }
+
+         if(Ranger.GetGenericOption("OptionalDevices","NeedFrontImage2") == "true")
+         {
+            document.getElementById("FrontGrayscaleTrue").checked = true;
+            document.getElementById("FrontGrayscaleFalse").checked = false;
+         }
+         else
+         {
+            document.getElementById("FrontGrayscaleTrue").checked = false;
+            document.getElementById("FrontGrayscaleFalse").checked = true;
+         }
+
+         if(Ranger.GetGenericOption("OptionalDevices","NeedRearImage2") == "true")
+         {
+            document.getElementById("RearGrayscaleTrue").checked = true;
+            document.getElementById("RearGrayscaleFalse").checked = false;
+         }
+         else
+         {
+            document.getElementById("RearGrayscaleTrue").checked = false;
+            document.getElementById("RearGrayscaleFalse").checked = true;
+         }
+
+         if(Ranger.GetGenericOption("OptionalDevices","NeedIQA") == "true")
+         {
+            document.getElementById("NeedIQATrue").checked = true;
+            document.getElementById("NeedIQAFalse").checked = false;
+         }
+         else
+         {
+            document.getElementById("NeedIQATrue").checked = false;
+            document.getElementById("NeedIQAFalse").checked = true;
+         }
+
+         if(Ranger.GetGenericOption("OptionalDevices","NeedIQAUpstream") == "true")
+         {
+            document.getElementById("NeedIQAUpstreamTrue").checked = true;
+            document.getElementById("NeedIQAUpstreamFalse").checked = false;
+         }
+         else
+         {
+            document.getElementById("NeedIQAUpstreamTrue").checked = false;
+            document.getElementById("NeedIQAUpstreamFalse").checked = true;
+         }
+
+         if(Ranger.GetGenericOption("OptionalDevices","NeedIQADownstream") == "true")
+         {
+            document.getElementById("NeedIQADownstreamTrue").checked = true;
+            document.getElementById("NeedIQADownstreamFalse").checked = false;
+         }
+         else
+         {
+            document.getElementById("NeedIQADownstreamTrue").checked = false;
+            document.getElementById("NeedIQADownstreamFalse").checked = true;
+         }
+
+         with( obj.style )
+         {
+            display = "block";
+            position = "absolute";
+            left = L;
+            top = T;
+         }
+      }
+      function unpop( obj )
+      {
+         obj.style.display = "none";
+         document.getElementById('EnableRanger').disabled = false;
+         document.getElementById('EditOptions').disabled = false;
+         document.getElementById('StopFeeding').disabled = true;
+         document.getElementById('StartFeeding').disabled = true;
+         document.getElementById('ChangeOptions').disabled = true;
+         document.getElementById('Shutdown').disabled = false;
+      }
+
+      async function OptionsOK(obj)
+      {
+         var test;
+         if(document.getElementById("EnableImagingTrue").checked == true)
+            test = await Ranger.SetGenericOption("OptionalDevices","NeedImaging", "true");
+      else
+          test = await Ranger.SetGenericOption("OptionalDevices","NeedImaging", "false");
+
+         if(document.getElementById("FrontBitonalTrue").checked == true)
+            test = await Ranger.SetGenericOption("OptionalDevices","NeedFrontImage1", "true");
+      else
+          test = await Ranger.SetGenericOption("OptionalDevices","NeedFrontImage1", "false");
+
+         if(document.getElementById("RearBitonalTrue").checked == true)
+            test = await Ranger.SetGenericOption("OptionalDevices","NeedRearImage1", "true");
+      else
+          test = await Ranger.SetGenericOption("OptionalDevices","NeedRearImage1", "false");
+
+         if(document.getElementById("FrontGrayscaleTrue").checked == true)
+            test = await Ranger.SetGenericOption("OptionalDevices","NeedFrontImage2", "true");
+      else
+          test = await Ranger.SetGenericOption("OptionalDevices","NeedFrontImage2", "false");
+
+         if(document.getElementById("RearGrayscaleTrue").checked == true)
+            test = await Ranger.SetGenericOption("OptionalDevices","NeedRearImage2", "true");
+      else
+          test = await Ranger.SetGenericOption("OptionalDevices","NeedRearImage2", "false");
+
+         if(document.getElementById("NeedRearEndorserTrue").checked == true)
+            test = await Ranger.SetGenericOption("OptionalDevices","NeedRearEndorser", "true");
+      else
+          test = await Ranger.SetGenericOption("OptionalDevices","NeedRearEndorser", "false");
+
+         if(document.getElementById("NeedIQATrue").checked == true)
+            test = await Ranger.SetGenericOption("OptionalDevices","NeedIQA", "true");
+      else
+          test = await Ranger.SetGenericOption("OptionalDevices","NeedIQA", "false");
+
+         if(document.getElementById("NeedIQAUpstreamTrue").checked == true)
+            test = await Ranger.SetGenericOption("OptionalDevices","NeedIQAUpstream", "true");
+      else
+          test = await Ranger.SetGenericOption("OptionalDevices","NeedIQAUpstream", "false");
+
+         if(document.getElementById("NeedIQADownstreamTrue").checked == true)
+            test = await Ranger.SetGenericOption("OptionalDevices","NeedIQADownstream", "true");
+      else
+          test = await Ranger.SetGenericOption("OptionalDevices","NeedIQADownstream", "false");
+
+         unpop( obj );
+
+      }
+
+      function StartUpRanger()
+      {
+         Ranger.wsUrl = document.getElementById("url").value;
+         Ranger.StartUp();
+         document.getElementById('ConnectionStatus').innerHTML = 'Attempting to Connect';
+      }
+
+      //Sets the Ranger Remote Version info in the html app
+      //Receives a string as the "version" parameter
+      function SetRangerRemoteVersion(version)
+      {
+         document.getElementById('RangerRemoteVersion').innerHTML = 'Ranger Remote Version: ' + version;
+      }
+
+      //If the image is not loadable, the onerror callback is called.
+      function IsImageLoadable(URL) {
+         var imageObj = new Image();
+
+         //If onerror callback is called, changed PIC_WARNING text
+         imageObj.onerror = function() {
+            document.getElementById('PIC_WARNING').innerHTML = '<b>One or more of your requested grayscale images did not load properly.'
+                + '<br>' + 'Please see the following link for more information:</b>' + '<br><br>'
+                + 'Why are images not being displayed in the html browser application?'
+                + '<br>' + '<a href="http://www.sbulletsupport.com/forum/index.php?topic=308.0">http://www.sbulletsupport.com/forum/index.php?topic=308.0</a>';
+         }
+
+         imageObj.src = URL;
+      }
+
+      Ranger = new MakeRanger();
+      Initialize();
+
+
+      async function DemoStartFeed()
+      {
+         var feedtype = 0;
+         var Value = document.getElementById('FeedMode').value;
+         var FeedCount = document.getElementById('feedcount').value;
+         if (Value == "MainHopper")
+         {
+            feedtype = 0;
+         } else if (Value == "ManualDrop")
+         {
+            feedtype = 2;
+         } else if (Value == "ManualID")
+         {
+            feedtype = 3;
+         }
+         var rval = await Ranger.StartFeeding(feedtype, parseInt(FeedCount));
+         return;
+      }
+
+      //Register the Ranger callbacks
+      function Initialize()
+      {
+         Ranger.TransportNewState = function (newState, previousState){
+            // Transport new state, fired every time the State changes on the control
+            // input params , are the new state and the previous state
+            var RangerTransportStates = {TransportUnknownState: -1, TransportShutDown: 0, TransportStartingUp: 1,
+               TransportChangeOptions: 2, TransportEnablingOptions: 3, TransportReadyToFeed: 4,
+               TransportFeeding: 5, TransportExceptionInProgress:6, TransportShuttingDown: 7};
+
+            if(newState == RangerTransportStates.TransportShutDown)
+            {
+               document.getElementById('StartRanger').disabled = false;
+               document.getElementById("url").disabled = false;
+               document.getElementById('EnableRanger').disabled = true;
+               document.getElementById('EditOptions').disabled = true;
+               document.getElementById('StopFeeding').disabled = true;
+               document.getElementById('StartFeeding').disabled = true;
+               document.getElementById('ChangeOptions').disabled = true;
+               document.getElementById('Shutdown').disabled = true;
+               document.getElementById('UserInstructions').innerHTML = "Press 'Startup Ranger' to initialize the Ranger control"
+            }
+            if(newState == RangerTransportStates.TransportChangeOptions)
+            {
+               document.getElementById('StartRanger').disabled = true;
+               document.getElementById("url").disabled = true;
+               document.getElementById('StartFeeding').disabled = true;
+               document.getElementById('EnableRanger').disabled = false;
+               document.getElementById('EditOptions').disabled = false;
+               document.getElementById('ChangeOptions').disabled = true;
+               document.getElementById('Shutdown').disabled = false;
+               document.getElementById("GetRangerLogging").disabled = false;
+               document.getElementById("GetRangerServerLogging").disabled = false;
+               document.getElementById('UserInstructions').innerHTML = "<b>Ranger Started</b> <br> Press 'Enable Options' to enable the current Ranger options and prepare to start feeding"
+            }
+            if(newState == RangerTransportStates.TransportReadyToFeed)
+            {
+               document.getElementById('EnableRanger').disabled = true;
+               document.getElementById('EditOptions').disabled = true;
+               document.getElementById('StopFeeding').disabled = true;
+               document.getElementById('StartFeeding').disabled = false;
+               document.getElementById('ChangeOptions').disabled = false;
+               document.getElementById('Shutdown').disabled = false;
+               document.getElementById('UserInstructions').innerHTML = "<b>Ready To Feed </b><br> Press 'Start Feeding' to start Ranger feeding checks from main hopper"
+            }
+            if(newState == RangerTransportStates.TransportFeeding)
+            {
+               document.getElementById('StartFeeding').disabled = true;
+               document.getElementById('ChangeOptions').disabled = true;
+               document.getElementById('Shutdown').disabled = true;
+               document.getElementById('StopFeeding').disabled = false;
+               document.getElementById('UserInstructions').innerHTML = "<b>Feeding... </b><br> Press 'Stop Feeding' to stop Ranger from feeding checks"
+            }
+            getstatus();
+         };
+
+         Ranger.TransportStartingUp = async function (previousState)
+         {
+            //Get the Ranger version from the Ranger.js object and display it.
+            document.getElementById('RangerVersion').innerHTML = 'Ranger Version: ' + Ranger.GetVersion();
+            //Request the Ranger Remote version info from Ranger.js; Get value from RangerCallStatusCallback
+            let rval = await Ranger.GetInfo("Version","RangerServer");
+            getstatus();
+         };
+
+         Ranger.TransportShuttingDown = function (previousState)
+         {
+            //Update the Ranger version displayed.
+            document.getElementById('RangerVersion').innerHTML = 'Ranger Version: N/A';
+
+            //Update the Ranger Remote version displayed.
+            document.getElementById('RangerRemoteVersion').innerHTML = 'Ranger Remote Version: N/A';
+
+            //Update the scanner model displayed.
+            document.getElementById('ScannerModel').innerHTML = 'Scanner Model: N/A';
+
+            getstatus();
+         };
+
+         Ranger.TransportChangeOptions = function (previousState)
+         {
+            //
+            //Get the scanner model, as contained in Ranger's TransportInfo.ini file,
+            //from the Ranger.js object and display it. NOTE: should be ok to call
+            //GetTransportInfo() here . . . see the Ranger Application Programmer's
+            //Specification for details.
+            //
+            document.getElementById('ScannerModel').innerHTML = 'Scanner Model: ' + Ranger.GetTransportInfo("General", "Model");
+
+            getstatus();
+         };
+
+         Ranger.TransportReadyToFeed = async function (previousState)
+         {
+            // speed
+            itemCount = 0;
+            countTime = 0;
+            document.getElementById('RatedSpeed').innerHTML = 'Running Speed: N/A';
+
+            //The TransportReadyToFeed event is fired when Ranger is ready to accept a
+            //StartFeeding() call.
+
+            //Set endorsement text if so configured.
+            if(document.getElementById("NeedRearEndorserTrue").checked == true)
+               await Ranger.SetFixedEndorseText(1, 1, document.getElementById("FixedLine1").value);
+            /*
+                  //
+                  //Uncomment this code block to mimic an app that calls Ranger's
+                  //StartFeeding() function from *within* the app's ReadyToFeedState
+                  //event handler.
+                  //
+                  if(3 === previousState)
+                  {
+                    //Call StartFeeding() if and only if transitioning from the
+                    //EnablingOptions state to the ReadyToFeed state.
+                    Ranger.StartFeeding(0,0);
+                  }
+            */
+
+            getstatus();
+         };
+
+         Ranger.TransportFeedingStopped = function (reason,itemsFed,itemsrequested){
+            getstatus();
+         };
+
+         Ranger.TransportItemInPocket = function (itemID){
+            // speed
+            itemCount += 1;
+            if (countTime === 0) {
+               dateObj = new Date();
+               countTime = dateObj.getTime();
+            }
+
+            if (itemCount >= 10) {
+               dateObj = new Date();
+               var currentTime = dateObj.getTime();
+               var timeDifference = currentTime - countTime;
+               var ratedSpeed = 60001 * (itemCount - 1) / timeDifference;
+               var maxDPM =Ranger.GetTransportInfo("General", "MaximumDPM");
+               if( !maxDPM )
+               {
+                  document.getElementById('RatedSpeed').innerHTML = 'Running Speed: ' + Math.round(ratedSpeed);
+               }
+               else
+               {
+                  document.getElementById('RatedSpeed').innerHTML = 'Running Speed: ' + Math.round(ratedSpeed) + '/'+ maxDPM;
+               }
+            }
+
+            //Fired when the item has been fed into the pocket
+
+            var RangerSides = {TransportFront: 0, TransportRear: 1};
+            var RangerImageColorTypes = {ImageColorTypeBitonal:0, ImageColorTypeGrayscale: 1, ImageColorTypeColor: 2};
+
+            // Note: SaveImageToFile() below is used to save gray scale images.  Please verify that 'NeedFrontImage2' and
+            //       'NeedRearImage2' are set to 'true' in the GenericOptions.ini file.  If bitonal images are to be saved,
+            //       please set 'NeedFrontImage1'/'NeedRearImage1' to 'true' before calling SaveImageToFile() for bitonal images.
+
+            //Clear PIC_WARNING
+            document.getElementById('PIC_WARNING').innerHTML = "";
+
+            document.getElementById('MICR').innerHTML = 'MICR: ' + Ranger.GetMicrText(1);
+
+            //Here you could check to see if the images were saved, putting alternate
+            //text in place of the image if they werent saved.
+
+            document.getElementById('FrontGrayImage').src = "";
+            document.getElementById('FrontGrayImage').style.visibility = "hidden";
+            document.getElementById('RearGrayImage').src = "";
+            document.getElementById('RearGrayImage').style.visibility = "hidden";
+
+            if(Ranger.GetGenericOption("OptionalDevices","NeedImaging") == "true")
+            {
+               // test image error handling
+               var frontGrayscaleSrc = "data:image/jpeg;base64," + Ranger.GetImageBase64(0,1);
+               var rearGrayscaleSrc = "data:image/jpeg;base64," + Ranger.GetImageBase64(1,1);
+               if ((Ranger.GetGenericOption("OptionalDevices","NeedFrontImage2") == "true") && (Ranger.GetGenericOption("OptionalDevices","NeedRearImage2") == "true"))
+               {
+                  document.getElementById('FrontGrayImage').src = frontGrayscaleSrc;
+                  document.getElementById('FrontGrayImage').style.visibility = "visible";
+                  document.getElementById('RearGrayImage').src = rearGrayscaleSrc;
+                  document.getElementById('RearGrayImage').style.visibility = "visible";
+                  IsImageLoadable(frontGrayscaleSrc);
+                  IsImageLoadable(rearGrayscaleSrc);
+               }
+               else if (Ranger.GetGenericOption("OptionalDevices","NeedFrontImage2") == "true")
+               {
+                  document.getElementById('FrontGrayImage').src = frontGrayscaleSrc;
+                  document.getElementById('FrontGrayImage').style.visibility = "visible";
+                  IsImageLoadable(frontGrayscaleSrc);
+               }
+               else if (Ranger.GetGenericOption("OptionalDevices","NeedRearImage2") == "true")
+               {
+                  document.getElementById('RearGrayImage').src = rearGrayscaleSrc;
+                  document.getElementById('RearGrayImage').style.visibility = "visible";
+                  IsImageLoadable(rearGrayscaleSrc);
+               }
+               else
+               {
+                  document.getElementById('PIC_WARNING').innerHTML = 'No images selected, or only Bitonal images turned on. Please turn on grayscale for display here.';
+               }
+            }
+            else
+            {
+               document.getElementById('PIC_WARNING').innerHTML = 'Imaging disabled';
+            }
+            getstatus();
+         };
+
+         Ranger.TransportNewItem = function (){
+            // Fired when a new item has entered the track
+            getstatus();
+         };
+
+         Ranger.TransportShutDown = function (){
+            //Fired when the Ranger control has been shutdown
+            getstatus();
+         };
+
+         Ranger.RangerCallStatusCallback = function (callbackData){
+            //If the 'GetInfo' callback is received, set RRS version in the html app
+            if ("GetInfo" === callbackData.CallReturn)
+            {
+               SetRangerRemoteVersion(callbackData.Value);
+            }
+            if ("GetRangerLogging" === callbackData.CallReturn)
+            {
+               DownloadLogs("RangerLog.log", callbackData.Value);
+               return;
+            }
+            if("GetRangerServerLogging" === callbackData.CallReturn)
+            {
+               DownloadLogs("RangerRemoteLog.log", callbackData.Value);
+               return;
+            }
+            console.log("Method Called: " + callbackData.CallReturn + "  Return Value: " + callbackData.Value);
+         };
+
+         /*
+             //
+             //Sample code demonstrating minimalist handling of Ranger's
+             //TransportReadyToSetEndorsement event.
+             //
+             //NOTE: uncommenting this code will override the SetFixedEndorseText() call
+             //made in this file's TransportReadyToFeed event handler, thus defeating any
+             //endorsement that was configured through the "Edit Options" functionality
+             //provided herein.
+             //
+
+             Ranger.TransportReadyToSetEndorsement = function (side, endorsemode)
+             {
+               //
+               //Endorsing is enabled, otherwise Ranger wouldn't have fired this event.
+               //
+
+               if( (1 === side) && (1 === endorsemode) )
+               {
+                 //
+                 //This ReadyToSetEndorsement event is for OEM_Batch mode endorsing on
+                 //the rear side of the item(s).
+                 //
+
+                 Ranger.SetFixedEndorseText(1, 1, "<CSN:000000001,1,999999999> just some text . . .");
+               }
+             }
+         */
+
+         Ranger.TransportSetItemOutput = function (itemID){
+
+            //fired when the item is ready to have params set(pocketing decisions)
+            getstatus();
+         };
+
+         Ranger.TransportInExceptionState = function (previousState){
+            //if an exception is thrown, display an alert box
+            alert(GetStringExceptionDevice(Ranger.GetExceptionDevice())
+              + "\n"
+              + GetStringExceptionType(Ranger.GetExceptionType()));
+         }
+
+         Ranger.OnOpenCallback = function (event)
+         {
+            document.getElementById('ConnectionStatus').innerHTML = 'WS: Open';
+         }
+         Ranger.OnCloseCallback = function (event){
+            //On websocketclose, all buttons are disabled except for StartRanger.
+            StartRanger.disabled=false;
+            DisableBtnsForShutdown();
+            document.getElementById('ConnectionStatus').innerHTML = 'WS: Close Code ' + event.code;
+         };
+         Ranger.OnErrorCallback = function (event){
+            document.getElementById('ConnectionStatus').innerHTML = 'WS: Error (no info)';
+         };
+         Ranger.OnMessageCallback = function (event){
+            document.getElementById('ConnectionStatus').innerHTML = 'WS: Message Received';
+         };
+      };
+
+      function GetStringExceptionType(ExceptionTypeValue)
+      {
+         switch(ExceptionTypeValue)
+         {
+            case -1:    return "An unexpected error occurred!";
+            case  1:    return "One or more items jammed in the track!";
+            case  2:    return "The application took too much time to make a pocket decision!";
+            case  3:    return "The transport API encountered an internal error!";
+            case  4:    return "A pocket is full!";
+            case  5:    return "The transport is not ready to feed items!";
+            case  6:    return "The image subsystem is not functioning properly!";
+            case  7:    return "The transport’s power up sequence failed!";
+            case  8:    return "There are one or more items in the track!";
+            case  9:    return "A hardware device is malfunctioning!";
+            case 10:    return "Error feeding an item!";
+            case 11:    return "A printer error was encountered!";
+            case 12:    return "The transport’s physical feed button was pressed!";
+            case 13:    return "The transport is waiting for its physical feed button to be pressed!";
+            case 14:    return "The end of the microfilm reel was detected!";
+            case 15:    return "An item was fed improperly!";
+            case 16:    return "A dog-eared item was detected!";
+            case 17:    return "The replaceable media is exhausted for a particular device!";
+            case 18:    return "The printer ink cartridge is missing!";
+            case 19:    return "The printer ink is out!";
+            case 20:    return "The printer ink is low!";
+            case 21:    return "The endorser ink cartridge is missing!";
+            case 22:    return "The endorser ink cartridge is out!";
+            case 23:    return "The endorser ink cartridge is low!";
+            case 24:    return "The scanner cover is open!";
+            case 25:    return "There was an error while endorsing!";
+            case 26:    return "There was a double feed item!";
+            case 27:    return "The endorsement string is too long for what can be endorsed!";
+            case 28:    return "The physical item is too long!";
+            case 29:    return "The physical item's length is incorrect!";
+            case 30:    return "Compressed image Error!";
+            case 31:    return "The track requires cleaning due to foreign objects present!";
+            default:    return "An unknown exception type value received!";
+         }
+      }
+
+      function GetStringExceptionDevice(ExceptionDeviceValue)
+      {
+         switch(ExceptionDeviceValue)
+         {
+            case -1:    return "The device is not known!";
+            case  1:    return "An exception occurred that is not related to a specific device!";
+            case  2:    return "A feeding exception occurred at the main hopper!";
+            case  3:    return "A feeding exception occurred at the merge hopper!";
+            case  4:    return "A feeding exception occurred during manual drop!";
+            case  5:    return "An exception occurred at the MICR reader!";
+            case  6:    return "An exception occurred at the OCR reader!";
+            case  7:    return "An exception occurred at the ICR reader!";
+            case  8:    return "An exception occurred at the view window unit!";
+            case  9:    return "An exception occurred at the MICR encoder!";
+            case 10:    return "An exception occurred at the MICR verifier!";
+            case 11:    return "An exception occurred at the front endorser!";
+            case 12:    return "An exception occurred at the rear endorser!";
+            case 13:    return "An exception occurred at the front stamping unit!";
+            case 14:    return "An exception occurred at the rear stamping unit!";
+            case 15:    return "An exception occurred at the micro filmer!";
+            case 16:    return "An exception occurred while capturing the front image!";
+            case 17:    return "An exception occurred while capturing the rear image!";
+            case 18:    return "An exception occurred at the journal printer!";
+            case 19:    return "Printing failed due to requesting unsupported printing options!"
+            case 20:    return "An exception occurred during image capture, preventing creation of image file sets!";
+            case 21:    return "An exception occurred during the retrieval of the image from the transport!";
+            case 22:    return "An exception occurred at the pocket!";
+            default:    return "An unknown exception device value received!";
+         }
+      }
+
+      function DisableBtnsForStartFeeding()
+      {
+         document.getElementById("StartFeeding").disabled = true;
+         document.getElementById("ChangeOptions").disabled = true;
+         document.getElementById("Shutdown").disabled = true;
+      };
+
+      function DisableBtnsForEnableRanger()
+      {
+         document.getElementById("EditOptions").disabled = true;
+         document.getElementById("EnableRanger").disabled = true;
+      };
+
+      function DisableBtnsForChangeOptions()
+      {
+         document.getElementById("ChangeOptions").disabled = true;
+         document.getElementById("StartFeeding").disabled = true;
+      };
+
+      function DisableBtnsForShutdown()
+      {
+         document.getElementById("EditOptions").disabled = true;
+         document.getElementById("EnableRanger").disabled = true;
+         document.getElementById("StartFeeding").disabled = true;
+         document.getElementById("StopFeeding").disabled = true;
+         document.getElementById("ChangeOptions").disabled = true;
+         document.getElementById("Shutdown").disabled = true;
+      };
+
+      <!-- End of Events ------------- -->
+   </script>
+</head>
+
+<body onload="onLoadFunction()">
+
+   <div id="container">
+      <div id="banner">
+         <h2>Silver Bullet Technology, Inc. Ranger</h2>
+      </div>
+
+      <div id="left">
+         <h2>Ranger Control</h2>
+         <br><div id="RangerVersion">Ranger Version: N/A</div>
+         <div id="RangerRemoteVersion">Ranger Remote Version: N/A</div><br>
+         <div id="RangerRemoteJSVersion">Ranger Remote JS: N/A</div><br>
+         <br><div id="Status">Status:</div><br>
+         <br><div id="ScannerModel">Scanner Model: N/A</div><br>
+         <br><div id="RatedSpeed">Rated Speed: N/A</div><br>
+         <input class="controlbutton" id="StartRanger" type=button value="Startup Ranger" onclick="this.disabled=true; StartUpRanger();">
+         <input class="controlbutton" id="EditOptions" disabled type=button value="Edit Options" onclick="this.disabled=true; popup(editsettings,100,50);">
+         <input class="controlbutton" id="EnableRanger" disabled type=button value="Enable Options" onclick="DisableBtnsForEnableRanger(); myRanger().EnableOptions();">
+         <input class="controlbutton" id="StartFeeding" disabled type=button value="Start Feeding" onclick="DisableBtnsForStartFeeding(); DemoStartFeed();">
+         <input class="controlbutton" id="StopFeeding" disabled type=button value="Stop Feeding" onclick="this.disabled=true; myRanger().StopFeeding();">
+         <input class="controlbutton" id="ChangeOptions" disabled type=button value="Change Options" onclick="DisableBtnsForChangeOptions(); myRanger().PrepareToChangeOptions();">
+         <input class="controlbutton" id="Shutdown" disabled type=button value="Shutdown Ranger" onclick="DisableBtnsForShutdown(); myRanger().ShutDown();">
+
+         <input class="controlbutton" id="GetRangerLogging" disabled type=button value="GetRangerLog" onclick="CallGetRangerLogging();">
+         <input class="controlbutton" id="GetRangerServerLogging" disabled type=button value="GetRangerServerLog" onclick="CallGetRangerServerLogging();">
+         <br><br>
+         <br><div id="Status">URL: <input type="text" id="url" value="ws://127.0.0.1:9002"></div><br>
+         <br><div id="ConnectionStatus">WS:</div><br>
+      </div>
+
+      <div id="content">
+         <h2>Ranger HTML Sample</h2>
+
+         <div id="editsettings" STYLE="display: none; border: solid; background: #FFFFFF">
+            <form id="options" name="options">
+
+               <table>
+                  <tr><td class="SectionTitle">Imaging Options</td></tr>
+                  <tr>
+                     <td class="datacellone">
+                        Enable FeedMode
+                        <select id="FeedMode">
+                           <option value="MainHopper">MainHopper</option>
+                           <option value="ManualDrop">ManualDrop</option>
+                           <option value="FManualID">ManualID</option>
+                        </select>
+                     </td>
+                  </tr>
+                  <tr>
+                     <td class="datacellone">
+                        Desired Feed Count: 0 for continuous
+                        <input type="number" id="feedcount" value="0" style="width: 35px; text-align: center;">
+                     </td>
+                  </tr>
+                  <tr>
+                     <td class="datacellone">
+                        Enable Imaging
+                        <input type="radio" id="EnableImagingTrue" name="EnableImaging" value="true">True
+                        <input type="radio" id="EnableImagingFalse" name="EnableImaging" value="false" checked>False
+                     </td>
+                  </tr>
+                  <tr>
+                     <td class="datacelltwo">
+                        Capture Front Bitonal
+                        <input type="radio" id="FrontBitonalTrue" name="FrontBitonal" value="true">True
+                        <input type="radio" id="FrontBitonalFalse" name="FrontBitonal" value="false" checked>False
+                     </td>
+                  </tr>
+                  <tr>
+                     <td class="datacellone">
+                        Capture Rear Bitonal
+                        <input type="radio" id="RearBitonalTrue" name="RearBitonal" value="true">True
+                        <input type="radio" id="RearBitonalFalse" name="RearBitonal" value="false" checked>False
+                     </td>
+                  </tr>
+                  <tr>
+                     <td class="datacelltwo">
+                        Capture Front Grayscale
+                        <input type="radio" id="FrontGrayscaleTrue" name="FrontGrayscale" value="true">True
+                        <input type="radio" id="FrontGrayscaleFalse" name="FrontGrayscale" value="false" checked>False
+                     </td>
+                  </tr>
+                  <tr>
+                     <td class="datacellone">
+                        Capture Rear Grayscale
+                        <input type="radio" id="RearGrayscaleTrue" name="RearGrayscale" value="true">True
+                        <input type="radio" id="RearGrayscaleFalse" name="RearGrayscale" value="false" checked>False
+                     </td>
+                  </tr>
+
+                  <tr><td class="SectionTitle">Endorsement Options</td></tr>
+                  <tr align="right">
+                     <td class="datacellone">
+                        Enable Endorsement
+                        <input type="radio" id="NeedRearEndorserTrue" name="NeedRearEndorser" value="true">True
+                        <input type="radio" id="NeedRearEndorserFalse" name="NeedRearEndorser" value="false" checked>False
+                     </td>
+                  </tr>
+                  <tr>
+                     <td class="datacelltwo">
+                        Endorsement line
+                        <input id="FixedLine1" name="FixedLine1" value="" />
+                     </td>
+                  </tr>
+
+                  <tr><td class="SectionTitle">IQA Options (see Bloodhound log for failures)</td></tr>
+                  <tr>
+                     <td class="datacellone">
+                        Enable IQA
+                        <input type="radio" id="NeedIQATrue" name="NeedIQA" value="true">True
+                        <input type="radio" id="NeedIQAFalse" name="NeedIQA" value="false">False
+                     </td>
+                  </tr>
+                  <tr>
+                     <td class="datacelltwo">
+                        Enable IQA in SetItemOutput
+                        <input type="radio" id="NeedIQAUpstreamTrue" name="NeedIQAUpstream" value="true">True
+                        <input type="radio" id="NeedIQAUpstreamFalse" name="NeedIQAUpstream" value="false" checked>False
+                     </td>
+                  </tr>
+                  <tr>
+                     <td class="datacellone">
+                        Enable IQA in ItemInPocket
+                        <input type="radio" id="NeedIQADownstreamTrue" name="NeedIQADownstream" value="true">True
+                        <input type="radio" id="NeedIQADownstreamFalse" name="NeedIQADownstream" value="false" checked>False
+                     </td>
+                  </tr>
+               </table>
+
+            </form>
+            <br>
+            <div align="right">
+               <input type="button" value="Cancel" onclick="unpop(editsettings)" STYLE="WIDTH:100px">
+               <input type="button" value="OK" onclick="OptionsOK(editsettings)" STYLE="WIDTH:100px">
+            </div>
+         </div>
+
+         <div id="UserInstructions">Press 'Startup Ranger' to initialize the Ranger control</div>
+         <br>
+         <div id="MICR"></div>
+         <br>
+         <div id="images">
+            <img id="FrontGrayImage" style="visibility: hidden;" height=200 width=400 src="" />
+            <br>
+            <img id="RearGrayImage" style="visibility: hidden;" height=200 width=400 src="" />
+         </div>
+         <br>
+
+         <div id="PIC_WARNING"></div>
+      </div>
+      <div id="footer"><h1>Ranger Control</h1></div>
+   </div>
+
+
+
+</body>
+</html>

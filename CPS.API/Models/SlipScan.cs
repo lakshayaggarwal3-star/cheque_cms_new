@@ -16,7 +16,7 @@ public class SlipScan
     [Key]
     public long SlipScanId { get; set; }
 
-    public int SlipEntryId { get; set; }
+    public long SlipEntryId { get; set; }
 
     [ForeignKey(nameof(SlipEntryId))]
     public SlipEntry SlipEntry { get; set; } = null!;
@@ -25,7 +25,13 @@ public class SlipScan
     public int ScanOrder { get; set; } = 1;
 
     [MaxLength(500)]
-    public string? ImagePath { get; set; }
+    public string? ImageBaseName { get; set; }
+
+    [MaxLength(10)]
+    public string? FileExtension { get; set; }
+
+    [MaxLength(64)]
+    public string? ImageHash { get; set; }
 
     // Pending / Captured / Failed / RetryPending
     [MaxLength(20)]

@@ -14,7 +14,7 @@ namespace CPS.API.Models;
 public class SlipEntry
 {
     [Key]
-    public int SlipEntryId { get; set; }
+    public long SlipEntryId { get; set; }
 
     public long BatchId { get; set; }
 
@@ -47,6 +47,9 @@ public class SlipEntry
 
     // 0 = Open, 1 = Complete
     public int SlipStatus { get; set; } = 0;
+
+    // Track last cheque sequence number within this slip
+    public int LastChqSeq { get; set; } = 0;
 
     public DateTime? EntryCompletedAt { get; set; }
 

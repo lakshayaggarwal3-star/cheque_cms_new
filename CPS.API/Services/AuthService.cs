@@ -86,7 +86,8 @@ public class AuthService : IAuthService
             LocationId = location?.LocationID ?? 0,
             LocationName = location?.LocationName ?? string.Empty,
             EodDate = today.ToString("yyyy-MM-dd"),
-            IsDeveloper = user.IsDeveloper
+            IsDeveloper = roles.Contains("Developer"),
+            SessionToken = user.SessionToken.ToString()
         };
     }
 
@@ -136,20 +137,16 @@ public class AuthService : IAuthService
             LocationId = location?.LocationID ?? 0,
             LocationName = location?.LocationName ?? string.Empty,
             EodDate = eodDate,
-            IsDeveloper = user.IsDeveloper
+            IsDeveloper = roles.Contains("Developer")
         };
     }
 
     private List<string> BuildRolesList(UserMaster user)
     {
-        var roles = new List<string>();
-        if (user.RoleScanner) roles.Add("Scanner");
-        if (user.RoleMobileScanner) roles.Add("MobileScanner");
-        if (user.RoleMaker) roles.Add("Maker");
-        if (user.RoleChecker) roles.Add("Checker");
-        if (user.RoleAdmin) roles.Add("Admin");
-        if (user.IsDeveloper) roles.Add("Developer");
-        return roles;
+        return user.UserRoles
+            .Where(ur => ur.Role != null)
+            .Select(ur => ur.Role!.RoleName)
+            .ToList();
     }
 
     public string GenerateJwt(UserMaster user, List<string> roles, int locationId, string eodDate)
@@ -188,7 +185,8 @@ public class AuthService : IAuthService
             new("userId", r.UserId.ToString()),
             new("employeeId", r.EmployeeId),
             new("locationId", r.LocationId.ToString()),
-            new("eodDate", r.EodDate)
+            new("eodDate", r.EodDate),
+            new("sessionToken", r.SessionToken ?? string.Empty)
         };
         claims.AddRange(r.Roles.Select(role => new Claim(ClaimTypes.Role, role)));
 

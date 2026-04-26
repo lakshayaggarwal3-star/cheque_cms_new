@@ -26,6 +26,7 @@ public class BatchRepository : IBatchRepository
     public async Task<Batch?> GetByNoAsync(string batchNo) =>
         await _db.Batches
             .Include(b => b.Location)
+            .Include(b => b.Scanner)
             .FirstOrDefaultAsync(b => b.BatchNo == batchNo && !b.IsDeleted);
 
     public async Task<List<Batch>> GetListAsync(int? locationId, DateOnly? date, int? status, int page, int pageSize)
@@ -35,7 +36,7 @@ public class BatchRepository : IBatchRepository
             .Include(b => b.Scanner)
             .Where(b => !b.IsDeleted);
 
-        if (locationId.HasValue)
+        if (locationId.HasValue && locationId.Value > 0)
             query = query.Where(b => b.LocationID == locationId.Value);
         if (date.HasValue)
             query = query.Where(b => b.BatchDate == date.Value);
@@ -52,7 +53,7 @@ public class BatchRepository : IBatchRepository
     public async Task<int> GetTotalCountAsync(int? locationId, DateOnly? date, int? status)
     {
         var query = _db.Batches.Where(b => !b.IsDeleted);
-        if (locationId.HasValue) query = query.Where(b => b.LocationID == locationId.Value);
+        if (locationId.HasValue && locationId.Value > 0) query = query.Where(b => b.LocationID == locationId.Value);
         if (date.HasValue) query = query.Where(b => b.BatchDate == date.Value);
         if (status.HasValue) query = query.Where(b => b.BatchStatus == status.Value);
         return await query.CountAsync();
@@ -107,8 +108,11 @@ public class BatchRepository : IBatchRepository
 
     public async Task<DashboardCounts> GetDashboardCountsAsync(int locationId, DateOnly date)
     {
-        var batches = await _db.Batches
-            .Where(b => b.LocationID == locationId && b.BatchDate == date && !b.IsDeleted)
+        var query = _db.Batches.Where(b => b.BatchDate == date && !b.IsDeleted);
+        if (locationId > 0)
+            query = query.Where(b => b.LocationID == locationId);
+            
+        var batches = await query
             .Select(b => b.BatchStatus)
             .ToListAsync();
 
