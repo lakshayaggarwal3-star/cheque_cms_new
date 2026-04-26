@@ -25,7 +25,7 @@ export function useScanPageSession({ state, scanner }: Deps) {
     setSession, setBatchDetails, setPickupPointCode,
     setLoading, setShowSlipForm, setShowStartModal,
     setActiveSlipEntryId, setActiveSlipNo,
-    setNextSlipScanOrder, setNextChqSeq,
+    setNextSlipItemOrder, setNextChqSeq,
     setScanStep,
     setFrontFile, setFrontPreview,
     clearCameraFiles,
@@ -43,7 +43,7 @@ export function useScanPageSession({ state, scanner }: Deps) {
       if (rs.activeSlipEntryId) {
         setActiveSlipEntryId(rs.activeSlipEntryId);
         setActiveSlipNo(rs.activeSlipNo ?? '');
-        setNextSlipScanOrder(rs.nextSlipScanOrder);
+        setNextSlipItemOrder(rs.nextSlipItemOrder);
         setNextChqSeq(rs.nextChqSeq);
       }
     } catch {
@@ -61,7 +61,7 @@ export function useScanPageSession({ state, scanner }: Deps) {
     if (rs.activeSlipEntryId) {
       setActiveSlipEntryId(rs.activeSlipEntryId);
       setActiveSlipNo(rs.activeSlipNo ?? '');
-      setNextSlipScanOrder(rs.nextSlipScanOrder);
+      setNextSlipItemOrder(rs.nextSlipItemOrder);
       setNextChqSeq(rs.nextChqSeq);
       const step = (rs.resumeStep as ScanStep) ?? 'SlipEntry';
       setScanStep(step);
@@ -108,7 +108,7 @@ export function useScanPageSession({ state, scanner }: Deps) {
         if (rs.activeSlipEntryId) {
           setActiveSlipEntryId(rs.activeSlipEntryId);
           setActiveSlipNo(rs.activeSlipNo ?? '');
-          setNextSlipScanOrder(rs.nextSlipScanOrder);
+          setNextSlipItemOrder(rs.nextSlipItemOrder);
           setNextChqSeq(rs.nextChqSeq);
           setScanStep(rs.resumeStep as ScanStep ?? 'ChequeScan');
         }
@@ -154,7 +154,7 @@ export function useScanPageSession({ state, scanner }: Deps) {
 
     // Block if current slip has nothing scanned yet
     if (activeSlipEntryId !== null && activeGroup) {
-      const hasScans = (activeGroup.slipScans?.length ?? 0) > 0 || (activeGroup.cheques?.length ?? 0) > 0;
+      const hasScans = (activeGroup.slipItems?.length ?? 0) > 0 || (activeGroup.cheques?.length ?? 0) > 0;
       if (!hasScans) {
         toast.warning('Scan at least one item for the current slip before creating a new one.');
         return;
@@ -178,7 +178,7 @@ export function useScanPageSession({ state, scanner }: Deps) {
     state.setNewSlipSaved(false);
     setActiveSlipEntryId(null);
     setActiveSlipNo('');
-    setNextSlipScanOrder(1);
+    setNextSlipItemOrder(1);
     // nextChqSeq is now batch-wide, so we don't reset it here.
     setScanStep('SlipEntry');
     scanner.setScanRoundActive(false);

@@ -57,32 +57,32 @@ public class ScanController : ControllerBase
         return Ok(ApiResponse<object>.Ok(new { }, "Feed stopped"));
     }
 
-    // ─── Slip scan images ─────────────────────────────────────────────────────
+    // ─── Slip item images ─────────────────────────────────────────────────────
 
-    [HttpPost("{batchId:long}/slip-scan/capture")]
-    public async Task<IActionResult> CaptureSlipScan(long batchId, [FromBody] CaptureSlipScanRequest request)
+    [HttpPost("{batchId:long}/slip-item/capture")]
+    public async Task<IActionResult> CaptureSlipItem(long batchId, [FromBody] CaptureSlipItemRequest request)
     {
         var userId = int.Parse(User.FindFirstValue("userId")!);
-        var result = await _scanService.CaptureSlipScanAsync(batchId, request, userId);
-        return StatusCode(201, ApiResponse<SlipScanDto>.Ok(result, "Slip scan saved"));
+        var result = await _scanService.CaptureSlipItemAsync(batchId, request, userId);
+        return StatusCode(201, ApiResponse<SlipItemDto>.Ok(result, "Slip item saved"));
     }
 
-    [HttpPost("{batchId:long}/slip-scan/upload-mobile")]
+    [HttpPost("{batchId:long}/slip-item/upload-mobile")]
     [RequestSizeLimit(15_000_000)]
-    public async Task<IActionResult> UploadMobileSlipScan(long batchId, [FromForm] MobileUploadSlipScanRequest request)
+    public async Task<IActionResult> UploadMobileSlipItem(long batchId, [FromForm] MobileUploadSlipItemRequest request)
     {
         var userId = int.Parse(User.FindFirstValue("userId")!);
-        var result = await _scanService.UploadMobileSlipScanAsync(batchId, request, userId);
-        return StatusCode(201, ApiResponse<SlipScanDto>.Ok(result, "Slip scan uploaded"));
+        var result = await _scanService.UploadMobileSlipItemAsync(batchId, request, userId);
+        return StatusCode(201, ApiResponse<SlipItemDto>.Ok(result, "Slip item uploaded"));
     }
 
-    [HttpPost("{batchId:long}/slip-scan/upload-bulk")]
+    [HttpPost("{batchId:long}/slip-item/upload-bulk")]
     [RequestSizeLimit(100_000_000)]
-    public async Task<IActionResult> UploadBulkSlipScans(long batchId, [FromForm] BulkSlipUploadRequest request)
+    public async Task<IActionResult> UploadBulkSlipItems(long batchId, [FromForm] BulkSlipItemUploadRequest request)
     {
         var userId = int.Parse(User.FindFirstValue("userId")!);
-        var results = await _scanService.UploadBulkSlipScansAsync(batchId, request, userId);
-        return StatusCode(201, ApiResponse<List<SlipScanDto>>.Ok(results, $"{results.Count} slip image(s) uploaded"));
+        var results = await _scanService.UploadBulkSlipItemsAsync(batchId, request, userId);
+        return StatusCode(201, ApiResponse<List<SlipItemDto>>.Ok(results, $"{results.Count} slip item(s) uploaded"));
     }
 
 

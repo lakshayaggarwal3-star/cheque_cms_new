@@ -17,10 +17,10 @@ public interface IScanService
     Task StartFeedAsync(long batchId, ScannerFeedRequest request, int userId);
     Task StopFeedAsync(long batchId, ScannerFeedRequest request, int userId);
 
-    // Slip scan image operations
-    Task<SlipScanDto> CaptureSlipScanAsync(long batchId, CaptureSlipScanRequest request, int userId);
-    Task<SlipScanDto> UploadMobileSlipScanAsync(long batchId, MobileUploadSlipScanRequest request, int userId);
-    Task<List<SlipScanDto>> UploadBulkSlipScansAsync(long batchId, BulkSlipUploadRequest request, int userId);
+    // Slip item image operations
+    Task<SlipItemDto> CaptureSlipItemAsync(long batchId, CaptureSlipItemRequest request, int userId);
+    Task<SlipItemDto> UploadMobileSlipItemAsync(long batchId, MobileUploadSlipItemRequest request, int userId);
+    Task<List<SlipItemDto>> UploadBulkSlipItemsAsync(long batchId, BulkSlipItemUploadRequest request, int userId);
 
 
     // Cheque operations

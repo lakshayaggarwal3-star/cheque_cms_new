@@ -145,8 +145,8 @@ public class SlipService : ISlipService
 
         return new ClientAutoFillDto
         {
-            CityCode = client.CityCode,
-            ClientName = client.ClientName,
+            CityCode = client.CityCode ?? "",
+            ClientName = client.ClientName ?? "",
             PickupPointCode = client.PickupPointCode,
             PickupPointDesc = client.PickupPointDesc,
             RCMSCode = client.RCMSCode,
@@ -215,9 +215,9 @@ public class SlipService : ISlipService
         SlipStatus = s.SlipStatus,
         CreatedAt = s.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss"),
         RowVersion = s.RowVersion,
-        SlipScans = s.SlipScans.Select(ss => new SlipScanDto
+        SlipItems = s.SlipItems.Select(ss => new SlipItemDto
         {
-            SlipScanId = ss.SlipScanId,
+            SlipItemId = ss.SlipItemId,
             SlipEntryId = ss.SlipEntryId,
             ScanOrder = ss.ScanOrder,
             RetryCount = ss.RetryCount,

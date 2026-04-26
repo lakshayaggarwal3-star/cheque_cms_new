@@ -62,7 +62,6 @@ public class BatchDto
     public string ScanType { get; set; } = string.Empty;
     public string EntryMode { get; set; } = string.Empty;
     public bool? WithSlip { get; set; }
-    public string? GlobalSlipNo { get; set; }
     public int BatchStatus { get; set; }
     public string BatchStatusLabel { get; set; } = string.Empty;
     public string CreatedByName { get; set; } = string.Empty;

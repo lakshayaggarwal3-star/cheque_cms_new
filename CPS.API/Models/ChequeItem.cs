@@ -101,6 +101,9 @@ public class ChequeItem
     [MaxLength(500)]
     public string? ImageBaseName { get; set; }
 
+    [MaxLength(200)]
+    public string? ImageName { get; set; }
+
     [MaxLength(10)]
     public string? FileExtension { get; set; }
 
@@ -122,6 +125,9 @@ public class ChequeItem
     // Scan / Rescan
     [MaxLength(10)]
     public string? ScanType { get; set; }
+
+    [MaxLength(20)]
+    public string? EntryMode { get; set; }
 
     public int CreatedBy { get; set; }
     public DateTime CreatedAt { get; set; }

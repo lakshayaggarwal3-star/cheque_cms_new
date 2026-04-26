@@ -276,7 +276,11 @@ public class ScbMasterService : IScbMasterService
     {
         // Truncate existing
         var table = _db.Set<T>();
-        await _db.Database.ExecuteSqlRawAsync($"TRUNCATE TABLE {_db.Model.FindEntityType(typeof(T))?.GetTableName()}");
+        var tableName = _db.Model.FindEntityType(typeof(T))?.GetTableName();
+        if (!string.IsNullOrEmpty(tableName))
+        {
+            await _db.Database.ExecuteSqlRawAsync("TRUNCATE TABLE " + tableName);
+        }
         
         // Insert new
         await table.AddRangeAsync(data);
@@ -294,7 +298,7 @@ public class ScbMasterService : IScbMasterService
         if (sqlConn.State != ConnectionState.Open) await sqlConn.OpenAsync();
 
         // Truncate before bulk load (inside the same transaction)
-        await _db.Database.ExecuteSqlRawAsync($"TRUNCATE TABLE {tableName}");
+        await _db.Database.ExecuteSqlRawAsync("TRUNCATE TABLE " + tableName);
 
         using var bulkCopy = new SqlBulkCopy(sqlConn, SqlBulkCopyOptions.Default, sqlTrans);
         bulkCopy.DestinationTableName = tableName;
@@ -379,7 +383,7 @@ public class ScbMasterService : IScbMasterService
             "translationrule" => "ScbTranslationRules",
             _ => throw new Exception("Invalid section")
         };
-        await _db.Database.ExecuteSqlRawAsync($"TRUNCATE TABLE {table}");
+        await _db.Database.ExecuteSqlRawAsync("TRUNCATE TABLE " + table);
         
         var status = await _db.ScbMasterStatuses.FindAsync(section);
         if (status != null)

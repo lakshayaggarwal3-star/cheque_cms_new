@@ -64,6 +64,6 @@ public class SlipEntry
     [Timestamp]
     public byte[] RowVersion { get; set; } = null!;
 
-    public ICollection<SlipScan> SlipScans { get; set; } = new List<SlipScan>();
+    public ICollection<SlipItem> SlipItems { get; set; } = new List<SlipItem>();
     public ICollection<ChequeItem> ChequeItems { get; set; } = new List<ChequeItem>();
 }

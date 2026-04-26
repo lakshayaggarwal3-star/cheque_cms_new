@@ -49,21 +49,24 @@ public class SlipEntryDto
     public byte[] RowVersion { get; set; } = null!;
 
     // Nested scan images and cheques for grouped display
-    public List<SlipScanDto> SlipScans { get; set; } = new();
+    public List<SlipItemDto> SlipItems { get; set; } = new();
     public List<ChequeItemDto> Cheques { get; set; } = new();
 }
 
-public class SlipScanDto
+public class SlipItemDto
 {
-    public long SlipScanId { get; set; }
+    public long SlipItemId { get; set; }
     public long SlipEntryId { get; set; }
     public int ScanOrder { get; set; }
     public string ScanStatus { get; set; } = string.Empty;
     public string? ScanError { get; set; }
     public int RetryCount { get; set; }
     public string? ImageBaseName { get; set; }
+    public string? ImageName { get; set; }
+
     public string? FileExtension { get; set; }
     public string? ImageHash { get; set; }
+    public string? EntryMode { get; set; }
 }
 
 public class ChequeItemDto
@@ -99,6 +102,8 @@ public class ChequeItemDto
     public string? ScanError { get; set; }
     public int RetryCount { get; set; }
     public string? ImageBaseName { get; set; }
+    public string? ImageName { get; set; }
+
     public string? FileExtension { get; set; }
     public string? ImageHash { get; set; }
 
@@ -108,6 +113,7 @@ public class ChequeItemDto
     public DateTime? RRStartedAt { get; set; }
     public int? RRCompletedBy { get; set; }
     public DateTime? RRCompletedAt { get; set; }
+    public string? EntryMode { get; set; }
 }
 
 // Resume state — tells frontend exactly where the user left off
@@ -121,8 +127,8 @@ public class ScanResumeStateDto
     // Values: "SlipEntry" | "SlipScan" | "ChequeScan" | null (fresh start)
     public string? ResumeStep { get; set; }
 
-    // Next scan order for the active slip's slip images
-    public int NextSlipScanOrder { get; set; } = 1;
+    // Next item order for the active slip's slip images
+    public int NextSlipItemOrder { get; set; } = 1;
 
     // Next cheque seq within the active slip
     public int NextChqSeq { get; set; } = 1;

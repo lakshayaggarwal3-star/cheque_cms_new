@@ -7,7 +7,7 @@
 // =============================================================================
 
 import apiClient, { extractData } from './api';
-import type { ChequeItemDto, ScanSessionDto, SlipScanDto } from '../types';
+import type { ChequeItemDto, ScanSessionDto, SlipItemDto } from '../types';
 
 export async function getScanSession(batchId: number): Promise<ScanSessionDto> {
   const res = await apiClient.get(`/scan/${batchId}`);
@@ -26,47 +26,47 @@ export async function stopFeed(batchId: number, scannerType: 'Cheque' | 'Slip'):
   await apiClient.post(`/scan/${batchId}/feed/stop`, { scannerType });
 }
 
-// ── Slip scan images ──────────────────────────────────────────────────────────
+// ── Slip item images ──────────────────────────────────────────────────────────
 
-export async function captureSlipScan(batchId: number, data: {
+export async function captureSlipItem(batchId: number, data: {
   slipEntryId: number;
   scanOrder: number;
   scannerType?: string;
-}): Promise<SlipScanDto> {
-  const res = await apiClient.post(`/scan/${batchId}/slip-scan/capture`, {
+}): Promise<SlipItemDto> {
+  const res = await apiClient.post(`/scan/${batchId}/slip-item/capture`, {
     ...data,
     scannerType: data.scannerType ?? 'Document',
   });
-  return extractData<SlipScanDto>(res);
+  return extractData<SlipItemDto>(res);
 }
 
-export async function uploadMobileSlipScan(batchId: number, data: {
+export async function uploadMobileSlipItem(batchId: number, data: {
   slipEntryId: number;
   scanOrder: number;
   image: File;
   scannerType?: string;
-}): Promise<SlipScanDto> {
+}): Promise<SlipItemDto> {
   const formData = new FormData();
   formData.append('slipEntryId', String(data.slipEntryId));
   formData.append('scanOrder', String(data.scanOrder));
   formData.append('image', data.image);
   if (data.scannerType) formData.append('scannerType', data.scannerType);
 
-  const res = await apiClient.post(`/scan/${batchId}/slip-scan/upload-mobile`, formData, {
+  const res = await apiClient.post(`/scan/${batchId}/slip-item/upload-mobile`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
-  return extractData<SlipScanDto>(res);
+  return extractData<SlipItemDto>(res);
 }
 
-export async function uploadBulkSlipScans(batchId: number, slipEntryId: number, files: File[]): Promise<SlipScanDto[]> {
+export async function uploadBulkSlipItems(batchId: number, slipEntryId: number, files: File[]): Promise<SlipItemDto[]> {
   const formData = new FormData();
   formData.append('slipEntryId', String(slipEntryId));
   formData.append('scannerType', 'Direct-Upload');
   files.forEach(f => formData.append('images', f));
-  const res = await apiClient.post(`/scan/${batchId}/slip-scan/upload-bulk`, formData, {
+  const res = await apiClient.post(`/scan/${batchId}/slip-item/upload-bulk`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
-  return extractData<SlipScanDto[]>(res);
+  return extractData<SlipItemDto[]>(res);
 }
 
 

@@ -207,7 +207,7 @@ export function RRPage() {
             <RRViewport 
               previewFront={getChequeImageUrl(item, 'front')}
               previewBack={getChequeImageUrl(item, 'back')}
-              filename={`${item.imageBaseName}CF${item.fileExtension}`}
+              filename={`${item.imageName}CF${item.fileExtension?.split(',')[0] || '.jpg'}`}
               itemTitle={`Cheque Seq #${item.chqSeq}`}
             />
           </div>

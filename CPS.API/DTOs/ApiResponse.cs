@@ -16,7 +16,7 @@ public class ApiResponse<T>
     public string? ErrorCode { get; set; }
     public List<object>? Details { get; set; }
 
-    public static ApiResponse<T> Ok(T data, string? message = null) =>
+    public static ApiResponse<T> Ok(T? data, string? message = null) =>
         new() { Success = true, Data = data, Message = message };
 
     public static ApiResponse<T> Fail(string errorCode, string message, List<object>? details = null) =>

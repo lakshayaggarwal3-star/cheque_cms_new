@@ -94,12 +94,13 @@ export function MobileScannerModal({ hasBothRoles, submitting, onClose, onSubmit
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12 }}>
-            <div>
+            <div style={{ opacity: !modalSumm.trim() ? 0.6 : 1, transition: 'opacity 0.2s var(--ease)' }}>
               <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--fg-muted)', display: 'block', marginBottom: 6 }}>
                 Total Slips <span style={{ color: 'var(--danger)' }}>*</span>
               </label>
               <input
                 type="number"
+                disabled={!modalSumm.trim()}
                 value={modalSlips}
                 placeholder="Enter total slips"
                 onChange={e => { setModalSlips(e.target.value); setModalErrors(prev => ({ ...prev, slips: '' })); }}
@@ -108,18 +109,20 @@ export function MobileScannerModal({ hasBothRoles, submitting, onClose, onSubmit
                   background: 'var(--bg-input)',
                   border: `1px solid ${modalErrors.slips ? 'var(--danger)' : 'var(--border-strong)'}`,
                   borderRadius: 'var(--r-md)', fontSize: 'var(--text-sm)',
-                  outline: 'none', color: 'var(--fg)'
+                  outline: 'none', color: 'var(--fg)',
+                  cursor: !modalSumm.trim() ? 'not-allowed' : 'text'
                 }}
               />
               {modalErrors.slips && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--danger)', marginTop: 4 }}>{modalErrors.slips}</div>}
             </div>
 
-            <div>
+            <div style={{ opacity: (!modalSlips || parseInt(modalSlips) <= 0) ? 0.6 : 1, transition: 'opacity 0.2s var(--ease)' }}>
               <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--fg-muted)', display: 'block', marginBottom: 6 }}>
                 Total Amount (₹) <span style={{ color: 'var(--danger)' }}>*</span>
               </label>
               <input
                 type="number"
+                disabled={!modalSlips || parseInt(modalSlips) <= 0}
                 value={modalAmount}
                 onChange={e => { setModalAmount(e.target.value); setModalErrors(prev => ({ ...prev, amount: '' })); }}
                 placeholder="Enter total amount"
@@ -128,7 +131,8 @@ export function MobileScannerModal({ hasBothRoles, submitting, onClose, onSubmit
                   background: 'var(--bg-input)',
                   border: `1px solid ${modalErrors.amount ? 'var(--danger)' : 'var(--border-strong)'}`,
                   borderRadius: 'var(--r-md)', fontSize: 'var(--text-sm)',
-                  outline: 'none', color: 'var(--fg)'
+                  outline: 'none', color: 'var(--fg)',
+                  cursor: (!modalSlips || parseInt(modalSlips) <= 0) ? 'not-allowed' : 'text'
                 }}
               />
               {modalErrors.amount && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--danger)', marginTop: 4 }}>{modalErrors.amount}</div>}
@@ -137,20 +141,32 @@ export function MobileScannerModal({ hasBothRoles, submitting, onClose, onSubmit
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '12px 20px', borderTop: '1px solid var(--border)', background: 'var(--bg-subtle)' }}>
-          <button
-            type="submit"
-            disabled={submitting}
-            style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-              padding: '11px 16px', minHeight: 40,
-              background: 'var(--accent-500)', color: 'var(--fg-on-accent)',
-              border: '1px solid var(--accent-600)', borderRadius: 'var(--r-md)',
-              fontSize: 'var(--text-sm)', fontWeight: 500, cursor: 'pointer', width: '100%'
-            }}
-          >
-            <Icon name="check_circle" size={16} />
-            Fill Details
-          </button>
+          {/* Submit button logic: only active if all fields are valid */}
+          {(() => {
+            const isValid = modalSumm.trim() && (parseInt(modalSlips) > 0) && (parseFloat(modalAmount) > 0);
+            return (
+              <button
+                type="submit"
+                disabled={submitting || !isValid}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  padding: '11px 16px', minHeight: 40,
+                  background: isValid ? 'var(--accent-500)' : 'var(--bg-active)',
+                  color: isValid ? 'var(--fg-on-accent)' : 'var(--fg-muted)',
+                  border: `1px solid ${isValid ? 'var(--accent-600)' : 'var(--border)'}`,
+                  borderRadius: 'var(--r-md)',
+                  fontSize: 'var(--text-sm)', fontWeight: 600,
+                  cursor: (submitting || !isValid) ? 'not-allowed' : 'pointer',
+                  width: '100%',
+                  opacity: (submitting || !isValid) ? 0.6 : 1,
+                  transition: 'all 0.2s var(--ease)'
+                }}
+              >
+                <Icon name="check_circle" size={16} />
+                Fill Details
+              </button>
+            );
+          })()}
           {hasBothRoles && (
             <button
               type="button"

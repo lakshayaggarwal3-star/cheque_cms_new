@@ -18,11 +18,11 @@ public interface ISlipEntryRepository
     Task<SlipEntry> CreateAsync(SlipEntry entry);
     Task UpdateAsync(SlipEntry entry);
 
-    // SlipScan
-    Task<SlipScan?> GetSlipScanByIdAsync(long slipScanId);
-    Task<List<SlipScan>> GetSlipScansByEntryAsync(long slipEntryId);
-    Task<SlipScan> CreateSlipScanAsync(SlipScan scan);
-    Task UpdateSlipScanAsync(SlipScan scan);
+    // SlipItem
+    Task<SlipItem?> GetSlipItemByIdAsync(long slipItemId);
+    Task<List<SlipItem>> GetSlipItemsByEntryAsync(long slipEntryId);
+    Task<SlipItem> CreateSlipItemAsync(SlipItem item);
+    Task UpdateSlipItemAsync(SlipItem item);
 
     // ChequeItem
     Task<ChequeItem?> GetChequeItemByIdAsync(long chequeItemId);

@@ -22,7 +22,7 @@ interface Props {
   scanStep: ScanStep;
   activeSlipEntryId: number | null;
   activeGroup: any;
-  slipScansForActive: any[];
+  slipItemsForActive: any[];
   canMoveToChequeScan: boolean;
   withSlip: boolean;
   isDeveloper: boolean | undefined;
@@ -44,7 +44,7 @@ interface Props {
   setActiveSlipEntryId: (id: number | null) => void;
   setScanStep: (step: ScanStep) => void;
   setShowSlipForm: (v: boolean) => void;
-  setConfirmComplete: (v: 'slip' | 'cheque' | null) => void;
+  setConfirmComplete: (v: 'slip' | 'cheque' | 'batch' | null) => void;
   openImageEditor: (file: File, target: 'slip-front' | 'cheque-front' | 'cheque-back') => void;
   startNewSlip: () => void;
 }
@@ -196,17 +196,17 @@ function RecentSequences({
       <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4, padding: '6px 10px' }}>
 
         {/* Global batch slips (without-slip mode) */}
-        {!session.withSlip && session.slipScans && session.slipScans.length > 0 && (
+        {!session.withSlip && session.slipItems && session.slipItems.length > 0 && (
           <div style={{ marginBottom: 8, borderBottom: '1px solid var(--border-subtle)', paddingBottom: 8 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
               <Icon name="collections" size={13} style={{ color: 'var(--accent-500)' }} />
               <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--accent-500)' }}>Batch Slips</span>
               <span style={{ marginLeft: 'auto', fontSize: 9, padding: '1px 6px', background: 'var(--bg-subtle)', borderRadius: 8, color: 'var(--fg-muted)', fontVariantNumeric: 'tabular-nums' }}>
-                {session.slipScans.length}
+                {session.slipItems.length}
               </span>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(72px, 1fr))', gap: 5 }}>
-              {session.slipScans.map((s, idx) => (
+              {session.slipItems.map((s, idx) => (
                 <div key={idx} onClick={() => { setViewerFront(getSlipImageUrl(s)); setViewerBack(null); setViewerType('slip'); setFlipped(false); }}
                   style={{ aspectRatio: '1/1', background: 'var(--bg)', border: `1px solid ${viewerFront === getSlipImageUrl(s) ? 'var(--accent-500)' : 'var(--border)'}`, borderRadius: 'var(--r-sm)', overflow: 'hidden', cursor: 'pointer', position: 'relative' }}>
                   <img src={getSlipImageUrl(s)} alt="slip" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -222,7 +222,7 @@ function RecentSequences({
           const isExpanded = !!expandedGroups[String(group.slipEntryId)];
           const slipsExpanded = expandedGroups[`${group.slipEntryId}-slips`] === true;
           const chequesExpanded = expandedGroups[`${group.slipEntryId}-cheques`] === true;
-          const slipCount = group.slipScans?.length ?? 0;
+          const slipCount = group.slipItems?.length ?? 0;
           const chequeCount = group.cheques?.length ?? 0;
 
           return (
@@ -298,7 +298,7 @@ function RecentSequences({
 
                       {slipsExpanded && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 1, paddingLeft: 4 }}>
-                          {slipCount > 0 ? (group.slipScans ?? []).map((s: any, sIdx: number) => {
+                          {slipCount > 0 ? (group.slipItems ?? []).map((s: any, sIdx: number) => {
                             const isViewed = viewerFront === getSlipImageUrl(s);
                             return (
                               <div key={sIdx}
@@ -383,7 +383,7 @@ function RecentSequences({
 
 export function ScanControlPanel({
   session, scanner, scanStep,
-  activeGroup, slipScansForActive, canMoveToChequeScan, withSlip,
+  activeGroup, slipItemsForActive, canMoveToChequeScan, withSlip,
   isDeveloper, mockScanEnabled, completing,
   frontFile, backFile, frontPreview, backPreview,
   showTable, setShowTable,
@@ -443,15 +443,25 @@ export function ScanControlPanel({
             {scanStep === 'SlipEntry' && !activeSlipEntryId && (
               <ControlCard tone="warning">
                 <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg)', marginBottom: 2 }}>
-                  Slip entry required
+                  Sequence completed
                 </div>
-                <p style={{ fontSize: 11, color: 'var(--fg-muted)', margin: '0 0 8px', lineHeight: 1.3 }}>
-                  Fill in the deposit slip details before scanning {withSlip ? 'slip images and ' : ''}cheques.
+                <p style={{ fontSize: 11, color: 'var(--fg-muted)', margin: '0 0 10px', lineHeight: 1.3 }}>
+                  You can start a new slip entry for the next sequence or finalize the entire batch if finished.
                 </p>
-                <button onClick={() => setShowSlipForm(true)} className="btn-primary" style={{ width: '100%', height: 28, fontSize: 11 }}>
-                  <Icon name="edit_note" size={14} />
-                  Open slip entry form
-                </button>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <button onClick={() => setShowSlipForm(true)} className="btn-primary" style={{ width: '100%', height: 28, fontSize: 11 }}>
+                    <Icon name="edit_note" size={14} />
+                    Start new slip entry
+                  </button>
+                  <button
+                    onClick={() => setConfirmComplete('batch')}
+                    className="btn-secondary"
+                    style={{ width: '100%', height: 28, fontSize: 11, border: '1px solid var(--border-strong)' }}
+                  >
+                    <Icon name="task_alt" size={14} />
+                    Finalize and close batch
+                  </button>
+                </div>
               </ControlCard>
             )}
 
@@ -463,12 +473,12 @@ export function ScanControlPanel({
                     {scanner.useFlatbedWs ? 'Flatbed Scanner (WebSocket)' : 'Document Scanner'}
                   </div>
                   <p style={{ fontSize: 11, color: 'var(--fg-muted)', margin: '0 0 8px' }}>
-                    {slipScansForActive.length === 0
+                    {slipItemsForActive.length === 0
                       ? 'Place the slip on the flatbed and press Scan.'
-                      : `${slipScansForActive.length} slip image${slipScansForActive.length !== 1 ? 's' : ''} scanned. Scan another or complete.`}
+                      : `${slipItemsForActive.length} slip image${slipItemsForActive.length !== 1 ? 's' : ''} scanned. Scan another or complete.`}
                   </p>
                   <button
-                    onClick={scanner.handleCaptureSlipScan}
+                    onClick={scanner.handleCaptureSlipItem}
                     disabled={scanner.isBusy || (scanner.flatbedStatus !== 'ready' && !(isDeveloper && mockScanEnabled && !!frontFile))}
                     className="btn-primary"
                     style={{ width: '100%', justifyContent: 'center', height: 28, fontSize: 11 }}
@@ -479,12 +489,12 @@ export function ScanControlPanel({
                       ? 'Scanning…'
                       : scanner.flatbedStatus === 'connecting'
                       ? 'Connecting…'
-                      : slipScansForActive.length === 0
+                      : slipItemsForActive.length === 0
                       ? 'Scan Slip'
-                      : `Scan Slip #${slipScansForActive.length + 1}`}
+                      : `Scan Slip #${slipItemsForActive.length + 1}`}
                   </button>
 
-                  {slipScansForActive.length > 0 && (
+                  {slipItemsForActive.length > 0 && (
                     <button
                       onClick={() => setConfirmComplete('slip')}
                       className="btn-primary"
@@ -510,7 +520,7 @@ export function ScanControlPanel({
                         <button type="button" onClick={() => frontFile && openImageEditor(frontFile, 'slip-front')} className="btn-secondary" style={{ fontSize: 'var(--text-xs)' }}>
                           Edit image
                         </button>
-                        <button onClick={scanner.handleCaptureSlipScan} disabled={scanner.isBusy} className="btn-primary" style={{ fontSize: 'var(--text-xs)' }}>
+                        <button onClick={scanner.handleCaptureSlipItem} disabled={scanner.isBusy} className="btn-primary" style={{ fontSize: 'var(--text-xs)' }}>
                           {scanner.isBusy ? 'Uploading…' : 'Upload'}
                         </button>
                       </div>

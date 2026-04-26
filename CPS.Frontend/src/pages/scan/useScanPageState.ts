@@ -43,8 +43,8 @@ export interface ScanPageState {
   setActiveSlipEntryId: (v: number | null) => void;
   activeSlipNo: string;
   setActiveSlipNo: (v: string) => void;
-  nextSlipScanOrder: number;
-  setNextSlipScanOrder: React.Dispatch<React.SetStateAction<number>>;
+  nextSlipItemOrder: number;
+  setNextSlipItemOrder: React.Dispatch<React.SetStateAction<number>>;
   nextChqSeq: number;
   setNextChqSeq: React.Dispatch<React.SetStateAction<number>>;
   newSlipSaved: boolean;
@@ -136,7 +136,7 @@ export function useScanPageState(): ScanPageState {
   // Active slip
   const [activeSlipEntryId, setActiveSlipEntryId] = useState<number | null>(null);
   const [activeSlipNo, setActiveSlipNo] = useState<string>('');
-  const [nextSlipScanOrder, setNextSlipScanOrder] = useState(1);
+  const [nextSlipItemOrder, setNextSlipItemOrder] = useState(1);
   const [nextChqSeq, setNextChqSeq] = useState(1);
   const [newSlipSaved, setNewSlipSaved] = useState(false);
 
@@ -255,7 +255,7 @@ export function useScanPageState(): ScanPageState {
     confirmComplete, setConfirmComplete,
     activeSlipEntryId, setActiveSlipEntryId,
     activeSlipNo, setActiveSlipNo,
-    nextSlipScanOrder, setNextSlipScanOrder,
+    nextSlipItemOrder, setNextSlipItemOrder,
     nextChqSeq, setNextChqSeq,
     newSlipSaved, setNewSlipSaved,
     scanStep, setScanStep,

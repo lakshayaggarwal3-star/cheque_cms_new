@@ -13,24 +13,25 @@ public static class MICRParser
     {
         if (string.IsNullOrWhiteSpace(raw)) return (null, null, null, null);
 
-        // Remove spaces for easier parsing
+        // Normalize
         string clean = raw.Replace(" ", "").ToLower();
 
-        // Regex to capture parts between 'c' and 'd' symbols
-        // c[CHQNO]c [MICR1]d [MICR2]c [MICR3]
-        var match = Regex.Match(clean, @"c(?<chqNo>\d+)c(?<micr1>\d+)d(?<micr2>\d+)c(?<micr3>\d*)");
+        // 1. Cheque Number: usually between the two 'c' symbols at start
+        var chqMatch = Regex.Match(clean, @"c(?<val>\d+)c");
+        string? chqNo = chqMatch.Success ? chqMatch.Groups["val"].Value : null;
 
-        if (match.Success)
-        {
-            return (
-                match.Groups["chqNo"].Value,
-                match.Groups["micr1"].Value,
-                match.Groups["micr2"].Value,
-                match.Groups["micr3"].Value
-            );
-        }
+        // 2. MICR1 (Sort Code): usually between the second 'c' and the 'd' symbol
+        var m1Match = Regex.Match(clean, @"c\d+c(?<val>\d+)d");
+        string? m1 = m1Match.Success ? m1Match.Groups["val"].Value : null;
 
-        // Fallback for variations
-        return (null, null, null, null);
+        // 3. MICR2 (Account/Serial): between 'd' and the next 'c'
+        var m2Match = Regex.Match(clean, @"d(?<val>\d+)c");
+        string? m2 = m2Match.Success ? m2Match.Groups["val"].Value : null;
+
+        // 4. MICR3 (Transaction Code): whatever digits are at the very end
+        var m3Match = Regex.Match(clean, @"(?<val>\d+)$");
+        string? m3 = m3Match.Success ? m3Match.Groups["val"].Value : null;
+
+        return (chqNo, m1, m2, m3);
     }
 }

@@ -245,7 +245,7 @@ export function BatchCreatePage() {
         <MobileScannerModal
           hasBothRoles={form.hasBothRoles}
           submitting={form.submitting}
-          onClose={() => form.setShowMobileModal(false)}
+          onClose={() => { form.setShowMobileModal(false); navigate('/'); }}
           onSubmit={form.handleModalFill}
         />
       )}

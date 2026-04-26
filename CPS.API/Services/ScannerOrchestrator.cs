@@ -161,8 +161,8 @@ public class ScannerOrchestrator : IScannerOrchestrator
         var suffix = stamp[^4..];
         return new ScannerCaptureResult
         {
-            ImageFrontPath = frontName != null ? $"mock/cheque/{frontName}.jpg" : $"mock/cheque/F_{stamp}.jpg",
-            ImageBackPath = backName != null ? $"mock/cheque/{backName}.jpg" : $"mock/cheque/B_{stamp}.jpg",
+            ImageFrontPath = frontName != null ? $"{frontName}.jpg" : $"Scanner/{DateTime.UtcNow:yyyyMMdd}/mock/Cheque/F_{stamp}.jpg",
+            ImageBackPath = backName != null ? $"{backName}.jpg" : $"Scanner/{DateTime.UtcNow:yyyyMMdd}/mock/Cheque/B_{stamp}.jpg",
             MICRRaw = $"12345678900000{suffix}",
             ChqNo = suffix.PadLeft(6, '0'),
             MICR1 = "123456789",
@@ -176,7 +176,7 @@ public class ScannerOrchestrator : IScannerOrchestrator
         var stamp = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss_fff");
         return new ScannerCaptureResult
         {
-            ImageFrontPath = frontName != null ? $"mock/slip/{frontName}.jpg" : $"mock/slip/S_{stamp}.jpg"
+            ImageFrontPath = frontName != null ? $"{frontName}.jpg" : $"Scanner/{DateTime.UtcNow:yyyyMMdd}/mock/Slip/S_{stamp}.jpg"
         };
     }
 }

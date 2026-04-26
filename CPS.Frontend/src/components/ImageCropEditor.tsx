@@ -120,6 +120,7 @@ export function ImageCropEditor({ file, title, onClose, onSave, mode = 'desktop'
     setBrightness(100); setGrayscale(0); setRotation(0);
   };
 
+
   const handleSave = async () => {
     if (!imgUrl) return;
     setSaving(true);
@@ -168,16 +169,15 @@ export function ImageCropEditor({ file, title, onClose, onSave, mode = 'desktop'
       {/* ── Header ── */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '12px 16px', flexShrink: 0,
-        borderBottom: '1px solid rgba(255,255,255,0.1)',
+        padding: '14px 16px', flexShrink: 0,
+        background: 'var(--bg-raised)',
+        borderBottom: '1px solid var(--border)',
       }}>
         <button onClick={onClose} style={hdrBtn}>
           <span className="material-symbols-outlined" style={{ fontSize: 20 }}>close</span>
         </button>
-        <span style={{ color: '#f1f5f9', fontWeight: 600, fontSize: 15 }}>{title}</span>
-        <button onClick={handleReset} style={hdrBtn}>
-          <span className="material-symbols-outlined" style={{ fontSize: 20 }}>restart_alt</span>
-        </button>
+        <span style={{ color: 'var(--fg)', fontWeight: 600, fontSize: 15 }}>{title}</span>
+        <div style={{ width: 36 }} />
       </div>
 
       {/* ── Crop canvas ── */}
@@ -243,7 +243,7 @@ export function ImageCropEditor({ file, title, onClose, onSave, mode = 'desktop'
             onTouchStart={isTouch ? onTouchStart(h) : undefined}
             style={{
               position: 'absolute', left: lx, top: ly, width: 14, height: 14,
-              background: '#fff', border: '2px solid #3b82f6',
+              background: '#fff', border: '2px solid var(--accent-500)',
               borderRadius: 3, cursor: cursorFor(h), zIndex: 2,
               touchAction: 'none',
             }}
@@ -253,10 +253,11 @@ export function ImageCropEditor({ file, title, onClose, onSave, mode = 'desktop'
 
       {/* ── Sliders ── */}
       <div style={{
-        background: '#0f172a', padding: '14px 16px 8px',
-        display: 'flex', flexDirection: 'column', gap: 10, flexShrink: 0,
+        background: 'var(--bg-raised)', padding: '16px 16px 12px',
+        borderTop: '1px solid var(--border)',
+        display: 'flex', flexDirection: 'column', gap: 14, flexShrink: 0,
       }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
           <Slider label="Brightness" value={brightness} min={50} max={160} step={5} unit="%" onChange={setBrightness} />
           <Slider label="Grayscale"  value={grayscale}  min={0}  max={100} step={5} unit="%" onChange={setGrayscale}  />
           <Slider label="Rotate"     value={rotation}   min={-180} max={180} step={1} unit="°" onChange={setRotation} />
@@ -271,7 +272,7 @@ export function ImageCropEditor({ file, title, onClose, onSave, mode = 'desktop'
             Cancel
           </button>
           <button onClick={handleSave} disabled={saving} style={primaryBtn}>
-            {saving ? 'Saving…' : 'Save'}
+            {saving ? 'Saving...' : 'Save'}
           </button>
         </div>
       </div>
@@ -292,12 +293,12 @@ function Slider({ label, value, min, max, step, unit, onChange }: {
   return (
     <div style={{ display:'flex', flexDirection:'column', gap: 3 }}>
       <div style={{ display:'flex', justifyContent:'space-between' }}>
-        <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, textTransform:'uppercase', letterSpacing:'.05em' }}>{label}</span>
-        <span style={{ fontSize: 10, color: '#cbd5e1', fontVariantNumeric:'tabular-nums' }}>{value}{unit}</span>
+        <span style={{ fontSize: 10, color: 'var(--fg-muted)', fontWeight: 600, textTransform:'uppercase', letterSpacing:'.05em' }}>{label}</span>
+        <span style={{ fontSize: 10, color: 'var(--fg-subtle)', fontVariantNumeric:'tabular-nums' }}>{value}{unit}</span>
       </div>
       <input type="range" min={min} max={max} step={step} value={value}
         onChange={e => onChange(+e.target.value)}
-        style={{ width:'100%', accentColor:'#3b82f6', cursor:'pointer' }} />
+        style={{ width:'100%', accentColor:'var(--accent-500)', cursor:'pointer' }} />
     </div>
   );
 }
@@ -358,14 +359,15 @@ const hdrBtn: React.CSSProperties = {
 
 const outlineBtn: React.CSSProperties = {
   display:'flex', alignItems:'center', justifyContent:'center', gap:4,
-  padding:'9px 4px', borderRadius:8,
-  background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.15)',
-  color:'#e2e8f0', fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:'inherit',
+  padding:'11px 4px', borderRadius:'var(--r-md)',
+  background:'var(--bg-subtle)', border:'1px solid var(--border-strong)',
+  color:'var(--fg)', fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:'inherit',
 };
 
 const primaryBtn: React.CSSProperties = {
   display:'flex', alignItems:'center', justifyContent:'center',
-  padding:'9px 4px', borderRadius:8,
-  background:'#3b82f6', border:'1px solid #2563eb',
-  color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:'inherit',
+  padding:'11px 4px', borderRadius:'var(--r-md)',
+  background:'var(--accent-500)', border:'1px solid var(--accent-600)',
+  color:'#fff', fontSize:14, fontWeight:700, cursor:'pointer', fontFamily:'inherit',
+  boxShadow: 'var(--shadow-sm)',
 };
