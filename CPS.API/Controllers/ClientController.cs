@@ -11,12 +11,13 @@ using CPS.API.Models;
 using CPS.API.Repositories;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace CPS.API.Controllers;
 
 [ApiController]
 [Route("api/clients")]
-[Authorize(Roles = "Scanner,MobileScanner,Maker,Checker,Admin,Developer")]
+[Authorize(Roles = "Scanner,Mobile Scanner,Maker,Checker,Admin,Developer")]
 public class ClientController : ControllerBase
 {
     private readonly IClientRepository _clientRepo;
@@ -89,6 +90,8 @@ public class ClientController : ControllerBase
         // Handle GlobalClientID specifically (can be null/zero)
         client.GlobalClientID = dto.GlobalClientID;
 
+        var userId = int.Parse(User.FindFirstValue("userId")!);
+        client.UpdatedBy = userId;
         client.UpdatedAt = DateTime.UtcNow;
 
         await _clientRepo.UpdateAsync(client);
@@ -123,13 +126,17 @@ public class ClientController : ControllerBase
         if (existing != null)
             return BadRequest(ApiResponse<object>.Fail("DUPLICATE_CODE", $"GlobalCode '{req.GlobalCode}' already exists."));
 
+        var userId = int.Parse(User.FindFirstValue("userId")!);
         var globalClient = new GlobalClient
         {
             GlobalCode = req.GlobalCode.ToUpper().Trim(),
             GlobalName = req.GlobalName.Trim(),
             IsPriority = req.IsPriority,
             IsActive = true,
+            CreatedBy = userId,
             CreatedAt = DateTime.UtcNow,
+            UpdatedBy = userId,
+            UpdatedAt = DateTime.UtcNow,
         };
 
         var created = await _clientRepo.CreateGlobalClientAsync(globalClient);
@@ -155,6 +162,9 @@ public class ClientController : ControllerBase
         globalClient.GlobalName = req.GlobalName.Trim();
         globalClient.IsPriority = req.IsPriority;
         globalClient.IsActive = req.IsActive;
+        
+        var userId = int.Parse(User.FindFirstValue("userId")!);
+        globalClient.UpdatedBy = userId;
         globalClient.UpdatedAt = DateTime.UtcNow;
 
         await _clientRepo.UpdateGlobalClientAsync(globalClient);

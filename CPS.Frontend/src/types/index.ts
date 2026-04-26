@@ -133,10 +133,11 @@ export interface SlipScanDto {
   slipScanId: number;
   slipEntryId: number;
   scanOrder: number;
-  imagePath?: string;
-  scanStatus: string;
-  scanError?: string;
   retryCount: number;
+  imageBaseName?: string;
+  fileExtension?: string;
+  imageHash?: string;
+  scanStatus: string;
 }
 
 export interface ChequeItemDto {
@@ -146,7 +147,10 @@ export interface ChequeItemDto {
   seqNo: number;
   chqSeq: number;
   chqNo?: string;
+  scanChqNo?: string;
+  rrChqNo?: string;
   micrRaw?: string;
+  scanMICRRaw?: string;
   // Scanner MICR — raw from scanner, read-only
   scanMICR1?: string;
   scanMICR2?: string;
@@ -155,16 +159,13 @@ export interface ChequeItemDto {
   rrmicr1?: string;
   rrmicr2?: string;
   rrmicr3?: string;
-  rrAmount?: number;
   rrNotes?: string;
   rrState: number;
-  frontImagePath?: string;
-  backImagePath?: string;
-  frontImageTiffPath?: string;
-  backImageTiffPath?: string;
-  scanStatus: string;
-  scanError?: string;
   retryCount: number;
+  imageBaseName?: string;
+  fileExtension?: string;
+  imageHash?: string;
+  scanStatus: string;
 }
 
 export interface SlipEntryDto {
@@ -220,18 +221,17 @@ export interface RRItemDto {
   slipEntryId: number;
   seqNo: number;
   chqSeq: number;
-  imageFrontPath?: string;
-  imageBackPath?: string;
   micrRaw?: string;
+  scanMICRRaw?: string;
   chqNo?: string;
+  scanChqNo?: string;
+  rrChqNo?: string;
   scanMICR1?: string;
   scanMICR2?: string;
   scanMICR3?: string;
-  scanAmount?: number;
   rrmicr1?: string;
   rrmicr2?: string;
   rrmicr3?: string;
-  rrAmount?: number;
   rrNotes?: string;
   rrState: number;
   rrStateLabel?: string;
@@ -239,6 +239,8 @@ export interface RRItemDto {
   clientName?: string;
   slipAmount?: number;
   totalInstruments?: number;
+  imageBaseName?: string;
+  fileExtension?: string;
   rowVersion: string;
 }
 
@@ -250,12 +252,7 @@ export interface UserDto {
   email?: string;
   isActive: boolean;
   isLocked: boolean;
-  roleScanner: boolean;
-  roleMobileScanner: boolean;
-  roleMaker: boolean;
-  roleChecker: boolean;
-  roleAdmin: boolean;
-  roleImageViewer: boolean;
+  roles: string[];
   isDeveloper: boolean;
   defaultLocationID?: number;
   defaultLocationName?: string;
@@ -274,4 +271,3 @@ export interface ClientAutoFillDto {
   globalCode?: string;
   isPriority?: boolean;
 }
-

@@ -91,11 +91,11 @@ public class SystemController : ControllerBase
         var roles = new List<RoleCatalogDto>
         {
             new() { Key = "roleScanner", Name = "Scanner", Description = "Desktop scanner operator." },
-            new() { Key = "roleMobileScanner", Name = "MobileScanner", Description = "Mobile scanner operator." },
+            new() { Key = "roleMobileScanner", Name = "Mobile Scanner", Description = "Mobile scanner operator." },
             new() { Key = "roleMaker", Name = "Maker", Description = "Maker data entry role." },
             new() { Key = "roleChecker", Name = "Checker", Description = "Checker authorization role." },
             new() { Key = "roleAdmin", Name = "Admin", Description = "System administrator role." },
-            new() { Key = "roleImageViewer", Name = "ImageViewer", Description = "Restricted role for viewing cheque images only." },
+            new() { Key = "roleImageViewer", Name = "Image Viewer", Description = "Restricted role for viewing cheque images only." },
             new() { Key = "isDeveloper", Name = "Developer", Description = "Developer tools and bypass capabilities." }
         };
 
@@ -117,6 +117,7 @@ public class SystemController : ControllerBase
             await _db.Batches.ExecuteDeleteAsync();
             await _db.BatchSequences.ExecuteDeleteAsync();
             await _db.AuditLogs.ExecuteDeleteAsync();
+            await _db.ErrorLogs.ExecuteDeleteAsync();
             await _db.MasterUploadLogs.ExecuteDeleteAsync();
 
             // Reset identity/sequence counters so new rows start from 1 again.
@@ -135,6 +136,8 @@ IF EXISTS (SELECT 1 FROM sys.identity_columns WHERE object_id = OBJECT_ID(N'dbo.
     DBCC CHECKIDENT ('dbo.BatchSequences', RESEED, 0);
 IF EXISTS (SELECT 1 FROM sys.identity_columns WHERE object_id = OBJECT_ID(N'dbo.AuditLogs'))
     DBCC CHECKIDENT ('dbo.AuditLogs', RESEED, 0);
+IF EXISTS (SELECT 1 FROM sys.identity_columns WHERE object_id = OBJECT_ID(N'dbo.ErrorLogs'))
+    DBCC CHECKIDENT ('dbo.ErrorLogs', RESEED, 0);
 IF EXISTS (SELECT 1 FROM sys.identity_columns WHERE object_id = OBJECT_ID(N'dbo.MasterUploadLogs'))
     DBCC CHECKIDENT ('dbo.MasterUploadLogs', RESEED, 0);
 ");

@@ -7,7 +7,7 @@
 // =============================================================================
 
 import { useState } from 'react';
-import { getImageUrl } from '../../utils/imageUtils';
+import { getSlipImageUrl, getChequeImageUrl } from '../../utils/imageUtils';
 import type { SlipEntryDto } from '../../types';
 import { Icon } from './ScanPageUI';
 
@@ -90,41 +90,46 @@ export function SlipGroupRow({ group, isActive, isLocked, onSelect, onImageSelec
           {group.slipScans.length > 0 && (
             <>
               <div style={{ padding: '5px 12px 2px 30px', fontSize: 10, color: 'var(--fg-subtle)', textTransform: 'uppercase', letterSpacing: '.04em' }}>Slip images</div>
-              {group.slipScans.map((scan: any, idx: number) => (
-                <div
-                  key={idx}
-                  onClick={() => { if (scan.imagePath) onImageSelect(getImageUrl(scan.imagePath), undefined, 'slip'); }}
-                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 12px 5px 30px', cursor: scan.imagePath ? 'pointer' : 'default', fontSize: 11, color: 'var(--fg)' }}
-                >
-                  <Icon name="image" size={12} style={{ color: 'var(--fg-muted)' }} />
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {scan.imagePath ? scan.imagePath.split(/[\\/]/).pop() : `Slip ${idx + 1}`}
-                  </span>
-                  {!scan.imagePath && <span style={{ color: 'var(--fg-faint)', fontSize: 10 }}>pending</span>}
-                </div>
-              ))}
+              {group.slipScans.map((scan: any, idx: number) => {
+                const url = getSlipImageUrl(scan);
+                return (
+                  <div
+                    key={idx}
+                    onClick={() => { if (scan.imageBaseName) onImageSelect(url, undefined, 'slip'); }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 12px 5px 30px', cursor: scan.imageBaseName ? 'pointer' : 'default', fontSize: 11, color: 'var(--fg)' }}
+                  >
+                    <Icon name="image" size={12} style={{ color: 'var(--fg-muted)' }} />
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {scan.imageBaseName ? scan.imageBaseName.split(/[\\/]/).pop() : `Slip ${idx + 1}`}
+                    </span>
+                    {!scan.imageBaseName && <span style={{ color: 'var(--fg-faint)', fontSize: 10 }}>pending</span>}
+                  </div>
+                );
+              })}
             </>
           )}
           {/* Cheques */}
           {group.cheques.length > 0 && (
             <>
               <div style={{ padding: '5px 12px 2px 30px', fontSize: 10, color: 'var(--fg-subtle)', textTransform: 'uppercase', letterSpacing: '.04em' }}>Cheques</div>
-              {group.cheques.map((c: any) => (
-                <div
-                  key={c.chequeItemId}
-                  onClick={() => {
-                    const front = c.frontImagePath ? getImageUrl(c.frontImagePath) : null;
-                    const back = c.backImagePath ? getImageUrl(c.backImagePath) : undefined;
-                    if (front) onImageSelect(front, back, 'cheque');
-                  }}
-                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 12px 5px 30px', cursor: (c.frontImagePath || c.backImagePath) ? 'pointer' : 'default', fontSize: 11, color: 'var(--fg)' }}
-                >
-                  <Icon name="payments" size={12} style={{ color: 'var(--fg-muted)' }} />
-                  <span style={{ fontFamily: 'var(--font-mono)' }}>#{String(c.chqSeq).padStart(2, '0')} {c.chqNo || '——'}</span>
-                  {c.rrState === 0 && <span style={{ color: 'var(--warning)', fontSize: 10, fontWeight: 600, marginLeft: 'auto' }}>⚠</span>}
-                  {c.rrState === 1 && <span style={{ color: 'var(--success)', fontSize: 10, marginLeft: 'auto' }}>✓</span>}
-                </div>
-              ))}
+              {group.cheques.map((c: any) => {
+                const front = getChequeImageUrl(c, 'front');
+                const back = getChequeImageUrl(c, 'back');
+                return (
+                  <div
+                    key={c.chequeItemId}
+                    onClick={() => {
+                      if (c.imageBaseName) onImageSelect(front, back, 'cheque');
+                    }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 12px 5px 30px', cursor: c.imageBaseName ? 'pointer' : 'default', fontSize: 11, color: 'var(--fg)' }}
+                  >
+                    <Icon name="payments" size={12} style={{ color: 'var(--fg-muted)' }} />
+                    <span style={{ fontFamily: 'var(--font-mono)' }}>#{String(c.chqSeq).padStart(2, '0')} {c.chqNo || '——'}</span>
+                    {c.rrState === 0 && <span style={{ color: 'var(--warning)', fontSize: 10, fontWeight: 600, marginLeft: 'auto' }}>⚠</span>}
+                    {c.rrState === 1 && <span style={{ color: 'var(--success)', fontSize: 10, marginLeft: 'auto' }}>✓</span>}
+                  </div>
+                );
+              })}
             </>
           )}
           {group.slipScans.length === 0 && group.cheques.length === 0 && (

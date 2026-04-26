@@ -4,7 +4,7 @@
 // Module      : Scanning
 // Description : Mobile camera scanning page — design-system matched, clean flow
 // Created     : 2026-04-14
-// Updated     : 2026-04-20
+// Updated     : 2026-04-24
 // =============================================================================
 
 import React, { useEffect, useMemo, useState } from 'react';
@@ -14,10 +14,12 @@ import { completeScan, getScanSession, startScan, uploadMobileCheque, uploadMobi
 import { toast } from '../store/toastStore';
 import type { ScanSessionDto } from '../types';
 import { BatchStatus } from '../types';
-import { getImageUrl } from '../utils/imageUtils';
+import { getChequeImageUrl, getSlipImageUrl } from '../utils/imageUtils';
 import { SlipFormModal } from '../components/SlipFormModal';
 import { CameraCapturePro } from '../components/CameraCapturePro';
 import { ImageEditModalMobile } from '../components/ImageEditModalMobile';
+
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 type Step =
   | 'slip-entry'      // fill in slip form
@@ -28,6 +30,40 @@ type Step =
   | 'cheque-review';  // review both, save or retake
 
 type EditTarget = 'slip' | 'cheque-front' | 'cheque-back';
+
+// ── Style constants ───────────────────────────────────────────────────────────
+
+const card: React.CSSProperties = {
+  background: 'var(--bg-raised)',
+  border: '1px solid var(--border)',
+  borderRadius: 'var(--r-lg)',
+  boxShadow: 'var(--shadow-xs)',
+  padding: 16,
+};
+
+const pill: React.CSSProperties = {
+  padding: '2px 6px', borderRadius: 'var(--r-full)',
+  fontSize: 10, fontWeight: 600,
+  background: 'var(--bg)', border: '1px solid var(--border)',
+  color: 'var(--fg-muted)',
+};
+
+const thumbBtn: React.CSSProperties = {
+  position: 'absolute', top: 4, right: 4,
+  width: 24, height: 24, borderRadius: '50%',
+  background: 'rgba(0,0,0,0.6)', border: 'none',
+  color: '#fff', cursor: 'pointer',
+  display: 'flex', alignItems: 'center', justifyContent: 'center',
+};
+
+const missingThumb: React.CSSProperties = {
+  width: '100%', aspectRatio: '85.6/54',
+  borderRadius: 8, border: '1px dashed var(--border)',
+  background: 'var(--bg-subtle)',
+  display: 'flex', alignItems: 'center', justifyContent: 'center',
+};
+
+// ── MobileScanPage ────────────────────────────────────────────────────────────
 
 export function MobileScanPage() {
   const { batchNo } = useParams<{ batchNo: string }>();
@@ -118,6 +154,7 @@ export function MobileScanPage() {
     };
     init();
   }, [batchNo]);
+
   useEffect(() => () => { if (slipPreview) URL.revokeObjectURL(slipPreview); }, [slipPreview]);
   useEffect(() => () => { if (frontPreview) URL.revokeObjectURL(frontPreview); }, [frontPreview]);
   useEffect(() => () => { if (backPreview) URL.revokeObjectURL(backPreview); }, [backPreview]);
@@ -454,7 +491,7 @@ export function MobileScanPage() {
                 <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 4, marginBottom: 6 }}>
                   {group.slipScans.map(s => (
                     <img key={s.slipScanId}
-                      src={getImageUrl(s.imagePath)}
+                      src={getSlipImageUrl(s)}
                       alt="slip"
                       style={{ height: 56, width: 40, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border)', flexShrink: 0 }}
                     />
@@ -471,12 +508,12 @@ export function MobileScanPage() {
                 }}>
                   {/* Thumbnail */}
                   <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                    {chq.frontImagePath && (
-                      <img src={getImageUrl(chq.frontImagePath)} alt="F"
+                    {chq.imageBaseName && (
+                      <img src={getChequeImageUrl(chq, 'front')} alt="F"
                         style={{ width: 44, height: 28, objectFit: 'cover', borderRadius: 4, border: '1px solid var(--border)' }} />
                     )}
-                    {chq.backImagePath && (
-                      <img src={getImageUrl(chq.backImagePath)} alt="B"
+                    {chq.imageBaseName && (
+                      <img src={getChequeImageUrl(chq, 'back')} alt="B"
                         style={{ width: 44, height: 28, objectFit: 'cover', borderRadius: 4, border: '1px solid var(--border)', opacity: 0.7 }} />
                     )}
                   </div>
@@ -484,10 +521,21 @@ export function MobileScanPage() {
                   {/* Info */}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--fg)' }}>
-                      #{String(chq.chqSeq).padStart(3, '0')} {chq.chqNo ? `· ${chq.chqNo}` : ''}
+                      #{String(chq.chqSeq).padStart(3, '0')}
+                      <span style={{ marginLeft: 6, color: 'var(--fg-muted)', fontWeight: 500 }}>
+                        Scan: {chq.scanChqNo || chq.chqNo || '—'}
+                      </span>
+                      {chq.rrChqNo && chq.rrChqNo !== chq.scanChqNo && (
+                        <span style={{ marginLeft: 8, color: 'var(--success)', fontWeight: 600 }}>
+                          RR: {chq.rrChqNo}
+                        </span>
+                      )}
                     </div>
-                    {(chq.scanMICR1 || chq.scanMICR2) && (
+                    {(chq.scanMICR1 || chq.scanMICR2 || chq.scanMICRRaw) && (
                       <div style={{ fontSize: 10, color: 'var(--fg-muted)', fontFamily: 'var(--font-mono)', marginTop: 1 }}>
+                        {chq.scanMICRRaw ? (
+                          <div style={{ color: 'var(--accent)', fontSize: 9, opacity: 0.8, marginBottom: 2 }}>RAW: {chq.scanMICRRaw}</div>
+                        ) : null}
                         {[chq.scanMICR1, chq.scanMICR2, chq.scanMICR3].filter(Boolean).join(' · ')}
                       </div>
                     )}
@@ -661,37 +709,3 @@ function StatusPill({ status }: { status: string }) {
     }}>{status}</span>
   );
 }
-
-
-
-// ── Style constants ───────────────────────────────────────────────────────────
-
-const card: React.CSSProperties = {
-  background: 'var(--bg-raised)',
-  border: '1px solid var(--border)',
-  borderRadius: 'var(--r-lg)',
-  boxShadow: 'var(--shadow-xs)',
-  padding: 16,
-};
-
-const pill: React.CSSProperties = {
-  padding: '2px 6px', borderRadius: 'var(--r-full)',
-  fontSize: 10, fontWeight: 600,
-  background: 'var(--bg)', border: '1px solid var(--border)',
-  color: 'var(--fg-muted)',
-};
-
-const thumbBtn: React.CSSProperties = {
-  position: 'absolute', top: 4, right: 4,
-  width: 24, height: 24, borderRadius: '50%',
-  background: 'rgba(0,0,0,0.6)', border: 'none',
-  color: '#fff', cursor: 'pointer',
-  display: 'flex', alignItems: 'center', justifyContent: 'center',
-};
-
-const missingThumb: React.CSSProperties = {
-  width: '100%', aspectRatio: '85.6/54',
-  borderRadius: 8, border: '1px dashed var(--border)',
-  background: 'var(--bg-subtle)',
-  display: 'flex', alignItems: 'center', justifyContent: 'center',
-};

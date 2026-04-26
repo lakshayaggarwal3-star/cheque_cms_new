@@ -15,12 +15,7 @@ public class CreateUserRequest
     public string Password { get; set; } = string.Empty;
     public string? Email { get; set; }
     public int? DefaultLocationID { get; set; }
-    public bool RoleScanner { get; set; }
-    public bool RoleMobileScanner { get; set; }
-    public bool RoleMaker { get; set; }
-    public bool RoleChecker { get; set; }
-    public bool RoleAdmin { get; set; }
-    public bool RoleImageViewer { get; set; }
+    public List<string> Roles { get; set; } = new();
     public bool IsDeveloper { get; set; }
 }
 
@@ -29,12 +24,7 @@ public class UpdateUserRequest
     public string Username { get; set; } = string.Empty;
     public string? Email { get; set; }
     public int? DefaultLocationID { get; set; }
-    public bool RoleScanner { get; set; }
-    public bool RoleMobileScanner { get; set; }
-    public bool RoleMaker { get; set; }
-    public bool RoleChecker { get; set; }
-    public bool RoleAdmin { get; set; }
-    public bool RoleImageViewer { get; set; }
+    public List<string> Roles { get; set; } = new();
     public bool IsDeveloper { get; set; }
 }
 
@@ -57,14 +47,14 @@ public class UserDto
     public string? Email { get; set; }
     public bool IsActive { get; set; }
     public bool IsLocked { get; set; }
-    public bool RoleScanner { get; set; }
-    public bool RoleMobileScanner { get; set; }
-    public bool RoleMaker { get; set; }
-    public bool RoleChecker { get; set; }
-    public bool RoleAdmin { get; set; }
-    public bool RoleImageViewer { get; set; }
+    public List<string> Roles { get; set; } = new();
     public bool IsDeveloper { get; set; }
     public int? DefaultLocationID { get; set; }
     public string? DefaultLocationName { get; set; }
     public string? CreatedAt { get; set; }
+}
+
+public class UpsertSettingRequest
+{
+    public string Value { get; set; } = string.Empty;
 }

@@ -8,6 +8,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { getRoleCatalog, resetOperationalData, RoleCatalogDto } from '../services/systemService';
+import { getUserSettings, setUserSetting } from '../services/userSettingService';
 import { toast } from '../store/toastStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { useAuthStore } from '../store/authStore';
@@ -106,17 +107,31 @@ function SettingRow({ title, description, children }: {
 export function SettingsPage() {
   const [resetting, setResetting] = useState(false);
   const [roles, setRoles] = useState<RoleCatalogDto[]>([]);
-  const { mockScanEnabled, setMockScanEnabled, entryMode, setEntryMode } = useSettingsStore();
+  const { mockScanEnabled, setMockScanEnabled, entryMode, setEntryMode, setWithSlipDefault } = useSettingsStore();
   const { theme, setTheme } = useTheme();
   const { user } = useAuthStore();
 
-  const hasBothRoles = !!(user?.roles.includes('Scanner') && user?.roles.includes('MobileScanner')) || !!user?.isDeveloper;
+  const hasBothRoles = !!(user?.roles.includes('Scanner') && user?.roles.includes('Mobile Scanner')) || !!user?.isDeveloper;
+
+  // Load user settings from backend on mount and sync into local store
+  useEffect(() => {
+    getUserSettings().then(settings => {
+      if (settings['ScanMode']) setEntryMode(settings['ScanMode'] as 'scanner' | 'mobile');
+      if (settings['WithSlip']) setWithSlipDefault(settings['WithSlip'] === 'true' ? 'with' : 'without');
+    }).catch(() => {});
+  }, [setEntryMode, setWithSlipDefault]);
 
   useEffect(() => {
     getRoleCatalog()
       .then(setRoles)
       .catch(() => toast.error('Failed to load role catalog'));
   }, []);
+
+  const handleEntryModeChange = async (mode: 'scanner' | 'mobile') => {
+    setEntryMode(mode);
+    try { await setUserSetting('ScanMode', mode); }
+    catch { toast.error('Failed to save scan mode'); }
+  };
 
   const handleReset = async () => {
     if (!window.confirm(
@@ -182,7 +197,7 @@ export function SettingsPage() {
                   { id: 'mobile'  as const, label: 'Mobile',  icon: 'smartphone'        },
                 ]}
                 value={entryMode}
-                onChange={setEntryMode}
+                onChange={handleEntryModeChange}
               />
             </SettingRow>
           )}

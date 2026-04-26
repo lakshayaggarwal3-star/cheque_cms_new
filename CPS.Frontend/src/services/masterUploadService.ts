@@ -35,6 +35,7 @@ export interface MasterPreviewDto {
   errorRows: number;
   errors: UploadErrorDto[];
   rows: MasterDataRowDto[];
+  parsingLogs: string[];
 }
 
 export interface ClientMasterDto {
@@ -62,6 +63,26 @@ export interface GlobalClientDto {
   linkedClientCount: number;
 }
 
+export interface InternalBankDto {
+  id: number;
+  ebank: string;
+  sortcode: string;
+  name: string;
+  fullname: string;
+  branch: string;
+}
+
+export interface ClientCaptureRuleDto {
+  id: number;
+  ceid: string;
+  clientCode: string;
+  fieldName1: string;
+  fieldName2: string;
+  fieldName3: string;
+  fieldName4: string;
+  fieldName5: string;
+}
+
 export interface MasterUploadLogDto {
   uploadID: number;
   masterType: string;
@@ -74,17 +95,66 @@ export interface MasterUploadLogDto {
   errorRows: number;
 }
 
-export type MasterType = 'location' | 'client';
+export type MasterType = 'location' | 'client' | 'internal-bank' | 'capture-rule' | 'scb-master';
 
 // ── Master upload / preview / apply ──────────────────────────────────────────
 
-export async function uploadMaster(type: MasterType, file: File): Promise<UploadResultDto> {
+export interface JobStartDto {
+  jobId: number;
+  status: string;
+  message: string;
+}
+
+export interface JobStatusDto {
+  id: number;
+  jobType: string;
+  status: 'Pending' | 'Processing' | 'Completed' | 'Failed' | 'Cancelled';
+  progressPercent: number;
+  totalRows: number;
+  processedRows: number;
+  insertedCount: number;
+  updatedCount: number;
+  failedCount: number;
+  errorMessage?: string;
+  createdAt: string;
+  startedAt?: string;
+  completedAt?: string;
+  errors: JobErrorDto[];
+}
+
+export interface JobErrorDto {
+  rowNumber: number;
+  field?: string;
+  message?: string;
+}
+
+// ── Master upload / preview / apply ──────────────────────────────────────────
+
+export async function uploadMaster(type: MasterType, file: File): Promise<JobStartDto> {
   const form = new FormData();
   form.append('file', file);
   const res = await apiClient.post(`/masters/${type}`, form, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
-  return extractData<UploadResultDto>(res);
+  return extractData<JobStartDto>(res);
+}
+
+export async function getJobStatus(id: number): Promise<JobStatusDto> {
+  const res = await apiClient.get(`/BackgroundJob/${id}`);
+  return res.data;
+}
+
+export async function cancelJob(id: number): Promise<void> {
+  await apiClient.post(`/BackgroundJob/${id}/cancel`);
+}
+
+export async function deleteJob(id: number): Promise<void> {
+  await apiClient.delete(`/BackgroundJob/${id}`);
+}
+
+export async function getUserJobs(): Promise<JobStatusDto[]> {
+  const res = await apiClient.get(`/BackgroundJob/user`);
+  return res.data;
 }
 
 export async function previewMaster(type: MasterType, file: File): Promise<MasterPreviewDto> {
@@ -181,4 +251,22 @@ export async function linkClientsToGlobal(globalClientId: number, clientIds: num
 }
 export async function deleteGlobalClient(id: number): Promise<void> {
   await apiClient.delete(`/clients/global/${id}`);
+}
+
+// ── Extra Masters Fetch ───────────────────────────────────────────────────────
+
+export async function getInternalBankData(page = 1, pageSize = 20, query = ''): Promise<PagedResult<InternalBankDto>> {
+  const res = await apiClient.get('/extra-masters/internal-banks', { params: { page, pageSize, q: query || undefined } });
+  return extractData<PagedResult<InternalBankDto>>(res);
+}
+
+export async function getCaptureRuleData(page = 1, pageSize = 20, query = ''): Promise<PagedResult<ClientCaptureRuleDto>> {
+  const res = await apiClient.get('/extra-masters/capture-rules', { params: { page, pageSize, q: query || undefined } });
+  return extractData<PagedResult<ClientCaptureRuleDto>>(res);
+}
+
+// ── Background Jobs & Cleanup ──────────────────────────────────────────────────
+
+export async function clearMaster(type: MasterType): Promise<void> {
+  await apiClient.post(`/masters/clear/${type}`);
 }

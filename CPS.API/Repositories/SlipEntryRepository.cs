@@ -19,7 +19,7 @@ public class SlipEntryRepository : ISlipEntryRepository
 
     // ─── SlipEntry ────────────────────────────────────────────────────────────
 
-    public async Task<SlipEntry?> GetByIdAsync(int slipEntryId) =>
+    public async Task<SlipEntry?> GetByIdAsync(long slipEntryId) =>
         await _db.SlipEntries
             .Include(s => s.SlipScans.Where(ss => !ss.IsDeleted).OrderBy(ss => ss.ScanOrder))
             .Include(s => s.ChequeItems.Where(c => !c.IsDeleted).OrderBy(c => c.ChqSeq))
@@ -35,7 +35,7 @@ public class SlipEntryRepository : ISlipEntryRepository
             .OrderBy(s => s.CreatedAt)
             .ToListAsync();
 
-    public async Task<bool> SlipNoExistsAsync(long batchId, string slipNo, int? excludeId = null) =>
+    public async Task<bool> SlipNoExistsAsync(long batchId, string slipNo, long? excludeId = null) =>
         await _db.SlipEntries.AnyAsync(s =>
             s.BatchId == batchId &&
             s.SlipNo == slipNo &&
@@ -60,7 +60,7 @@ public class SlipEntryRepository : ISlipEntryRepository
     public async Task<SlipScan?> GetSlipScanByIdAsync(long slipScanId) =>
         await _db.SlipScans.FirstOrDefaultAsync(s => s.SlipScanId == slipScanId && !s.IsDeleted);
 
-    public async Task<List<SlipScan>> GetSlipScansByEntryAsync(int slipEntryId) =>
+    public async Task<List<SlipScan>> GetSlipScansByEntryAsync(long slipEntryId) =>
         await _db.SlipScans
             .Where(s => s.SlipEntryId == slipEntryId && !s.IsDeleted)
             .OrderBy(s => s.ScanOrder)
@@ -90,7 +90,7 @@ public class SlipEntryRepository : ISlipEntryRepository
             .OrderBy(c => c.SeqNo)
             .ToListAsync();
 
-    public async Task<List<ChequeItem>> GetChequeItemsBySlipAsync(int slipEntryId) =>
+    public async Task<List<ChequeItem>> GetChequeItemsBySlipAsync(long slipEntryId) =>
         await _db.ChequeItems
             .Where(c => c.SlipEntryId == slipEntryId && !c.IsDeleted)
             .OrderBy(c => c.ChqSeq)
@@ -109,20 +109,41 @@ public class SlipEntryRepository : ISlipEntryRepository
         await _db.SaveChangesAsync();
     }
 
-    public async Task<int> GetNextBatchSeqNoAsync(long batchId)
+    public async Task<(int SeqNo, int ChqSeq)> GetNextAtomicSequencesAsync(long batchId, long slipEntryId)
     {
-        var max = await _db.ChequeItems
-            .Where(c => c.BatchId == batchId && !c.IsDeleted)
-            .MaxAsync(c => (int?)c.SeqNo);
-        return (max ?? 0) + 1;
-    }
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        try
+        {
+            // 1. Get/Increment Batch Global Sequence (SeqNo)
+            var batchSeq = await _db.BatchItemSequences
+                .FromSqlRaw("SELECT * FROM BatchItemSequences WITH (UPDLOCK) WHERE BatchId = {0}", batchId)
+                .FirstOrDefaultAsync();
 
-    public async Task<int> GetNextChqSeqAsync(int slipEntryId)
-    {
-        var max = await _db.ChequeItems
-            .Where(c => c.SlipEntryId == slipEntryId && !c.IsDeleted)
-            .MaxAsync(c => (int?)c.ChqSeq);
-        return (max ?? 0) + 1;
+            if (batchSeq == null)
+            {
+                batchSeq = new BatchItemSequence { BatchId = batchId, LastSeqNo = 0 };
+                _db.BatchItemSequences.Add(batchSeq);
+            }
+            batchSeq.LastSeqNo++;
+
+            // 2. Get/Increment Slip Local Sequence (ChqSeq)
+            var slip = await _db.SlipEntries
+                .FromSqlRaw("SELECT * FROM SlipEntries WITH (UPDLOCK) WHERE SlipEntryId = {0}", slipEntryId)
+                .FirstOrDefaultAsync() 
+                ?? throw new InvalidOperationException($"SlipEntry {slipEntryId} not found.");
+
+            slip.LastChqSeq++;
+
+            await _db.SaveChangesAsync();
+            await tx.CommitAsync();
+
+            return (batchSeq.LastSeqNo, slip.LastChqSeq);
+        }
+        catch
+        {
+            await tx.RollbackAsync();
+            throw;
+        }
     }
 
     public async Task<bool> AllRRResolvedAsync(long batchId) =>

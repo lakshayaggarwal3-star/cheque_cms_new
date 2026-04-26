@@ -6,7 +6,7 @@
 // Created     : 2026-04-17
 // =============================================================================
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { createSlipEntry, getClientsByLocation } from '../services/slipService';
 import { toast } from '../store/toastStore';
@@ -57,7 +57,12 @@ export function SlipFormModal({ batchId, defaultPickupPoint, existingSlips = [],
   const [clientSearchTerm, setClientSearchTerm] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
 
-  const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<SlipForm>();
+  const { register, handleSubmit, setValue, watch, formState: { errors }, trigger } = useForm<SlipForm>({
+    mode: 'onTouched'
+  });
+  const firstInputRef = useRef<HTMLInputElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const depositSlipRef = register('depositSlipNo', { required: 'Required' });
 
   // Check if current batch is already "Priority Locked"
   const prioritySlip = existingSlips.find(s => s.clientCode && availableClients.find(ac => ac.rcmsCode === s.clientCode)?.isPriority);
@@ -70,8 +75,13 @@ export function SlipFormModal({ batchId, defaultPickupPoint, existingSlips = [],
         setLoadingClients(true);
         const clients = await getClientsByLocation();
         setAvailableClients(clients.sort((a, b) => {
-          const aActive = a.status !== 'X';
-          const bActive = b.status !== 'X';
+          const isInactive = (s: string | null | undefined) => {
+            if (!s) return false;
+            const val = s.trim().toUpperCase();
+            return val === 'I' || val === 'X' || val === '0';
+          };
+          const aActive = !isInactive(a.status);
+          const bActive = !isInactive(b.status);
           if (aActive && !bActive) return -1;
           if (!aActive && bActive) return 1;
           return a.clientName.localeCompare(b.clientName);
@@ -94,24 +104,32 @@ export function SlipFormModal({ batchId, defaultPickupPoint, existingSlips = [],
   });
   const uniqueClients = Array.from(uniqueClientsMap.values());
 
-  const filteredClients = uniqueClients
-    .filter(c => {
-      if (!clientSearchTerm) return true;
-      const term = clientSearchTerm.toLowerCase();
-      return (
-        c.rcmsCode?.toLowerCase().includes(term) ||
-        c.clientName.toLowerCase().includes(term)
-      );
-    })
-    .sort((a, b) => {
-      if (!clientSearchTerm) return 0;
-      const term = clientSearchTerm.toLowerCase();
-      const aStarts = a.rcmsCode?.toLowerCase().startsWith(term) || a.clientName.toLowerCase().startsWith(term);
-      const bStarts = b.rcmsCode?.toLowerCase().startsWith(term) || b.clientName.toLowerCase().startsWith(term);
-      if (aStarts && !bStarts) return -1;
-      if (!aStarts && bStarts) return 1;
-      return 0;
-    });
+  const filteredClients = useMemo(() => {
+    return uniqueClients
+      .filter(c => {
+        if (!clientSearchTerm) return true;
+        const term = clientSearchTerm.toLowerCase();
+        return (
+          c.rcmsCode?.toLowerCase().includes(term) ||
+          c.clientName.toLowerCase().includes(term)
+        );
+      })
+      .sort((a, b) => {
+        if (!clientSearchTerm) return 0;
+        const term = clientSearchTerm.toLowerCase();
+        const aStarts = a.rcmsCode?.toLowerCase().startsWith(term) || a.clientName.toLowerCase().startsWith(term);
+        const bStarts = b.rcmsCode?.toLowerCase().startsWith(term) || b.clientName.toLowerCase().startsWith(term);
+        if (aStarts && !bStarts) return -1;
+        if (!aStarts && bStarts) return 1;
+        return 0;
+      });
+  }, [uniqueClients, clientSearchTerm]);
+
+  const getPickupPointDisplay = (c: ClientAutoFillDto) => {
+    return c.pickupPointCode
+      ? `${c.pickupPointCode}${c.pickupPointDesc ? ' - ' + c.pickupPointDesc : ''}`
+      : c.cityCode || '';
+  };
 
   const handleClientSelect = (client: ClientAutoFillDto) => {
     // Enforcement Logic
@@ -130,23 +148,74 @@ export function SlipFormModal({ batchId, defaultPickupPoint, existingSlips = [],
     // Auto-select pickup point if only one exists for this client
     const points = availableClients.filter(c => c.rcmsCode === client.rcmsCode);
     if (points.length === 1) {
-      const displayVal = points[0].pickupPointCode
-        ? `${points[0].cityCode} (${points[0].pickupPointCode} - ${points[0].pickupPointDesc || ''})`
-        : points[0].cityCode || '';
-      setValue('pickupPoint', displayVal);
+      setValue('pickupPoint', getPickupPointDisplay(points[0]));
     } else {
       setValue('pickupPoint', '');
     }
 
     setClientSearchTerm(client.rcmsCode || '');
     setShowClientDropdown(false);
-    setClientStatusWarning(client.status === 'X' ? 'Client status is INACTIVE (X)' : null);
+    const inactive = client.status && ['I', 'X', '0'].includes(client.status.trim().toUpperCase());
+    setClientStatusWarning(inactive ? `Client status is INACTIVE (${client.status})` : null);
     
     if (client.isPriority) {
       setPriorityClientInfo(client);
       setShowPriorityConfirm(true);
     } else {
       setPriorityClientInfo(null);
+    }
+  };
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (firstInputRef.current) {
+        firstInputRef.current.focus();
+      }
+    }, 150);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Auto-select pickup point if only one exists for this client
+  const currentClientCode = watch('clientCode');
+  useEffect(() => {
+    if (currentClientCode) {
+      const points = availableClients.filter(c => c.rcmsCode === currentClientCode);
+      if (points.length === 1) {
+        setValue('pickupPoint', getPickupPointDisplay(points[0]));
+      }
+    }
+  }, [currentClientCode, availableClients, setValue]);
+
+  // Scroll active item into view
+  useEffect(() => {
+    if (showClientDropdown && listRef.current && selectedIndex >= 0) {
+      const activeEl = listRef.current.children[selectedIndex] as HTMLElement;
+      if (activeEl) {
+        activeEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      }
+    }
+  }, [selectedIndex, showClientDropdown]);
+
+  const handleRequiredNext = async (e: React.KeyboardEvent, field: keyof SlipForm, nextId?: string) => {
+    if (e.key === 'Enter' || e.key === 'Tab') {
+      const isValid = await trigger(field);
+      if (!isValid) {
+        e.preventDefault();
+        return;
+      }
+
+      // Special check for client code — must have a resolved client name
+      if (field === 'clientCode' && !watch('clientName')) {
+        e.preventDefault();
+        setShowClientDropdown(true);
+        toast.warning('Please select a valid client from the list');
+        return;
+      }
+
+      if (e.key === 'Enter' && nextId) {
+        e.preventDefault();
+        setTimeout(() => document.getElementById(nextId)?.focus(), 10);
+      }
     }
   };
 
@@ -229,8 +298,13 @@ export function SlipFormModal({ batchId, defaultPickupPoint, existingSlips = [],
                 <label className="label" style={{ display: 'block', marginBottom: 6 }}>Deposit Slip No <span style={{ color: 'var(--danger)' }}>*</span>
                 </label>
                 <input
-                  autoFocus
-                  {...register('depositSlipNo', { required: 'Required' })}
+                  id="depositSlipNo"
+                  {...depositSlipRef}
+                  ref={(e) => {
+                    depositSlipRef.ref(e);
+                    firstInputRef.current = e;
+                  }}
+                  onKeyDown={(e) => handleRequiredNext(e, 'depositSlipNo', 'clientSearchInput')}
                   className="input-field"
                 />
                 {errors.depositSlipNo && (
@@ -270,24 +344,41 @@ export function SlipFormModal({ batchId, defaultPickupPoint, existingSlips = [],
                       setValue('pickupPoint', '');
                       setClientStatusWarning(null);
                     }}
-                    onKeyDown={e => {
+                    onKeyDown={async e => {
                       if (e.key === 'ArrowDown') {
                         e.preventDefault();
+                        setShowClientDropdown(true);
                         setSelectedIndex(prev => Math.min(prev + 1, Math.max(0, filteredClients.length - 1)));
                       } else if (e.key === 'ArrowUp') {
                         e.preventDefault();
+                        setShowClientDropdown(true);
                         setSelectedIndex(prev => Math.max(prev - 1, 0));
                       } else if (e.key === 'Enter') {
-                        e.preventDefault();
-                        if (showClientDropdown && filteredClients.length > 0) {
+                        if (showClientDropdown && filteredClients.length > 0 && filteredClients[selectedIndex]) {
+                          e.preventDefault();
                           handleClientSelect(filteredClients[selectedIndex]);
+                          setTimeout(() => {
+                            document.getElementById('pickupPointSelect')?.focus();
+                          }, 50);
                         } else {
-                          setValue('clientCode', clientSearchTerm);
-                          setShowClientDropdown(false);
+                          const isValid = await trigger('clientCode');
+                          if (isValid && watch('clientName')) {
+                            document.getElementById('pickupPointSelect')?.focus();
+                          } else {
+                            e.preventDefault();
+                            if (!watch('clientName')) {
+                              setShowClientDropdown(true);
+                              toast.warning('Please select a client from the results');
+                            }
+                          }
                         }
-                        setTimeout(() => {
-                          document.getElementById('pickupPointSelect')?.focus();
-                        }, 0);
+                      } else if (e.key === 'Tab') {
+                        const isValid = await trigger('clientCode');
+                        if (!isValid || !watch('clientName')) {
+                          e.preventDefault();
+                          setShowClientDropdown(true);
+                          if (isValid && !watch('clientName')) toast.warning('Select a client from the list');
+                        }
                       }
                     }}
                     onFocus={() => {
@@ -295,6 +386,7 @@ export function SlipFormModal({ batchId, defaultPickupPoint, existingSlips = [],
                       setSelectedIndex(0);
                     }}
                     onBlur={() => setTimeout(() => setShowClientDropdown(false), 200)}
+                    id="clientSearchInput"
                     placeholder="Type to search RCMS…"
                     className="input-field"
                     style={{ paddingLeft: 32 }}
@@ -313,7 +405,9 @@ export function SlipFormModal({ batchId, defaultPickupPoint, existingSlips = [],
                     borderRadius: 'var(--r-md)',
                     boxShadow: 'var(--shadow-md)',
                     maxHeight: 220, overflowY: 'auto',
-                  }}>
+                  }}
+                  ref={listRef}
+                >
                     {filteredClients.map((client, idx) => (
                       <div
                         key={client.rcmsCode}
@@ -330,7 +424,7 @@ export function SlipFormModal({ batchId, defaultPickupPoint, existingSlips = [],
                       >
                         <span style={{
                           width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
-                          background: client.status === 'X' ? 'var(--warning)' : 'var(--success)',
+                          background: (client.status && ['I', 'X', '0'].includes(client.status.trim().toUpperCase())) ? 'var(--warning)' : 'var(--success)',
                         }} />
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: 'var(--text-sm)', fontWeight: 500, color: 'var(--fg)' }}>
@@ -340,7 +434,7 @@ export function SlipFormModal({ batchId, defaultPickupPoint, existingSlips = [],
                             {client.clientName}
                           </div>
                         </div>
-                        {client.status === 'X' && (
+                        {client.status && ['I', 'X', '0'].includes(client.status.trim().toUpperCase()) && (
                           <span style={{ fontSize: 'var(--text-xs)', color: 'var(--warning)', fontWeight: 500, flexShrink: 0 }}>
                             Inactive
                           </span>
@@ -374,6 +468,7 @@ export function SlipFormModal({ batchId, defaultPickupPoint, existingSlips = [],
                 <select
                   id="pickupPointSelect"
                   {...register('pickupPoint', { required: 'Selection required' })}
+                  onKeyDown={(e) => handleRequiredNext(e, 'pickupPoint', 'totalInstrumentsInput')}
                   className="input-field"
                   disabled={!watch('clientCode')}
                   style={{ cursor: watch('clientCode') ? 'pointer' : 'not-allowed', opacity: watch('clientCode') ? 1 : 0.6 }}
@@ -385,9 +480,7 @@ export function SlipFormModal({ batchId, defaultPickupPoint, existingSlips = [],
                       {availableClients
                         .filter(c => c.rcmsCode === watch('clientCode'))
                         .map(c => {
-                          const displayVal = c.pickupPointCode
-                            ? `${c.pickupPointCode}${c.pickupPointDesc ? ' - ' + c.pickupPointDesc : ''}`
-                            : c.cityCode || '';
+                          const displayVal = getPickupPointDisplay(c);
                           return (
                             <option key={displayVal} value={displayVal}>
                               {displayVal || 'Default Location'}
@@ -410,7 +503,9 @@ export function SlipFormModal({ batchId, defaultPickupPoint, existingSlips = [],
                   Total Instruments <span style={{ color: 'var(--danger)' }}>*</span>
                 </label>
                 <input
+                  id="totalInstrumentsInput"
                   {...register('totalInstruments', { required: 'Required', min: { value: 1, message: 'Must be > 0' } })}
+                  onKeyDown={(e) => handleRequiredNext(e, 'totalInstruments', 'slipAmountInput')}
                   type="number" min="1"
                   className="input-field"
                 />
@@ -431,7 +526,9 @@ export function SlipFormModal({ batchId, defaultPickupPoint, existingSlips = [],
                     color: 'var(--fg-muted)', fontSize: 'var(--text-sm)', fontWeight: 500, pointerEvents: 'none',
                   }}>₹</span>
                   <input
+                    id="slipAmountInput"
                     {...register('slipAmount', { required: 'Required', min: { value: 0.001, message: 'Must be > 0' } })}
+                    onKeyDown={(e) => handleRequiredNext(e, 'slipAmount', 'remarksInput')}
                     type="number" step="0.001" min="0"
                     className="input-field"
                     style={{ paddingLeft: 26 }}
@@ -448,6 +545,7 @@ export function SlipFormModal({ batchId, defaultPickupPoint, existingSlips = [],
               <div style={{ gridColumn: '1 / -1' }}>
                 <label className="label" style={{ display: 'block', marginBottom: 6 }}>Remarks</label>
                 <input
+                  id="remarksInput"
                   {...register('remarks')}
                   placeholder="Optional"
                   className="input-field"

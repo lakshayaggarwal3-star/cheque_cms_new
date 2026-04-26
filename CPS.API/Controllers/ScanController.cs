@@ -16,7 +16,7 @@ namespace CPS.API.Controllers;
 
 [ApiController]
 [Route("api/scan")]
-[Authorize(Roles = "Scanner,MobileScanner,Admin,Developer")]
+[Authorize(Roles = "Scanner,Mobile Scanner,Admin,Developer")]
 public class ScanController : ControllerBase
 {
     private readonly IScanService _scanService;
@@ -116,16 +116,16 @@ public class ScanController : ControllerBase
 
     // ─── Complete / Release ───────────────────────────────────────────────────
 
-    [HttpPost("{batchId:long}/slip/{slipEntryId:int}/complete-slip")]
-    public async Task<IActionResult> CompleteSlipPhase(long batchId, int slipEntryId)
+    [HttpPost("{batchId:long}/slip/{slipEntryId:long}/complete-slip")]
+    public async Task<IActionResult> CompleteSlipPhase(long batchId, long slipEntryId)
     {
         var userId = int.Parse(User.FindFirstValue("userId")!);
         await _scanService.UpdateSlipStatusAsync(batchId, slipEntryId, CPS.API.Models.SlipStatus.SlipScanned, userId);
         return Ok(ApiResponse<object>.Ok(new { }, "Slip scanning phase completed"));
     }
 
-    [HttpPost("{batchId:long}/slip/{slipEntryId:int}/complete-cheque")]
-    public async Task<IActionResult> CompleteChequePhase(long batchId, int slipEntryId)
+    [HttpPost("{batchId:long}/slip/{slipEntryId:long}/complete-cheque")]
+    public async Task<IActionResult> CompleteChequePhase(long batchId, long slipEntryId)
     {
         var userId = int.Parse(User.FindFirstValue("userId")!);
         await _scanService.UpdateSlipStatusAsync(batchId, slipEntryId, CPS.API.Models.SlipStatus.Complete, userId);

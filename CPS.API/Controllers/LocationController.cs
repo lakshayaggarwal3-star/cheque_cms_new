@@ -15,7 +15,7 @@ namespace CPS.API.Controllers;
 
 [ApiController]
 [Route("api/locations")]
-[Authorize(Roles = "Scanner,MobileScanner,Maker,Checker,Admin,Developer")]
+[Authorize(Roles = "Scanner,Mobile Scanner,Maker,Checker,Admin,Developer")]
 public class LocationController : ControllerBase
 {
     private readonly ILocationRepository _locationRepo;

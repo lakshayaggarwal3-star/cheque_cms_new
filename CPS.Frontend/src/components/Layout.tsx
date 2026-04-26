@@ -152,11 +152,11 @@ interface NavLinkDef {
 const NAV_LINKS: NavLinkDef[] = [
   { id: 'dashboard',    label: 'Dashboard',    icon: 'dashboard',        path: '/' },
   { id: 'all-batches',  label: 'All Batches',   icon: 'list_alt',         path: '/all-batches' },
-  { id: 'batch-create', label: 'New Batch',     icon: 'add_circle',       path: '/batch/create', roles: ['Scanner', 'MobileScanner', 'Admin', 'Developer'] },
-  { id: 'scan',         label: 'Scanning',      icon: 'document_scanner', path: '/scan',         roles: ['Scanner', 'MobileScanner', 'Admin', 'Developer'] },
+  { id: 'batch-create', label: 'New Batch',     icon: 'add_circle',       path: '/batch/create', roles: ['Scanner', 'Mobile Scanner', 'Admin', 'Developer'] },
+  { id: 'scan',         label: 'Scanning',      icon: 'document_scanner', path: '/scan',         roles: ['Scanner', 'Mobile Scanner', 'Admin', 'Developer'] },
   { id: 'rr',           label: 'Reject Repair', icon: 'build',            path: '/rr' },
   { id: 'users',        label: 'Users',         icon: 'group',            path: '/admin/users',  roles: ['Admin', 'Developer'] },
-  { id: 'masters',      label: 'Masters',       icon: 'folder',           path: '/admin/masters', roles: ['Admin', 'Developer'] },
+  { id: 'masters',      label: 'Masters',       icon: 'account_balance',  path: '/admin/masters', roles: ['Admin', 'Developer'] },
 ];
 
 const FOOTER_LINKS: NavLinkDef[] = [
@@ -171,7 +171,7 @@ const PAGE_TITLES: Record<string, { title: string; subtitle: string }> = {
   '/scan':           { title: 'Scanning Queue', subtitle: 'Batches pending scan' },
   '/rr':             { title: 'Reject Repair', subtitle: 'Batches pending repair' },
   '/admin/users':    { title: 'Users',         subtitle: 'Manage operators & roles' },
-  '/admin/masters':  { title: 'Masters',       subtitle: 'Clients, banks, sort codes' },
+  '/admin/masters':  { title: 'Masters',       subtitle: 'Clients, locations, and clearing house data' },
   '/admin/settings': { title: 'Settings',      subtitle: 'Application preferences' },
 };
 
@@ -402,7 +402,9 @@ export function Layout() {
       />
       
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
-        {!isNoHeaderPage && (
+        {/* Always show TopBar on mobile so the hamburger stays reachable.
+            On desktop, hide it for no-header pages (scan, rr detail). */}
+        {(!isNoHeaderPage || isMobile) && (
           <TopBar
             onToggle={() => setSidebarOpen(o => !o)}
             title={pageInfo.title}
@@ -410,16 +412,19 @@ export function Layout() {
             isDeveloper={user?.isDeveloper}
           />
         )}
-        
-        <main style={{ 
-          flex: 1, 
-          overflow: isNoHeaderPage ? 'hidden' : 'auto', 
-          display: 'flex', 
+
+        <main style={{
+          flex: 1,
+          overflow: isNoHeaderPage && !isMobile ? 'hidden' : 'auto',
+          display: 'flex',
           flexDirection: 'column',
           position: 'relative'
         }}>
+          {/* key={pathname} forces a clean Outlet remount whenever the route path
+              changes, ensuring ScanPage fully unmounts when navigating away.
+              Unlike key={location.key}, this does NOT remount on same-path pushes. */}
           <div
-            key={location.key}
+            key={location.pathname}
             className={!isNoHeaderPage ? "page-content" : ""}
             style={{
               padding: !isNoHeaderPage ? '20px 24px 32px' : 0,

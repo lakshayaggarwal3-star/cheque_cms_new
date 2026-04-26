@@ -24,8 +24,6 @@ public class CreateBatchRequest
     public string? SummRefNo { get; set; }
     public string? PIF { get; set; }
 
-    // Entry mode: "scanner" (auto-generate) or "mobile" (manual entry)
-    public string? EntryMode { get; set; }
 }
 
 public class UpdateBatchRequest
@@ -62,7 +60,9 @@ public class BatchDto
     public int TotalSlips { get; set; }
     public decimal TotalAmount { get; set; }
     public string ScanType { get; set; } = string.Empty;
+    public string EntryMode { get; set; } = string.Empty;
     public bool? WithSlip { get; set; }
+    public string? GlobalSlipNo { get; set; }
     public int BatchStatus { get; set; }
     public string BatchStatusLabel { get; set; } = string.Empty;
     public string CreatedByName { get; set; } = string.Empty;

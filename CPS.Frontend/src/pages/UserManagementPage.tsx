@@ -25,13 +25,9 @@ interface UserFormFields {
   username: string;
   email: string;
   defaultLocationID: string;
-  roleScanner: boolean;
-  roleMobileScanner: boolean;
-  roleMaker: boolean;
-  roleChecker: boolean;
-  roleAdmin: boolean;
-  roleImageViewer: boolean;
   isDeveloper: boolean;
+  // Dynamic role keys from ROLES definition
+  [key: string]: string | boolean;
 }
 
 interface ResetPwForm {
@@ -89,30 +85,29 @@ export function UserManagementPage() {
   const openCreate = () => {
     setSelected(null);
     setMode('create');
-    userForm.reset({
+    const defaults: any = {
       employeeID: '', password: '', username: '', email: '',
-      defaultLocationID: '',
-      roleScanner: false, roleMobileScanner: false, roleMaker: false, roleChecker: false, roleAdmin: false, roleImageViewer: false, isDeveloper: false,
-    });
+      defaultLocationID: '', isDeveloper: false,
+    };
+    ROLES.forEach(r => { defaults[r.key] = false; });
+    userForm.reset(defaults);
   };
 
   const openEdit = (u: UserDto) => {
     setSelected(u);
     setMode('edit');
-    userForm.reset({
+    const values: any = {
       employeeID: u.employeeID,
       password: '',
       username: u.username,
       email: u.email ?? '',
       defaultLocationID: u.defaultLocationID?.toString() ?? '',
-      roleScanner: u.roleScanner,
-      roleMobileScanner: u.roleMobileScanner,
-      roleMaker:   u.roleMaker,
-      roleChecker: u.roleChecker,
-      roleAdmin:   u.roleAdmin,
-      roleImageViewer: u.roleImageViewer,
       isDeveloper: u.isDeveloper,
+    };
+    ROLES.forEach(r => {
+      values[r.key] = u.roles.includes(r.key);
     });
+    userForm.reset(values);
   };
 
   const openResetPw = (u: UserDto) => {
@@ -123,15 +118,17 @@ export function UserManagementPage() {
 
   // ── Submit ────────────────────────────────────────────────────────────────
   const handleUserSubmit = async (data: UserFormFields) => {
-    // Auto-select Scanner role if no roles are selected
-    if (!data.roleScanner && !data.roleMobileScanner && !data.roleMaker && !data.roleChecker && !data.roleAdmin && !data.roleImageViewer && !data.isDeveloper) {
-      data.roleScanner = true;
+    const selectedRoles = ROLES.filter(r => data[r.key] === true).map(r => r.key);
+    
+    // Auto-select Scanner role if no roles are selected and not a developer
+    if (selectedRoles.length === 0 && !data.isDeveloper) {
+      selectedRoles.push('Scanner');
     }
 
-    const isAdminOrDev = data.roleAdmin || data.isDeveloper;
-    const hasUncheckedRoles = !data.roleScanner || !data.roleMobileScanner || !data.roleMaker || !data.roleChecker;
+    const isAdminOrDev = selectedRoles.includes('Admin') || data.isDeveloper;
+    const hasCoreRoles = selectedRoles.some(r => ['Scanner', 'Mobile Scanner', 'Maker', 'Checker'].includes(r));
     
-    if (isAdminOrDev && hasUncheckedRoles && mode === 'edit') {
+    if (isAdminOrDev && !hasCoreRoles && mode === 'edit') {
       setPendingRoles(data);
       setShowRoleWarning(true);
       return;
@@ -143,6 +140,8 @@ export function UserManagementPage() {
   const performUserSubmit = async (data: UserFormFields) => {
     setSubmitting(true);
     try {
+      const selectedRoles = ROLES.filter(r => data[r.key] === true).map(r => r.key);
+
       if (mode === 'create') {
         const req: CreateUserRequest = {
           employeeID:       data.employeeID,
@@ -150,13 +149,8 @@ export function UserManagementPage() {
           password:         data.password,
           email:            data.email || undefined,
           defaultLocationID: data.defaultLocationID ? parseInt(data.defaultLocationID) : undefined,
-          roleScanner: data.roleScanner,
-          roleMobileScanner: data.roleMobileScanner,
-          roleMaker:   data.roleMaker,
-          roleChecker: data.roleChecker,
-          roleAdmin:   data.roleAdmin,
-          roleImageViewer: data.roleImageViewer,
-          isDeveloper: data.isDeveloper,
+          roles:            selectedRoles,
+          isDeveloper:      data.isDeveloper,
         };
         await createUser(req);
         toast.success('User created successfully');
@@ -165,13 +159,8 @@ export function UserManagementPage() {
           username:         data.username,
           email:            data.email || undefined,
           defaultLocationID: data.defaultLocationID ? parseInt(data.defaultLocationID) : undefined,
-          roleScanner: data.roleScanner,
-          roleMobileScanner: data.roleMobileScanner,
-          roleMaker:   data.roleMaker,
-          roleChecker: data.roleChecker,
-          roleAdmin:   data.roleAdmin,
-          roleImageViewer: data.roleImageViewer,
-          isDeveloper: data.isDeveloper,
+          roles:            selectedRoles,
+          isDeveloper:      data.isDeveloper,
         };
         await updateUser(selected.userID, req);
         toast.success('User updated');

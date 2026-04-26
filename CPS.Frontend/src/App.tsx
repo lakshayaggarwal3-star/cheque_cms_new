@@ -54,7 +54,7 @@ function AppRoutes() {
       <Route path="/unauthorized" element={<UnauthorizedPage />} />
 
       {/* Protected — require any operational role (Excludes ImageViewer) */}
-      <Route element={<ProtectedRoute roles={['Scanner', 'MobileScanner', 'Maker', 'Checker', 'Admin', 'Developer']} />}>
+      <Route element={<ProtectedRoute roles={['Scanner', 'Mobile Scanner', 'Maker', 'Checker', 'Admin', 'Developer']} />}>
         <Route element={<Layout />}>
           <Route path="/" element={<DashboardPage />} />
           <Route path="/all-batches" element={<AllBatchesPage />} />
@@ -62,7 +62,7 @@ function AppRoutes() {
           <Route path="/rr/:batchId" element={<RRPage />} />
 
           {/* Scanner / Admin / Developer */}
-          <Route element={<ProtectedRoute roles={['Scanner', 'MobileScanner', 'Admin', 'Developer']} />}>
+          <Route element={<ProtectedRoute roles={['Scanner', 'Mobile Scanner', 'Admin', 'Developer']} />}>
             <Route path="/batch/create" element={<BatchCreatePage />} />
             <Route path="/batch/:batchId/details" element={<BatchCreatePage />} />
             <Route path="/scan" element={<ScanListPage />} />

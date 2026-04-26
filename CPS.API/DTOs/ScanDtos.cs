@@ -23,7 +23,7 @@ public class ScannerFeedRequest
 // Capture a slip scan image for a specific SlipEntry
 public class CaptureSlipScanRequest
 {
-    public int SlipEntryId { get; set; }
+    public long SlipEntryId { get; set; }
     public int ScanOrder { get; set; } = 1;
     public string ScannerType { get; set; } = "Document";
 }
@@ -31,14 +31,14 @@ public class CaptureSlipScanRequest
 // Capture a cheque for a specific SlipEntry
 public class CaptureChequeRequest
 {
-    public int SlipEntryId { get; set; }
+    public long SlipEntryId { get; set; }
     public string ScannerType { get; set; } = "Cheque";
 }
 
 public class SaveSlipScanRequest
 {
     public long BatchId { get; set; }
-    public int SlipEntryId { get; set; }
+    public long SlipEntryId { get; set; }
     public int ScanOrder { get; set; } = 1;
     public string? ImagePath { get; set; }
     public string ScannerType { get; set; } = "Document";
@@ -47,10 +47,14 @@ public class SaveSlipScanRequest
 public class SaveChequeItemRequest
 {
     public long BatchId { get; set; }
-    public int SlipEntryId { get; set; }
+    public long SlipEntryId { get; set; }
     public int ChqSeq { get; set; }
-    public string? MICRRaw { get; set; }
+    public int SeqNo { get; set; }
     public string? ChqNo { get; set; }
+    public string? ScanChqNo { get; set; }
+    public string? RRChqNo { get; set; }
+    public string? MICRRaw { get; set; }
+    public string? ScanMICRRaw { get; set; }
     public string? ScanMICR1 { get; set; }
     public string? ScanMICR2 { get; set; }
     public string? ScanMICR3 { get; set; }
@@ -64,7 +68,7 @@ public class SaveChequeItemRequest
 
 public class MobileUploadSlipScanRequest
 {
-    public int SlipEntryId { get; set; }
+    public long SlipEntryId { get; set; }
     public int ScanOrder { get; set; } = 1;
     public IFormFile? Image { get; set; }
     public string ScannerType { get; set; } = "Mobile-Camera";
@@ -72,7 +76,7 @@ public class MobileUploadSlipScanRequest
 
 public class BulkSlipUploadRequest
 {
-    public int SlipEntryId { get; set; }
+    public long SlipEntryId { get; set; }
     public List<IFormFile> Images { get; set; } = new();
     public string ScannerType { get; set; } = "Direct-Upload";
 }
@@ -80,14 +84,17 @@ public class BulkSlipUploadRequest
 
 public class MobileUploadChequeRequest
 {
-    public int SlipEntryId { get; set; }
+    public long SlipEntryId { get; set; }
     public int ChqSeq { get; set; }
     public IFormFile? ImageFront { get; set; }
     public IFormFile? ImageBack { get; set; }
     public IFormFile? ImageFrontTiff { get; set; }
     public IFormFile? ImageBackTiff { get; set; }
-    public string? MICRRaw { get; set; }
     public string? ChqNo { get; set; }
+    public string? ScanChqNo { get; set; }
+    public string? RRChqNo { get; set; }
+    public string? MICRRaw { get; set; }
+    public string? ScanMICRRaw { get; set; }
     public string? ScanMICR1 { get; set; }
     public string? ScanMICR2 { get; set; }
     public string? ScanMICR3 { get; set; }

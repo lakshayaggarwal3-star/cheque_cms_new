@@ -21,4 +21,9 @@ public interface IUserRepository
     Task<bool> ExistsUsernameAsync(string username, int? excludeUserId = null);
     Task<Location?> GetCurrentLocationAsync(int userId, DateOnly date);
     Task AddLocationHistoryAsync(UserLocationHistory history);
+    
+    // Role management
+    Task<List<Role>> GetAllRolesAsync();
+    Task<Role?> GetRoleByNameAsync(string roleName);
+    Task SyncUserRolesAsync(int userId, List<string> roleNames, bool isDeveloper);
 }

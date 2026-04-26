@@ -11,6 +11,7 @@ import { persist } from 'zustand/middleware';
 
 type Theme = 'light' | 'dark';
 type EntryMode = 'scanner' | 'mobile';
+export type WithSlipDefault = 'with' | 'without';
 
 interface SettingsStore {
   mockScanEnabled: boolean;
@@ -19,6 +20,8 @@ interface SettingsStore {
   setTheme: (theme: Theme) => void;
   entryMode: EntryMode;
   setEntryMode: (mode: EntryMode) => void;
+  withSlipDefault: WithSlipDefault;
+  setWithSlipDefault: (v: WithSlipDefault) => void;
   // Ranger scan options
   rangerMicrEnabled: boolean;
   setRangerMicrEnabled: (v: boolean) => void;
@@ -41,6 +44,8 @@ export const useSettingsStore = create<SettingsStore>()(
       setTheme: (theme) => set({ theme }),
       entryMode: 'scanner',
       setEntryMode: (mode) => set({ entryMode: mode }),
+      withSlipDefault: 'with',
+      setWithSlipDefault: (v) => set({ withSlipDefault: v }),
       // Ranger scan options
       rangerMicrEnabled: true,
       setRangerMicrEnabled: (v) => set({ rangerMicrEnabled: v }),

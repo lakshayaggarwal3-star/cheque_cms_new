@@ -16,7 +16,7 @@ namespace CPS.API.Controllers;
 
 [ApiController]
 [Route("api/batch")]
-[Authorize(Roles = "Scanner,MobileScanner,Maker,Checker,Admin,Developer")]
+[Authorize(Roles = "Scanner,Mobile Scanner,Maker,Checker,Admin,Developer")]
 public class BatchController : ControllerBase
 {
     private readonly IBatchService _batchService;
@@ -54,7 +54,7 @@ public class BatchController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "Scanner,MobileScanner,Admin,Developer")]
+    [Authorize(Roles = "Scanner,Mobile Scanner,Admin,Developer")]
     public async Task<IActionResult> Create([FromBody] CreateBatchRequest request)
     {
         var userId = int.Parse(User.FindFirstValue("userId")!);
@@ -63,7 +63,7 @@ public class BatchController : ControllerBase
     }
 
     [HttpPut("{id:long}")]
-    [Authorize(Roles = "Scanner,MobileScanner,Admin,Developer")]
+    [Authorize(Roles = "Scanner,Mobile Scanner,Admin,Developer")]
     public async Task<IActionResult> Update(long id, [FromBody] UpdateBatchRequest request)
     {
         var userId = int.Parse(User.FindFirstValue("userId")!);

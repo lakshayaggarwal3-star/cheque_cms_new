@@ -150,6 +150,7 @@ export function useScannerLogic({
           imageFrontTiff: frontTiff,
           imageBackTiff: backTiff,
           micrRaw: data.micrRaw || undefined,
+          scanMICRRaw: data.micrRaw || undefined,
           scanMICR1: data.scanMicr1 || undefined,
           scanMICR2: data.scanMicr2 || undefined,
           scanMICR3: data.scanMicr3 || undefined,
@@ -286,6 +287,7 @@ export function useScannerLogic({
         imageFront: front,
         imageBack: back,
         micrRaw: capture.micrRaw || undefined,
+        scanMICRRaw: capture.micrRaw || undefined,
       });
       setCurrentCheque(result);
       await onCaptureSuccess();
@@ -363,7 +365,7 @@ export function useScannerLogic({
         const capture = rangerGetCaptureData('Both');
         const front = base64ToFile(capture.frontBase64, 'cheque-front.jpg');
         const back = base64ToFile(capture.backBase64, 'cheque-back.jpg');
-        result = await uploadMobileCheque(batchId, { slipEntryId: activeSlipEntryId, chqSeq: nextChqSeq, imageFront: front, imageBack: back, micrRaw: capture.micrRaw || undefined });
+        result = await uploadMobileCheque(batchId, { slipEntryId: activeSlipEntryId, chqSeq: nextChqSeq, imageFront: front, imageBack: back, micrRaw: capture.micrRaw || undefined, scanMICRRaw: capture.micrRaw || undefined });
       }
       setCurrentCheque(result);
       await onCaptureSuccess();
@@ -380,22 +382,18 @@ export function useScannerLogic({
     try {
       await completeScan(batchId);
       toast.success('Scanning completed');
-      
-      if (useFlatbedWs) {
-        await flatbedDisconnectAction();
-        setFlatbedStatus('idle');
-      }
-
-      if (scannerChoice === 'Ranger') {
-        await rangerShutdown();
-      }
-
-      onComplete();
     } catch (err: any) {
       toast.error(err?.response?.data?.message ?? 'Failed to complete scanning');
-    } finally {
       setIsBusy(false);
+      return;
     }
+
+    // Best-effort scanner cleanup — fire and forget so failures never block navigation
+    if (useFlatbedWs) flatbedDisconnectAction().catch(() => {});
+    if (scannerChoice === 'Ranger') rangerShutdown().catch(() => {});
+
+    setIsBusy(false);
+    onComplete();
   }, [batchId, useFlatbedWs, scannerChoice]);
 
   // ─── Scanner settings ─────────────────────────────────────────────────────
@@ -442,6 +440,7 @@ export function useScannerLogic({
   }, []);
 
   // Auto-connect flatbed scanner on mount
+  // Auto-connect flatbed scanner on mount
   const autoInitScanner = useCallback(async () => {
     setFlatbedStatus('connecting');
     setFlatbedError('');
@@ -458,6 +457,21 @@ export function useScannerLogic({
       setFlatbedError(err?.message ?? 'Could not connect to scanner desktop app');
     }
   }, [flatbedWsUrl]);
+
+  const retryRanger = useCallback(async () => {
+    setIsBusy(true);
+    try {
+      await rangerShutdown();
+      // Resetting state to unknown will trigger the auto-init useEffect
+      setRangerState(RangerTransportState.TransportUnknownState);
+      await rangerStartup(rangerWsUrl);
+      toast.success('Ranger reconnection initiated');
+    } catch (err: any) {
+      toast.error(`Ranger retry failed: ${err.message}`);
+    } finally {
+      setIsBusy(false);
+    }
+  }, [rangerWsUrl]);
 
   const cleanup = useCallback(() => {
     rangerShutdown().catch(() => {});
@@ -518,6 +532,7 @@ export function useScannerLogic({
     handleDetectScanners,
     handleAutoSelectScanner,
     autoInitScanner,
+    retryRanger,
     cleanup,
   };
 }

@@ -16,7 +16,7 @@ public class ChequeItem
     [Key]
     public long ChequeItemId { get; set; }
 
-    public int SlipEntryId { get; set; }
+    public long SlipEntryId { get; set; }
 
     [ForeignKey(nameof(SlipEntryId))]
     public SlipEntry SlipEntry { get; set; } = null!;
@@ -36,8 +36,17 @@ public class ChequeItem
     [MaxLength(10)]
     public string? ChqNo { get; set; }
 
+    [MaxLength(10)]
+    public string? ScanChqNo { get; set; }
+
+    [MaxLength(10)]
+    public string? RRChqNo { get; set; }
+
     [MaxLength(100)]
     public string? MICRRaw { get; set; }
+
+    [MaxLength(100)]
+    public string? ScanMICRRaw { get; set; }
 
     // --- Scanner MICR (raw data from hardware, never overwritten) ---
     [MaxLength(15)]
@@ -59,8 +68,15 @@ public class ChequeItem
     [MaxLength(5)]
     public string? RRMICR3 { get; set; }
 
-    [Column(TypeName = "decimal(15,3)")]
-    public decimal? RRAmount { get; set; }
+    // --- Final / Effective MICR (used for reporting and clearing) ---
+    [MaxLength(15)]
+    public string? MICR1 { get; set; }
+
+    [MaxLength(15)]
+    public string? MICR2 { get; set; }
+
+    [MaxLength(5)]
+    public string? MICR3 { get; set; }
 
     [MaxLength(500)]
     public string? RRNotes { get; set; }
@@ -68,20 +84,28 @@ public class ChequeItem
     // 0 = NeedsReview, 1 = Approved, 2 = Repaired
     public int RRState { get; set; } = 0;
 
-    public int? RRBy { get; set; }
-    public DateTime? RRTime { get; set; }
+    // --- Auditing: Scanner ---
+    public DateTime? ScannerStartedAt { get; set; }
+    public int? ScannerCompletedBy { get; set; }
+    public DateTime? ScannerCompletedAt { get; set; }
 
-    [MaxLength(500)]
-    public string? FrontImagePath { get; set; }
+    // --- Auditing: RR ---
+    public DateTime? RRStartedAt { get; set; }
+    public int? RRCompletedBy { get; set; }
+    public DateTime? RRCompletedAt { get; set; }
 
-    [MaxLength(500)]
-    public string? BackImagePath { get; set; }
 
-    [MaxLength(500)]
-    public string? FrontImageTiffPath { get; set; }
+    // Optimization: Store base path and derive suffixes (SF, CF, CR)
 
+    // Optimization: Store base path and derive suffixes (SF, CF, CR)
     [MaxLength(500)]
-    public string? BackImageTiffPath { get; set; }
+    public string? ImageBaseName { get; set; }
+
+    [MaxLength(10)]
+    public string? FileExtension { get; set; }
+
+    [MaxLength(64)]
+    public string? ImageHash { get; set; }
 
     // Pending / Captured / Failed / RetryPending
     [MaxLength(20)]

@@ -32,10 +32,21 @@ try
     var builder = WebApplication.CreateBuilder(args);
     builder.Host.UseSerilog();
 
+    // Configure limits for large XML uploads
+    builder.WebHost.ConfigureKestrel(options =>
+    {
+        options.Limits.MaxRequestBodySize = 200 * 1024 * 1024; // 200MB
+    });
+
+    builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
+    {
+        options.MultipartBodyLengthLimit = 200 * 1024 * 1024; // 200MB
+    });
+
     // EF Core
     builder.Services.AddDbContext<CpsDbContext>(opts =>
         opts.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"),
-            sql => sql.CommandTimeout(60)));
+            sql => sql.CommandTimeout(300)));
 
     // JWT Bearer — reads from httpOnly cookie
     builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -64,6 +75,7 @@ try
 
     // Repositories
     builder.Services.AddScoped<IUserRepository, UserRepository>();
+    builder.Services.AddScoped<IUserSettingRepository, UserSettingRepository>();
     builder.Services.AddScoped<IBatchRepository, BatchRepository>();
     builder.Services.AddScoped<ISlipEntryRepository, SlipEntryRepository>();
     builder.Services.AddScoped<ILocationRepository, LocationRepository>();
@@ -80,13 +92,16 @@ try
     builder.Services.AddScoped<IRRService, RRService>();
     builder.Services.AddScoped<IUserService, UserService>();
     builder.Services.AddScoped<MasterUploadService>();
+    builder.Services.AddScoped<IScbMasterService, ScbMasterService>();
+    builder.Services.AddScoped<IMasterImportJobProcessor, MasterImportJobProcessor>();
+    builder.Services.AddSingleton<IJobSignalService, JobSignalService>();
+    builder.Services.AddHostedService<CPS.API.Workers.BackgroundJobWorker>();
 
     builder.Services.AddControllers()
         .AddJsonOptions(opts =>
             opts.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase);
 
     builder.Services.AddMemoryCache();
-    builder.Services.AddHttpContextAccessor();
 
     var app = builder.Build();
 
@@ -97,25 +112,56 @@ try
         db.Database.Migrate();
         Log.Information("Database migration applied.");
 
-        // Seed default developer/admin account if no users exist
+        // Seed roles if table is empty
+        if (!db.Roles.Any())
+        {
+            db.Roles.AddRange(
+                new Role { RoleName = "Scanner", Description = "Create batches and operate desktop scanner." },
+                new Role { RoleName = "Mobile Scanner", Description = "Create batches and scan using mobile devices." },
+                new Role { RoleName = "Maker", Description = "Enter cheque and slip data (Phase 2)." },
+                new Role { RoleName = "Checker", Description = "Verify Maker entries (Phase 2)." },
+                new Role { RoleName = "Admin", Description = "Full system access — users, masters, settings." },
+                new Role { RoleName = "Image Viewer", Description = "Restricted role for viewing cheque images." },
+                new Role { RoleName = "Developer", Description = "Super-user with full system access and tools." }
+            );
+            db.SaveChanges();
+            Log.Information("Seeded default roles catalog.");
+        }
+
+        // Seed default developer account if no users exist
         if (!db.Users.Any())
         {
-            db.Users.Add(new CPS.API.Models.UserMaster
+            var devUser = new UserMaster
             {
                 EmployeeID  = "DEV001",
                 Username    = "admin",
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword("Admin@1234", workFactor: 12),
                 Email       = "admin@cps.local",
                 IsActive    = true,
-                RoleScanner = true,
-                RoleMaker   = true,
-                RoleChecker = true,
-                RoleAdmin   = true,
-                IsDeveloper = true,
                 CreatedAt   = DateTime.UtcNow,
-            });
+            };
+            db.Users.Add(devUser);
+            db.SaveChanges();
+
+            var devRole = db.Roles.First(r => r.RoleName == "Developer");
+            db.UserRoles.Add(new UserRole { UserID = devUser.UserID, RoleID = devRole.RoleID });
             db.SaveChanges();
             Log.Information("Seeded default developer account — EmployeeID: DEV001 / Password: Admin@1234");
+        }
+        else
+        {
+            // Ensure existing DEV001 has Developer role if they lost it during migration
+            var devUser = db.Users.FirstOrDefault(u => u.EmployeeID == "DEV001");
+            if (devUser != null)
+            {
+                var devRole = db.Roles.FirstOrDefault(r => r.RoleName == "Developer");
+                if (devRole != null && !db.UserRoles.Any(ur => ur.UserID == devUser.UserID && ur.RoleID == devRole.RoleID))
+                {
+                    db.UserRoles.Add(new UserRole { UserID = devUser.UserID, RoleID = devRole.RoleID });
+                    db.SaveChanges();
+                    Log.Information("Restored Developer role to DEV001.");
+                }
+            }
         }
     }
 

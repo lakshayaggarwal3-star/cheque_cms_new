@@ -8,19 +8,24 @@
 // Updated     : 2026-04-23 (Location Filters & Status Toggles)
 // =============================================================================
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import * as XLSX from 'xlsx';
 import {
   applyMasterRows, getClientMasterData, getLocationMasterData, getTemplateUrl, previewMaster,
-  updateClientRecord, getGlobalClients, MasterType, MasterPreviewDto, MasterDataRowDto, 
-  UploadResultDto, ClientMasterDto, GlobalClientDto, updateGlobalClient, createGlobalClient, 
-  deleteGlobalClient, linkClientsToGlobal, updateLocationRecord
+  updateClientRecord, getGlobalClients, MasterType, MasterPreviewDto, 
+  ClientMasterDto, GlobalClientDto, updateGlobalClient, createGlobalClient, 
+  deleteGlobalClient, linkClientsToGlobal, updateLocationRecord,
+  getInternalBankData, getCaptureRuleData,
+  clearMaster, uploadMaster, getJobStatus, cancelJob, deleteJob, getUserJobs, JobStatusDto
 } from '../services/masterUploadService';
+import apiClient from '../services/api';
 import { toast } from '../store/toastStore';
 import { Icon } from '../components/scan';
+import ScbMasterTab from './ScbMasterTab';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type ExtendedMasterType = MasterType | 'global-client';
+type ExtendedMasterType = MasterType | 'global-client' | 'scb-master' | 'internal-bank' | 'capture-rule';
 
 interface ColumnDef {
   key: string;
@@ -47,6 +52,24 @@ const CLIENT_COLS: ColumnDef[] = [
   { key: 'status',          label: 'Status',          width: 110 },
 ];
 
+const BANK_COLS: ColumnDef[] = [
+  { key: 'ebank',    label: 'EBANK',    width: 100 },
+  { key: 'sortcode', label: 'SORTCODE', width: 100 },
+  { key: 'name',     label: 'Name'                 },
+  { key: 'fullname', label: 'Full Name'             },
+  { key: 'branch',   label: 'Branch',   width: 120 },
+];
+
+const RULE_COLS: ColumnDef[] = [
+  { key: 'ceid',       label: 'CEID',        width: 100 },
+  { key: 'clientCode', label: 'ClientCode',  width: 120 },
+  { key: 'fieldName1', label: 'FieldName1'             },
+  { key: 'fieldName2', label: 'FieldName2'             },
+  { key: 'fieldName3', label: 'FieldName3'             },
+  { key: 'fieldName4', label: 'FieldName4'             },
+  { key: 'fieldName5', label: 'FieldName5'             },
+];
+
 // ─── Utils ───────────────────────────────────────────────────────────────────
 
 const generateUniqueGlobalCode = (existing: GlobalClientDto[]) => {
@@ -62,17 +85,28 @@ const generateUniqueGlobalCode = (existing: GlobalClientDto[]) => {
 
 export function MastersPage() {
   const [activeType,   setActiveType]   = useState<ExtendedMasterType>('location');
-  const [uploading,    setUploading]    = useState(false);
   const [applying,     setApplying]     = useState(false);
+  const [verifying,    setVerifying]    = useState(false);
   const [preview,      setPreview]      = useState<MasterPreviewDto | null>(null);
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [pendingFile,  setPendingFile]  = useState<File | null>(null);
   
   const [locationRows, setLocationRows] = useState<any[]>([]);
   const [clientRows,   setClientRows]   = useState<ClientMasterDto[]>([]);
   const [globalClients, setGlobalClients] = useState<GlobalClientDto[]>([]);
+  const [bankRows,     setBankRows]      = useState<any[]>([]);
+  const [ruleRows,     setRuleRows]      = useState<any[]>([]);
+  
+  // Drawer state for recent jobs
+  const [showJobsDrawer, setShowJobsDrawer] = useState(false);
+  const [recentJobs,   setRecentJobs]    = useState<JobStatusDto[]>([]);
   
   const [loadingData,  setLoadingData]  = useState(true);
   const [search,       setSearch]       = useState('');
+
+  // Background Job State
+  const [activeJobId, setActiveJobId] = useState<number | null>(null);
+  const [jobStatus, setJobStatus] = useState<JobStatusDto | null>(null);
+  const pollingRef = useRef<NodeJS.Timeout | null>(null);
   
   // Advanced Filter State
   const [isAdvancedSearch, setIsAdvancedSearch] = useState(false);
@@ -108,19 +142,17 @@ export function MastersPage() {
   const [creating, setCreating] = useState(false);
 
   const [editClient, setEditClient] = useState<ClientMasterDto | null>(null);
+  const [editLocation, setEditLocation] = useState<any | null>(null);
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ── Load ──────────────────────────────────────────────────────────────────
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoadingData(true);
     try {
       if (activeType === 'location') {
         const res = await getLocationMasterData(page, PAGE_SIZE, search);
-        // Frontend filtering for advanced fields if search is the only param for now
-        // But I added q to backend, so I can pass search.
-        // For advanced location filters, we could also pass them if backend supported.
-        // For now, search handles it.
         setLocationRows(res.items);
         setTotalCount(res.totalCount);
       } else if (activeType === 'client') {
@@ -137,15 +169,84 @@ export function MastersPage() {
         if (globals.length > 0 && !selectedGlobal) {
           setSelectedGlobal(globals[0]);
         }
+      } else if (activeType === 'internal-bank') {
+        const res = await getInternalBankData(page, PAGE_SIZE, search);
+        setBankRows(res.items);
+        setTotalCount(res.totalCount);
+      } else if (activeType === 'capture-rule') {
+        const res = await getCaptureRuleData(page, PAGE_SIZE, search);
+        setRuleRows(res.items);
+        setTotalCount(res.totalCount);
       }
     } catch {
       toast.error('Failed to load master data');
     } finally {
       setLoadingData(false);
     }
+  }, [activeType, page, search, cityFilter, nameFilter, rcmsFilter, selectedGlobal]);
+
+  const fetchJobs = async () => {
+    try {
+      const jobs = await getUserJobs();
+      setRecentJobs(jobs);
+    } catch {
+      toast.error('Failed to load recent jobs.');
+    }
   };
 
-  useEffect(() => { loadData(); }, [activeType, page, search, cityFilter, nameFilter, rcmsFilter]);
+  useEffect(() => {
+    let intervalId: any;
+    if (showJobsDrawer) {
+      fetchJobs(); // Fetch immediately when opened
+      intervalId = setInterval(() => {
+        fetchJobs();
+      }, 10000); // And every 10s
+    }
+    return () => clearInterval(intervalId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showJobsDrawer]);
+
+  useEffect(() => { loadData(); }, [activeType, page, search, cityFilter, nameFilter, rcmsFilter, loadData]);
+
+  // Manual Job Refresh Function
+  const refreshJobStatus = async () => {
+    if (!activeJobId) return;
+    try {
+      const status = await getJobStatus(activeJobId);
+      setJobStatus(status);
+      if (status.status === 'Completed' || status.status === 'Failed' || status.status === 'Cancelled') {
+        if (status.status === 'Completed') {
+          toast.success(`Upload completed! ${status.insertedCount} inserted, ${status.updatedCount} updated.`);
+          loadData();
+        } else if (status.status === 'Failed') {
+          toast.error(`Upload failed: ${status.errorMessage}`);
+        }
+      }
+    } catch (err) {
+      console.error('Refresh error', err);
+    }
+  };
+
+  useEffect(() => {
+    let intervalId: any;
+    if (activeJobId && (!jobStatus || jobStatus.status === 'Processing' || jobStatus.status === 'Pending')) {
+      intervalId = setInterval(() => {
+        refreshJobStatus();
+      }, 10000);
+    }
+    return () => clearInterval(intervalId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeJobId, jobStatus?.status]);
+
+  // Initial fetch only
+  useEffect(() => {
+    if (activeJobId) {
+      refreshJobStatus();
+    } else {
+      setJobStatus(null);
+    }
+  }, [activeJobId]);
+
 
   useEffect(() => {
     if (selectedGlobal) {
@@ -184,20 +285,110 @@ export function MastersPage() {
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
+  const REQUIRED_HEADERS: Record<string, string[]> = {
+    location: ['SrNo', 'Grid', 'State', 'LocationName', 'Location Code', 'Cluster CODE', 'Zone', 'ScannerID', 'BOFD', 'PreTrun', 'DepositAc', 'IFSC', 'LocType', 'PIF Number'],
+    client: ['CITY_CODE', 'NAME', 'ADDRESS1', 'ADDRESS2', 'ADDRESS3', 'ADDRESS4', 'ADDRESS5', 'PICKUP_POINT_CODE', 'PICKUPPOINT_DESCRIPTION', 'RCMS_CODE', 'STATUS', 'STATUS_DATE'],
+    'internal-bank': ['EBANK', 'SORTCODE', 'NAME', 'FULLNAME', 'BRANCH'],
+    'capture-rule': ['CEID', 'ClientCode', 'FieldName1', 'FieldName2', 'FieldName3', 'FieldName4', 'FieldName5']
+  };
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setUploading(true);
+    
+    // For CHM XML, we skip local Excel validation and go straight to upload
+    if (activeType === 'scb-master') {
+      try {
+        setVerifying(true);
+        const res = await uploadMaster('scb-master', file);
+        toast.success('CHM XML Upload started in background');
+        setActiveJobId(res.jobId);
+        setShowJobsDrawer(true);
+      } catch (err: any) {
+        toast.error('Upload failed');
+      } finally {
+        setVerifying(false);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      }
+      return;
+    }
+    
+    setVerifying(true);
+    setPendingFile(file);
+    
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const bstr = evt.target?.result;
+        const wb = XLSX.read(bstr, { type: 'array', sheetRows: 101 }); // Read first 100 + header
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const data = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
+        
+        if (data.length === 0) throw new Error('File is empty');
+        
+        const headers = (data[0] || []).map(h => String(h || '').trim());
+        const required = REQUIRED_HEADERS[activeType] || [];
+        const missing = required.filter(h => !headers.some(actual => actual.toUpperCase() === h.toUpperCase()));
+        
+        const previewDto: MasterPreviewDto = {
+          masterType: activeType,
+          totalRows: 0, // Will be determined by backend on apply
+          validRows: 0,
+          errorRows: 0,
+          rows: data.slice(1, 101).map(rowArr => ({
+            values: headers.reduce((acc, h, i) => {
+              acc[h] = String(rowArr[i] || '');
+              return acc;
+            }, {} as any)
+          })),
+          errors: missing.map(m => ({ rowNumber: 1, field: 'Header', message: `Missing required column: ${m}` })),
+          parsingLogs: [
+            `Local Preview: ${file.name} loaded.`,
+            missing.length > 0 
+              ? `CRITICAL: Missing ${missing.length} headers.` 
+              : `Headers verified successfully.`
+          ]
+        };
+
+        setPreview(previewDto);
+        if (missing.length > 0) {
+          toast.error(`Invalid format: ${missing.length} headers missing`);
+        } else {
+          toast.success(`Verified locally — ready to apply`);
+        }
+      } catch (err: any) {
+        toast.error(err.message || 'Failed to read file');
+      } finally {
+        setVerifying(false);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      }
+    };
+    reader.onerror = () => {
+      toast.error('File reading failed');
+      setVerifying(false);
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  const handleClearMaster = async () => {
+    if (!window.confirm(`Are you sure you want to PERMANENTLY DELETE all ${activeType} data? This action cannot be undone.`)) return;
     try {
-      const res = await previewMaster('client', file);
-      setPreview(res);
-      setUploadedFile(file);
-      toast.success(`Verified — ${res.validRows} rows ready`);
+      await clearMaster(activeType as any);
+      toast.success(`${activeType.charAt(0).toUpperCase() + activeType.slice(1)} data cleared successfully.`);
+      loadData();
     } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? 'Verification failed');
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
+      toast.error('Clear failed');
+    }
+  };
+
+  const handleExportMaster = async () => {
+    try {
+      const url = `/api/masters/export/${activeType}`;
+      // Note: for scb-master, the controller handles the default section
+      window.open(url, '_blank');
+    } catch {
+      toast.error('Export failed');
     }
   };
 
@@ -294,7 +485,9 @@ export function MastersPage() {
   };
 
   const toggleClientStatus = async (client: ClientMasterDto) => {
-    const newStatus = client.status === 'A' ? 'I' : 'A';
+    const s = (client.status || '').trim().toUpperCase();
+    const isCurrentlyActive = !['I', 'X', '0', 'INACTIVE', 'DELETED'].includes(s);
+    const newStatus = isCurrentlyActive ? 'I' : 'A';
     try {
       await updateClientRecord(client.clientID, { status: newStatus });
       toast.success(`Client marked as ${newStatus === 'A' ? 'Active' : 'Inactive'}`);
@@ -329,17 +522,28 @@ export function MastersPage() {
   };
 
   const handleApplyPreview = async () => {
-    if (!preview) return;
+    if (!pendingFile) return;
     setApplying(true);
     try {
-      await applyMasterRows('client', preview.rows);
-      toast.success('Applied successfully');
+      const res = await uploadMaster(activeType as any, pendingFile);
+      setActiveJobId(res.jobId);
+      toast.success('Upload job created and queued.');
       setPreview(null);
-      loadData();
-    } catch {
-      toast.error('Apply failed');
+      setPendingFile(null);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'Apply failed');
     } finally {
       setApplying(false);
+    }
+  };
+
+  const handleCancelJob = async () => {
+    if (!activeJobId) return;
+    try {
+      await cancelJob(activeJobId);
+      toast.success('Cancellation requested');
+    } catch {
+      toast.error('Failed to cancel');
     }
   };
 
@@ -368,6 +572,7 @@ export function MastersPage() {
         </div>
         
         <div style={{ display: 'flex', gap: 10 }}>
+
           {activeType === 'global-client' ? (
             <button 
               onClick={() => { setModalGlobalCode(generateUniqueGlobalCode(globalClients)); setModalGlobalName(''); setShowCreateModal(true); }}
@@ -378,13 +583,36 @@ export function MastersPage() {
             </button>
           ) : (
             <>
-              <a href={getTemplateUrl(activeType as any)} download className="btn-secondary" style={{ height: 34 }}>
-                <Icon name="download" size={16} /> Template
-              </a>
-              <button className="btn-primary" style={{ height: 34 }} onClick={() => fileInputRef.current?.click()}>
-                <Icon name="upload" size={16} /> Bulk Upload
+              {activeType !== 'scb-master' && (
+                <>
+                  <button className="btn-secondary" style={{ height: 34, color: 'var(--error)' }} onClick={handleClearMaster}>
+                    <Icon name="delete_sweep" size={16} /> Clear All
+                  </button>
+                  <button className="btn-secondary" style={{ height: 34, color: 'var(--accent-500)', borderColor: 'var(--accent-500)' }} onClick={handleExportMaster}>
+                    <Icon name="download" size={16} /> Export
+                  </button>
+                </>
+              )}
+              <button className="btn-secondary" style={{ height: 34, color: 'var(--accent-500)', borderColor: 'var(--accent-500)' }} onClick={() => setShowJobsDrawer(true)}>
+                <Icon name="history" size={16} /> Jobs
               </button>
-              <input ref={fileInputRef} type="file" hidden onChange={handleFileChange} accept=".xlsx" />
+              {activeType !== 'scb-master' && (
+                <a href={getTemplateUrl(activeType as any)} download className="btn-secondary" style={{ height: 34 }}>
+                  <Icon name="description" size={16} /> Template
+                </a>
+              )}
+              <button className="btn-primary" style={{ height: 34 }} onClick={() => fileInputRef.current?.click()} disabled={verifying}>
+                {verifying ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div className="spinner-xs" /> Verifying...
+                  </div>
+                ) : (
+                  <>
+                    <Icon name="upload" size={16} /> {activeType === 'scb-master' ? 'Upload XML' : 'Bulk Upload'}
+                  </>
+                )}
+              </button>
+              <input ref={fileInputRef} type="file" hidden onChange={handleFileChange} accept={activeType === 'scb-master' ? '.xml' : '.xlsx'} />
             </>
           )}
         </div>
@@ -395,7 +623,10 @@ export function MastersPage() {
         {[
           { id: 'location', label: 'Locations' },
           { id: 'client', label: 'Client Master' },
-          { id: 'global-client', label: 'Global Client Master' }
+          { id: 'global-client', label: 'Global Client Master' },
+          { id: 'internal-bank', label: 'RCMS Bank Code' },
+          { id: 'capture-rule', label: 'Enrichment Master' },
+          { id: 'scb-master', label: 'Clearing House Master' }
         ].map(t => (
           <button
             key={t.id}
@@ -416,7 +647,7 @@ export function MastersPage() {
         ))}
       </div>
 
-      {activeType !== 'global-client' ? (
+      {(activeType === 'location' || activeType === 'client' || activeType === 'internal-bank' || activeType === 'capture-rule') ? (
         <>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
@@ -442,7 +673,7 @@ export function MastersPage() {
               )}
             </div>
 
-            {isAdvancedSearch && (
+            {isAdvancedSearch && (activeType === 'location' || activeType === 'client') && (
               <div className="card" style={{ padding: '16px 20px', background: 'var(--bg-subtle)', border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {activeType === 'client' ? (
                   <div style={{ display: 'flex', gap: 16 }}>
@@ -488,7 +719,10 @@ export function MastersPage() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-sm)' }}>
                 <thead style={{ background: 'var(--bg-subtle)', position: 'sticky', top: 0, zIndex: 1 }}>
                   <tr>
-                    {(activeType === 'location' ? LOCATION_COLS : CLIENT_COLS).map(col => (
+                    {(activeType === 'location' ? LOCATION_COLS : 
+                      activeType === 'client' ? CLIENT_COLS :
+                      activeType === 'internal-bank' ? BANK_COLS :
+                      RULE_COLS).map(col => (
                       <th key={col.key} style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, color: 'var(--fg-muted)', borderBottom: '1px solid var(--border)', width: col.width }}>
                         {col.label}
                       </th>
@@ -498,10 +732,19 @@ export function MastersPage() {
                 </thead>
                 <tbody>
                   {loadingData ? (<tr><td colSpan={10} style={{ padding: 40, textAlign: 'center' }}>Loading...</td></tr>) : 
-                   (activeType === 'location' ? locationRows : clientRows).length === 0 ? (<tr><td colSpan={10} style={{ padding: 40, textAlign: 'center' }}>No records.</td></tr>) : 
-                    (activeType === 'location' ? locationRows : clientRows).map((row: any, i) => (
+                   (activeType === 'location' ? locationRows : 
+                    activeType === 'client' ? clientRows :
+                    activeType === 'internal-bank' ? bankRows :
+                    ruleRows).length === 0 ? (<tr><td colSpan={10} style={{ padding: 40, textAlign: 'center' }}>No records.</td></tr>) : 
+                    (activeType === 'location' ? locationRows : 
+                     activeType === 'client' ? clientRows :
+                     activeType === 'internal-bank' ? bankRows :
+                     ruleRows).map((row: any, i) => (
                       <tr key={i} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                        {(activeType === 'location' ? LOCATION_COLS : CLIENT_COLS).map(col => (
+                        {(activeType === 'location' ? LOCATION_COLS : 
+                          activeType === 'client' ? CLIENT_COLS :
+                          activeType === 'internal-bank' ? BANK_COLS :
+                          RULE_COLS).map(col => (
                           <td key={col.key} style={{ padding: '10px 16px' }}>
                             {col.key === 'isPriority' ? (
                                <div 
@@ -525,21 +768,66 @@ export function MastersPage() {
                                  style={{ 
                                    display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer',
                                    padding: '3px 10px', borderRadius: 'var(--r-md)',
-                                   background: (row.status === 'A' || row.isActive === true) ? 'var(--success-bg)' : 'var(--bg-raised)',
-                                   border: `1px solid ${(row.status === 'A' || row.isActive === true) ? 'var(--success)' : 'var(--border)'}`,
-                                   color: (row.status === 'A' || row.isActive === true) ? 'var(--success)' : 'var(--fg-muted)',
+                                   background: (() => {
+                                     if (row.isActive === true) return 'var(--success-bg)';
+                                     if (activeType === 'client') {
+                                       const s = (row.status || '').trim().toUpperCase();
+                                       if (['I', 'X', '0', 'INACTIVE', 'DELETED'].includes(s)) return 'var(--bg-raised)';
+                                       return 'var(--success-bg)';
+                                     }
+                                     return row.isActive ? 'var(--success-bg)' : 'var(--bg-raised)';
+                                   })(),
+                                   border: `1px solid ${(() => {
+                                     if (row.isActive === true) return 'var(--success)';
+                                     if (activeType === 'client') {
+                                       const s = (row.status || '').trim().toUpperCase();
+                                       if (['I', 'X', '0', 'INACTIVE', 'DELETED'].includes(s)) return 'var(--border)';
+                                       return 'var(--success)';
+                                     }
+                                     return row.isActive ? 'var(--success)' : 'var(--border)';
+                                   })()}`,
+                                   color: (() => {
+                                     if (row.isActive === true) return 'var(--success)';
+                                     if (activeType === 'client') {
+                                       const s = (row.status || '').trim().toUpperCase();
+                                       if (['I', 'X', '0', 'INACTIVE', 'DELETED'].includes(s)) return 'var(--fg-muted)';
+                                       return 'var(--success)';
+                                     }
+                                     return row.isActive ? 'var(--success)' : 'var(--fg-muted)';
+                                   })(),
                                    fontSize: 11, fontWeight: 600
                                  }}
                                >
-                                 <div style={{ width: 6, height: 6, borderRadius: '50%', background: (row.status === 'A' || row.isActive === true) ? 'var(--success)' : 'var(--fg-faint)' }} />
-                                 {(row.status === 'A' || row.isActive === true) ? 'Active' : 'Inactive'}
+                                 <div style={{ 
+                                   width: 6, height: 6, borderRadius: '50%', 
+                                   background: (() => {
+                                     if (row.isActive === true) return 'var(--success)';
+                                     if (activeType === 'client') {
+                                       const s = (row.status || '').trim().toUpperCase();
+                                       if (['I', 'X', '0', 'INACTIVE', 'DELETED'].includes(s)) return 'var(--fg-faint)';
+                                       return 'var(--success)';
+                                     }
+                                     return row.isActive ? 'var(--success)' : 'var(--fg-faint)';
+                                   })() 
+                                 }} />
+                                 {(() => {
+                                   if (row.isActive === true) return 'Active';
+                                   if (activeType === 'client') {
+                                     const s = (row.status || '').trim().toUpperCase();
+                                     if (['I', 'X', '0', 'INACTIVE', 'DELETED'].includes(s)) return 'Inactive';
+                                     return 'Active';
+                                   }
+                                   return row.isActive ? 'Active' : 'Inactive';
+                                 })()}
                                </div>
                              ) :
                              (row[col.key] || '—')}
                           </td>
                         ))}
                         <td style={{ padding: '10px 16px', textAlign: 'right' }}>
-                          <button onClick={() => activeType === 'client' && setEditClient({ ...row })} className="btn-ghost" style={{ height: 28, color: 'var(--accent-500)' }}>Edit</button>
+                          {(activeType === 'client' || activeType === 'location') && (
+                            <button onClick={() => activeType === 'client' ? setEditClient({ ...row }) : setEditLocation({ ...row })} className="btn-ghost" style={{ height: 28, color: 'var(--accent-500)' }}>Edit</button>
+                          )}
                         </td>
                       </tr>
                     ))
@@ -558,7 +846,7 @@ export function MastersPage() {
             )}
           </div>
         </>
-      ) : (
+      ) : activeType === 'global-client' ? (
         /* ── Global Client Master Premium UI ── */
         <div style={{ flex: 1, display: 'flex', gap: 20, overflow: 'hidden' }}>
           
@@ -690,7 +978,9 @@ export function MastersPage() {
             )}
           </div>
         </div>
-      )}
+      ) : activeType === 'scb-master' ? (
+        <ScbMasterTab />
+      ) : null}
 
       {/* ── Add Clients Modal ── */}
       {showAddModal && selectedGlobal && (
@@ -832,18 +1122,240 @@ export function MastersPage() {
         </div>
       )}
 
+      {/* ── Edit Location Modal ── */}
+      {editLocation && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, backdropFilter: 'blur(2px)' }}>
+          <div className="card" style={{ width: 500, padding: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div style={{ padding: '16px 24px', background: 'var(--bg-raised)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <h2 style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 700 }}>Edit Location Master</h2>
+              <button onClick={() => setEditLocation(null)} className="btn-ghost"><Icon name="close" size={24} /></button>
+            </div>
+            
+            <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div>
+                <label className="label" style={{ fontSize: 10 }}>LOCATION NAME</label>
+                <input className="input-field" value={editLocation.locationName} onChange={e => setEditLocation({ ...editLocation, locationName: e.target.value })} />
+              </div>
+              <div style={{ display: 'flex', gap: 16 }}>
+                <div style={{ flex: 1 }}>
+                  <label className="label" style={{ fontSize: 10 }}>STATE</label>
+                  <input className="input-field" value={editLocation.state} onChange={e => setEditLocation({ ...editLocation, state: e.target.value })} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label className="label" style={{ fontSize: 10 }}>ZONE</label>
+                  <input className="input-field" value={editLocation.zone} onChange={e => setEditLocation({ ...editLocation, zone: e.target.value })} />
+                </div>
+              </div>
+              <div>
+                <label className="label" style={{ fontSize: 10 }}>STATUS</label>
+                <select className="input-field" value={editLocation.isActive ? 'true' : 'false'} onChange={e => setEditLocation({ ...editLocation, isActive: e.target.value === 'true' })}>
+                  <option value="true">Active</option>
+                  <option value="false">Inactive</option>
+                </select>
+              </div>
+            </div>
+
+            <div style={{ padding: '16px 24px', background: 'var(--bg-raised)', borderTop: '1px solid var(--border)', display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+              <button className="btn-secondary" style={{ width: 100 }} onClick={() => setEditLocation(null)}>Cancel</button>
+              <button className="btn-primary" style={{ width: 140 }} onClick={async () => { 
+                await updateLocationRecord(editLocation.locationID, { ...editLocation }); 
+                toast.success('Location updated'); 
+                setEditLocation(null); 
+                loadData(); 
+              }}>Save Changes</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Bulk Preview Overlay */}
       {preview && (
         <div style={{ position: 'fixed', inset: 0, background: 'var(--bg)', zIndex: 200, display: 'flex', flexDirection: 'column' }}>
           <div style={{ padding: '20px 32px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg-raised)' }}>
-            <div><h2 style={{ margin: 0 }}>Review Upload</h2><p style={{ margin: 4, fontSize: 'var(--text-xs)', color: 'var(--fg-subtle)' }}>{preview.validRows} valid rows.</p></div>
+            <div>
+              <h2 style={{ margin: 0 }}>Review Upload</h2>
+              <p style={{ margin: 4, fontSize: 'var(--text-xs)', color: 'var(--fg-subtle)' }}>
+                {preview.validRows} valid rows found out of {preview.totalRows} total. 
+                {preview.totalRows > 100 && <span style={{ color: 'var(--accent-500)', marginLeft: 8 }}> Showing first 100 rows only.</span>}
+              </p>
+            </div>
             <div style={{ display: 'flex', gap: 12 }}><button className="btn-secondary" onClick={() => setPreview(null)}>Discard</button><button className="btn-primary" onClick={handleApplyPreview}>{applying ? 'Applying...' : 'Apply'}</button></div>
           </div>
+          
+          {preview.parsingLogs && preview.parsingLogs.length > 0 && (
+            <div style={{ padding: '12px 32px', background: '#0d1117', color: '#c9d1d9', fontFamily: 'var(--font-mono)', fontSize: 11, display: 'flex', flexDirection: 'column', gap: 4, borderBottom: '1px solid #30363d' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#8b949e', marginBottom: 4, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <Icon name="terminal" size={14} /> <span>System Parsing Logs</span>
+              </div>
+              {preview.parsingLogs.map((log, i) => (
+                <div key={i} style={{ display: 'flex', gap: 12 }}>
+                  <span style={{ color: 'var(--accent-500)', opacity: 0.7 }}>➜</span>
+                  <span>{log}</span>
+                </div>
+              ))}
+            </div>
+          )}
           <div style={{ flex: 1, overflow: 'auto', padding: 20 }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-xs)' }}>
               <thead style={{ background: 'var(--bg-subtle)', position: 'sticky', top: 0 }}><tr><th style={{ padding: 12, textAlign: 'left' }}>Row</th>{preview.rows[0] && Object.keys(preview.rows[0].values).map(k => (<th key={k} style={{ padding: 12, textAlign: 'left' }}>{k}</th>))}<th style={{ padding: 12, textAlign: 'center' }}>Status</th></tr></thead>
               <tbody>{preview.rows.map((row, i) => (<tr key={i} style={{ borderBottom: '1px solid var(--border-subtle)' }}><td style={{ padding: 12 }}>{i + 2}</td>{Object.values(row.values).map((v, j) => (<td key={j} style={{ padding: 12 }}>{v || '—'}</td>))}<td style={{ padding: 12, textAlign: 'center' }}>OK</td></tr>))}</tbody>
             </table>
+          </div>
+        </div>
+      )}
+      {/* Job Progress Overlay */}
+      {jobStatus && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(8px)' }}>
+          <div className="card" style={{ width: 600, padding: 32, display: 'flex', flexDirection: 'column', gap: 24, boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }}>
+            <div style={{ textAlign: 'center' }}>
+              <h2 style={{ margin: 0, fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--accent-500)' }}>
+                {jobStatus.status === 'Processing' ? 'Processing Upload...' : 
+                 jobStatus.status === 'Pending' ? 'Waiting in Queue...' : 
+                 jobStatus.status === 'Completed' ? 'Upload Complete!' : 
+                 jobStatus.status === 'Cancelled' ? 'Upload Cancelled' : 'Upload Failed'}
+              </h2>
+              <p style={{ margin: '8px 0 0', color: 'var(--fg-subtle)' }}>
+                {activeType.toUpperCase()} Master — {jobStatus.totalRows > 0 ? `${jobStatus.processedRows} of ${jobStatus.totalRows} rows` : 'Reading file...'}
+              </p>
+            </div>
+
+            <div style={{ height: 12, background: 'var(--bg-subtle)', borderRadius: 6, overflow: 'hidden', position: 'relative', border: '1px solid var(--border)' }}>
+              <div style={{ 
+                height: '100%', 
+                width: `${jobStatus.progressPercent}%`, 
+                background: 'linear-gradient(90deg, var(--accent-600), var(--accent-400))', 
+                transition: 'width 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
+                boxShadow: '0 0 15px var(--accent-500)'
+              }} />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
+              {[
+                { label: 'Processed', value: jobStatus.processedRows, color: 'var(--fg)' },
+                { label: 'Inserted', value: jobStatus.insertedCount, color: '#4caf50' },
+                { label: 'Updated', value: jobStatus.updatedCount, color: '#2196f3' },
+                { label: 'Failed', value: jobStatus.failedCount, color: '#f44336' }
+              ].map(s => (
+                <div key={s.label} style={{ background: 'var(--bg-raised)', padding: '12px 8px', borderRadius: 'var(--r-md)', textAlign: 'center', border: '1px solid var(--border-subtle)' }}>
+                  <div style={{ fontSize: 10, color: 'var(--fg-subtle)', textTransform: 'uppercase', marginBottom: 4 }}>{s.label}</div>
+                  <div style={{ fontSize: 'var(--text-lg)', fontWeight: 700, color: s.color }}>{s.value}</div>
+                </div>
+              ))}
+            </div>
+
+            {jobStatus.errors && jobStatus.errors.length > 0 && (
+              <div style={{ maxHeight: 150, overflow: 'auto', background: '#0d1117', padding: 12, borderRadius: 8, border: '1px solid #30363d' }}>
+                <div style={{ fontSize: 10, color: '#8b949e', marginBottom: 8, textTransform: 'uppercase' }}>Recent Errors</div>
+                {jobStatus.errors.slice(-5).map((e, i) => (
+                  <div key={i} style={{ fontSize: 11, color: '#f85149', marginBottom: 4, display: 'flex', gap: 8 }}>
+                    <span style={{ opacity: 0.7 }}>Row {e.rowNumber}:</span>
+                    <span>{e.message}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+              <button className="btn-secondary" onClick={refreshJobStatus}>
+                <Icon name="refresh" size={18} /> Refresh Status
+              </button>
+              {(jobStatus.status === 'Processing' || jobStatus.status === 'Pending') && (
+                <button className="btn-secondary" style={{ color: 'var(--error)', borderColor: 'var(--error)' }} onClick={handleCancelJob}>
+                  <Icon name="cancel" size={18} /> Cancel Process
+                </button>
+              )}
+              {(jobStatus.status === 'Completed' || jobStatus.status === 'Failed' || jobStatus.status === 'Cancelled') && (
+                <button className="btn-secondary" style={{ color: 'var(--error)', borderColor: 'var(--error)' }} onClick={async () => {
+                  if (window.confirm('Are you sure you want to delete this job record?')) {
+                    try {
+                      await deleteJob(activeJobId!);
+                      toast.success('Job deleted.');
+                      setActiveJobId(null);
+                      setJobStatus(null);
+                    } catch (err) {
+                      toast.error('Failed to delete job.');
+                    }
+                  }
+                }}>
+                  <Icon name="delete" size={18} /> Delete Job
+                </button>
+              )}
+              <button className="btn-primary" onClick={() => setActiveJobId(null)}>
+                Close Window
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
+
+
+      {/* ── Jobs Drawer Overlay ── */}
+      {showJobsDrawer && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 400, display: 'flex', justifyContent: 'flex-end', backdropFilter: 'blur(2px)' }}>
+          <div style={{ width: 450, background: 'var(--bg-raised)', height: '100%', display: 'flex', flexDirection: 'column', boxShadow: '-4px 0 24px rgba(0,0,0,0.2)', animation: 'slideInRight 0.3s ease' }}>
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <h2 style={{ margin: 0, fontSize: 'var(--text-lg)', display: 'flex', alignItems: 'center', gap: 12 }}>
+                <Icon name="history" size={24} style={{ color: 'var(--accent-500)' }} />
+                Recent Uploads
+              </h2>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={fetchJobs} className="btn-ghost" style={{ padding: 8 }}><Icon name="refresh" size={20} /></button>
+                <button onClick={() => setShowJobsDrawer(false)} className="btn-ghost" style={{ padding: 8 }}><Icon name="close" size={20} /></button>
+              </div>
+            </div>
+            
+            <div style={{ flex: 1, overflowY: 'auto', padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {recentJobs.length === 0 ? (
+                <div style={{ textAlign: 'center', color: 'var(--fg-subtle)', marginTop: 40 }}>
+                  <Icon name="inbox" size={48} style={{ opacity: 0.5, marginBottom: 12 }} />
+                  <p>No recent jobs found.</p>
+                </div>
+              ) : recentJobs.map(job => (
+                <div key={job.id} style={{ background: 'var(--bg-subtle)', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', padding: 16 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--fg-base)' }}>{job.jobType} Upload <span style={{ color: 'var(--fg-subtle)', fontSize: 12, fontWeight: 400 }}>#{job.id}</span></div>
+                      <div style={{ fontSize: 11, color: 'var(--fg-faint)', marginTop: 4 }}>{new Date(job.createdAt).toLocaleString()}</div>
+                    </div>
+                    <span style={{ 
+                      padding: '4px 8px', borderRadius: 4, fontSize: 10, fontWeight: 600,
+                      background: job.status === 'Completed' ? 'rgba(76, 175, 80, 0.1)' : job.status === 'Failed' ? 'rgba(244, 67, 54, 0.1)' : 'var(--bg-raised)',
+                      color: job.status === 'Completed' ? '#4caf50' : job.status === 'Failed' ? '#f44336' : 'var(--accent-500)'
+                    }}>{job.status}</span>
+                  </div>
+                  
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+                    <div style={{ flex: 1, height: 6, background: 'var(--bg-raised)', borderRadius: 3, overflow: 'hidden' }}>
+                      <div style={{ width: `${job.progressPercent}%`, height: '100%', background: 'var(--accent-500)' }} />
+                    </div>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-muted)', width: 40, textAlign: 'right' }}>{job.progressPercent}%</span>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 16, fontSize: 12, color: 'var(--fg-muted)', marginBottom: 16, padding: '8px 12px', background: 'var(--bg-raised)', borderRadius: 4 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column' }}><span style={{ fontSize: 10, color: 'var(--fg-faint)' }}>Inserted</span><strong style={{ color: '#4caf50' }}>{job.insertedCount}</strong></div>
+                    <div style={{ display: 'flex', flexDirection: 'column' }}><span style={{ fontSize: 10, color: 'var(--fg-faint)' }}>Updated</span><strong style={{ color: '#2196f3' }}>{job.updatedCount}</strong></div>
+                    <div style={{ display: 'flex', flexDirection: 'column' }}><span style={{ fontSize: 10, color: 'var(--fg-faint)' }}>Failed</span><strong style={{ color: '#f44336' }}>{job.failedCount}</strong></div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                    <button onClick={() => { setShowJobsDrawer(false); setActiveJobId(job.id); refreshJobStatus(); }} className="btn-secondary" style={{ height: 32, fontSize: 12 }}>View Details</button>
+                    <button onClick={async () => {
+                      if (window.confirm('Delete this job record permanently?')) {
+                        try {
+                          await deleteJob(job.id);
+                          toast.success('Job deleted.');
+                          fetchJobs();
+                        } catch {
+                          toast.error('Failed to delete job.');
+                        }
+                      }
+                    }} className="btn-ghost" style={{ height: 32, fontSize: 12, color: 'var(--danger)' }}>Delete</button>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}

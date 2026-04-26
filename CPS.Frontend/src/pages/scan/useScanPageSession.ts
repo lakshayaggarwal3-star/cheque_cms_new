@@ -95,7 +95,7 @@ export function useScanPageSession({ state, scanner }: Deps) {
 
       if (isStartable) {
         try {
-          await startScan(batchId, s.withSlip!, s.scanType);
+          await startScan(batchId, s.withSlip!, s.scanType || 'Scan');
           const fresh = await getScanSession(batchId);
           setSession(fresh);
           applyResumeState(fresh, s.withSlip!);

@@ -77,12 +77,13 @@ public class SlipService : ISlipService
 
         await _slipRepo.CreateAsync(entry);
         await _audit.LogAsync("SlipEntry", entry.SlipEntryId.ToString(), "INSERT",
-            null, new { entry.SlipNo, entry.BatchId }, userId);
+            null, new { entry.SlipNo, entry.BatchId, entry.ClientName, entry.PickupPoint, entry.TotalInstruments, entry.SlipAmount }, 
+            userId, batchNo: batch.BatchNo);
 
         return MapToDto(entry);
     }
 
-    public async Task<SlipEntryDto> UpdateSlipEntryAsync(int slipEntryId, UpdateSlipEntryRequest request, int userId)
+    public async Task<SlipEntryDto> UpdateSlipEntryAsync(long slipEntryId, UpdateSlipEntryRequest request, int userId)
     {
         var entry = await _slipRepo.GetByIdAsync(slipEntryId)
             ?? throw new NotFoundException($"Slip entry {slipEntryId} not found.");
@@ -114,8 +115,10 @@ public class SlipService : ISlipService
             throw new ConflictException("Slip entry was modified by another user. Refresh and try again.");
         }
 
+        var batch = await _batchRepo.GetByIdAsync(entry.BatchId);
         await _audit.LogAsync("SlipEntry", slipEntryId.ToString(), "UPDATE", old,
-            new { entry.ClientCode, entry.SlipAmount, entry.TotalInstruments }, userId);
+            new { entry.ClientCode, entry.ClientName, entry.SlipAmount, entry.TotalInstruments, entry.PickupPoint, entry.DepositSlipNo }, 
+            userId, batchNo: batch?.BatchNo);
 
         return MapToDto(entry);
     }
@@ -187,8 +190,14 @@ public class SlipService : ISlipService
 
     private static bool IsClientActive(string? status)
     {
-        if (string.IsNullOrWhiteSpace(status)) return false;
-        return status.Trim().ToUpperInvariant() is "A" or "ACTIVE" or "Y" or "1";
+        if (string.IsNullOrWhiteSpace(status)) return true; // Default to active if status is missing
+        var s = status.Trim().ToUpperInvariant();
+        
+        // Explicitly inactive codes
+        if (s is "I" or "X" or "0" or "INACTIVE" or "DELETED") return false;
+        
+        // Everything else is considered active
+        return true;
     }
 
     internal static SlipEntryDto MapToDto(SlipEntry s) => new()
@@ -211,10 +220,10 @@ public class SlipService : ISlipService
             SlipScanId = ss.SlipScanId,
             SlipEntryId = ss.SlipEntryId,
             ScanOrder = ss.ScanOrder,
-            ImagePath = ss.ImagePath,
-            ScanStatus = ss.ScanStatus,
-            ScanError = ss.ScanError,
-            RetryCount = ss.RetryCount
+            RetryCount = ss.RetryCount,
+            ImageBaseName = ss.ImageBaseName,
+            FileExtension = ss.FileExtension,
+            ImageHash = ss.ImageHash
         }).ToList(),
         Cheques = s.ChequeItems.Select(c => new ChequeItemDto
         {
@@ -231,14 +240,12 @@ public class SlipService : ISlipService
             RRMICR1 = c.RRMICR1,
             RRMICR2 = c.RRMICR2,
             RRMICR3 = c.RRMICR3,
-            RRAmount = c.RRAmount,
             RRNotes = c.RRNotes,
             RRState = c.RRState,
-            FrontImagePath = c.FrontImagePath,
-            BackImagePath = c.BackImagePath,
-            ScanStatus = c.ScanStatus,
-            ScanError = c.ScanError,
-            RetryCount = c.RetryCount
+            RetryCount = c.RetryCount,
+            ImageBaseName = c.ImageBaseName,
+            FileExtension = c.FileExtension,
+            ImageHash = c.ImageHash
         }).ToList()
     };
 }

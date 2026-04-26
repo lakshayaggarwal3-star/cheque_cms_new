@@ -7,7 +7,7 @@
 // =============================================================================
 
 import React from 'react';
-import { getImageUrl } from '../../utils/imageUtils';
+import { getChequeImageUrl, getSlipImageUrl } from '../../utils/imageUtils';
 import { type ScanSessionDto } from '../../types';
 import { Icon, IconBtn, ImagePlaceholder, Pill } from '../../components/scan';
 import { ScanStep } from './ScanPage.types';
@@ -137,11 +137,11 @@ function ThumbnailSidebar({ session, sidebarOpen, setSidebarOpen, setViewerFront
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingLeft: 4, borderLeft: '1px solid var(--border-subtle)', marginLeft: 6 }}>
                   {/* Cheques */}
                   {group.cheques && [...group.cheques].reverse().map((chq: any, idx: number) => {
-                    const isViewed = viewerFront === getImageUrl(chq.frontImagePath);
+                    const isViewed = viewerFront === getChequeImageUrl(chq, 'front');
                     return (
                       <button
                         key={`chq-${chq.chequeItemId || idx}`}
-                        onClick={() => { setViewerFront(getImageUrl(chq.frontImagePath)); setViewerBack(chq.backImagePath ? getImageUrl(chq.backImagePath) : null); setViewerType('cheque'); setFlipped(false); }}
+                        onClick={() => { setViewerFront(getChequeImageUrl(chq, 'front')); setViewerBack(getChequeImageUrl(chq, 'back')); setViewerType('cheque'); setFlipped(false); }}
                         style={{ 
                           width: '100%', padding: 4, background: isViewed ? 'var(--bg-subtle)' : 'var(--bg)', 
                           border: `1px solid ${isViewed ? 'var(--accent-500)' : 'var(--border)'}`, 
@@ -152,8 +152,8 @@ function ThumbnailSidebar({ session, sidebarOpen, setSidebarOpen, setViewerFront
                         }}
                       >
                         <div style={{ width: '100%', height: 64, overflow: 'hidden', borderRadius: 'var(--r-sm)', background: 'var(--bg-subtle)' }}>
-                          {chq.frontImagePath ? (
-                            <img src={getImageUrl(chq.frontImagePath)} alt="chq" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                          {chq.imageBaseName ? (
+                            <img src={getChequeImageUrl(chq, 'front')} alt="chq" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                           ) : (
                             <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                               <span className="material-symbols-outlined" style={{ fontSize: 20, color: 'var(--fg-faint)' }}>payments</span>
@@ -175,11 +175,11 @@ function ThumbnailSidebar({ session, sidebarOpen, setSidebarOpen, setViewerFront
 
                     {/* Slips */}
                     {group.slipScans && [...group.slipScans].reverse().map((s: any, sIdx: number) => {
-                      const isViewed = viewerFront === getImageUrl(s.imagePath);
+                      const isViewed = viewerFront === getSlipImageUrl(s);
                       return (
                         <button
                           key={`slip-${s.slipScanId || sIdx}`}
-                          onClick={() => { setViewerFront(getImageUrl(s.imagePath)); setViewerBack(null); setViewerType('slip'); setFlipped(false); }}
+                          onClick={() => { setViewerFront(getSlipImageUrl(s)); setViewerBack(null); setViewerType('slip'); setFlipped(false); }}
                           style={{ 
                             width: '100%', padding: 4, background: isViewed ? 'var(--bg-subtle)' : 'var(--bg)', 
                             border: `1px solid ${isViewed ? 'var(--accent-500)' : 'var(--border)'}`, 
@@ -190,7 +190,7 @@ function ThumbnailSidebar({ session, sidebarOpen, setSidebarOpen, setViewerFront
                           }}
                         >
                           <div style={{ width: '100%', height: 64, overflow: 'hidden', borderRadius: 'var(--r-sm)', background: 'var(--bg-subtle)' }}>
-                            <img src={getImageUrl(s.imagePath)} alt="slip" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                            <img src={getSlipImageUrl(s)} alt="slip" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                           </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '0 2px' }}>
                             <span style={{ fontSize: 10, fontWeight: 700, color: isViewed ? 'var(--fg)' : 'var(--fg-subtle)' }}>Slip</span>
@@ -470,7 +470,7 @@ export function ScanViewport({
                 );
               }
               const item = viewItems[currentViewIdx] as any;
-              const hasPath = !!(item ? (isSlipView ? item.imagePath : item.frontImagePath) : null);
+              const hasPath = !!(item?.imageBaseName);
 
               if (isSlipView) {
                 return (

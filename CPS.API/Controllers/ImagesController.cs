@@ -41,7 +41,7 @@ public class ImagesController : ControllerBase
         }
 
         // Role check
-        var authorizedRoles = new[] { "Scanner", "MobileScanner", "Maker", "Checker", "Admin", "Developer", "ImageViewer" };
+        var authorizedRoles = new[] { "Scanner", "Mobile Scanner", "Maker", "Checker", "Admin", "Developer", "Image Viewer" };
         if (!authorizedRoles.Any(r => User.IsInRole(r)))
         {
             return Forbid();

@@ -14,7 +14,7 @@ export function ScanRouterPage() {
   // transitions from remounting into desktop flow or restarting scan modal.
   const useMobileFlow = useMemo(() => {
     const isDev = !!user?.isDeveloper;
-    const isMobileScanner = !!user?.roles?.includes('MobileScanner');
+    const isMobileScanner = !!user?.roles?.includes('Mobile Scanner');
     const isScanner = !!user?.roles?.includes('Scanner');
     const hasBoth = isMobileScanner && isScanner;
 

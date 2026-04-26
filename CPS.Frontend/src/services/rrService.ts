@@ -21,20 +21,22 @@ export async function getRRItem(chequeItemId: number): Promise<RRItemDto> {
 
 export async function saveRRCorrection(chequeItemId: number, data: {
   chqNo?: string;
+  scanChqNo?: string;
+  rrChqNo?: string;
   rrmicr1?: string;
   rrmicr2?: string;
   rrmicr3?: string;
-  rrAmount?: number;
   rrNotes?: string;
   approve?: boolean;
   rowVersion: string;
 }): Promise<RRItemDto> {
   const res = await apiClient.put(`/rr/item/${chequeItemId}`, {
     chqNo: data.chqNo,
+    scanChqNo: data.scanChqNo,
+    rrChqNo: data.rrChqNo,
     RRMICR1: data.rrmicr1,
     RRMICR2: data.rrmicr2,
     RRMICR3: data.rrmicr3,
-    RRAmount: data.rrAmount,
     RRNotes: data.rrNotes,
     Approve: data.approve ?? false,
     RowVersion: data.rowVersion,

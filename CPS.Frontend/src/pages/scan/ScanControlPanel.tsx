@@ -7,7 +7,7 @@
 // =============================================================================
 
 import React from 'react';
-import { getImageUrl } from '../../utils/imageUtils';
+import { getChequeImageUrl, getSlipImageUrl } from '../../utils/imageUtils';
 import { type ScanSessionDto, BatchStatus } from '../../types';
 import {
   Icon, ControlCard, DevMockSection,
@@ -207,10 +207,10 @@ function RecentSequences({
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(72px, 1fr))', gap: 5 }}>
               {session.slipScans.map((s, idx) => (
-                <div key={idx} onClick={() => { setViewerFront(getImageUrl(s.imagePath)); setViewerBack(null); setViewerType('slip'); setFlipped(false); }}
-                  style={{ aspectRatio: '1/1', background: 'var(--bg)', border: `1px solid ${viewerFront === getImageUrl(s.imagePath) ? 'var(--accent-500)' : 'var(--border)'}`, borderRadius: 'var(--r-sm)', overflow: 'hidden', cursor: 'pointer', position: 'relative' }}>
-                  <img src={getImageUrl(s.imagePath)} alt="slip" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  {viewerFront === getImageUrl(s.imagePath) && <div style={{ position: 'absolute', inset: 0, background: 'rgb(217 119 87 / 20%)' }} />}
+                <div key={idx} onClick={() => { setViewerFront(getSlipImageUrl(s)); setViewerBack(null); setViewerType('slip'); setFlipped(false); }}
+                  style={{ aspectRatio: '1/1', background: 'var(--bg)', border: `1px solid ${viewerFront === getSlipImageUrl(s) ? 'var(--accent-500)' : 'var(--border)'}`, borderRadius: 'var(--r-sm)', overflow: 'hidden', cursor: 'pointer', position: 'relative' }}>
+                  <img src={getSlipImageUrl(s)} alt="slip" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  {viewerFront === getSlipImageUrl(s) && <div style={{ position: 'absolute', inset: 0, background: 'rgb(217 119 87 / 20%)' }} />}
                 </div>
               ))}
             </div>
@@ -299,10 +299,10 @@ function RecentSequences({
                       {slipsExpanded && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 1, paddingLeft: 4 }}>
                           {slipCount > 0 ? (group.slipScans ?? []).map((s: any, sIdx: number) => {
-                            const isViewed = viewerFront === getImageUrl(s.imagePath);
+                            const isViewed = viewerFront === getSlipImageUrl(s);
                             return (
                               <div key={sIdx}
-                                onClick={() => { setActiveSlipEntryId(group.slipEntryId); setViewerFront(getImageUrl(s.imagePath)); setViewerBack(null); setViewerType('slip'); setFlipped(false); }}
+                                onClick={() => { setActiveSlipEntryId(group.slipEntryId); setViewerFront(getSlipImageUrl(s)); setViewerBack(null); setViewerType('slip'); setFlipped(false); }}
                                 style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '4px 8px', borderRadius: 'var(--r-sm)', cursor: 'pointer', background: isViewed ? 'var(--bg-subtle)' : 'transparent', transition: 'background 0.1s' }}
                                 onMouseEnter={e => !isViewed && (e.currentTarget.style.background = 'var(--bg-subtle)')}
                                 onMouseLeave={e => !isViewed && (e.currentTarget.style.background = 'transparent')}
@@ -343,10 +343,10 @@ function RecentSequences({
                     {chequesExpanded && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 1, paddingLeft: 4 }}>
                         {chequeCount > 0 ? (group.cheques ?? []).map((chq: any, cIdx: number) => {
-                          const isViewed = viewerFront === getImageUrl(chq.frontImagePath);
+                          const isViewed = viewerFront === getChequeImageUrl(chq, 'front');
                           return (
                             <div key={cIdx}
-                              onClick={() => { setActiveSlipEntryId(group.slipEntryId); setViewerFront(getImageUrl(chq.frontImagePath)); setViewerBack(chq.backImagePath ? getImageUrl(chq.backImagePath) : null); setViewerType('cheque'); setFlipped(false); }}
+                              onClick={() => { setActiveSlipEntryId(group.slipEntryId); setViewerFront(getChequeImageUrl(chq, 'front')); setViewerBack(getChequeImageUrl(chq, 'back')); setViewerType('cheque'); setFlipped(false); }}
                               style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '4px 8px', borderRadius: 'var(--r-sm)', cursor: 'pointer', background: isViewed ? 'var(--bg-subtle)' : 'transparent', transition: 'background 0.1s' }}
                               onMouseEnter={e => !isViewed && (e.currentTarget.style.background = 'var(--bg-subtle)')}
                               onMouseLeave={e => !isViewed && (e.currentTarget.style.background = 'transparent')}

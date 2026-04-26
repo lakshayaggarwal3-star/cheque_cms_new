@@ -10,6 +10,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getLocations, getScanners } from '../services/locationService';
 import { createBatch, updateBatch } from '../services/batchService';
+import { setUserSetting } from '../services/userSettingService';
 import { useAuthStore } from '../store/authStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { toast } from '../store/toastStore';
@@ -18,7 +19,7 @@ import type { LocationDto, ScannerDto } from '../types';
 export function useBatchForm() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const { entryMode: storedEntryMode } = useSettingsStore();
+  const { entryMode: storedEntryMode, withSlipDefault, setWithSlipDefault } = useSettingsStore();
 
   const [scanners, setScanners] = useState<ScannerDto[]>([]);
   const [locationDetails, setLocationDetails] = useState<LocationDto | null>(null);
@@ -26,7 +27,7 @@ export function useBatchForm() {
 
   // Entry Mode — driven by Settings; strictly follow roles
   const isDev = !!user?.isDeveloper;
-  const isMobileScanner = !!user?.roles?.includes('MobileScanner');
+  const isMobileScanner = !!user?.roles?.includes('Mobile Scanner');
   const isScanner = !!user?.roles?.includes('Scanner');
   const hasBothRoles = (isMobileScanner && isScanner) || isDev;
 
@@ -48,7 +49,7 @@ export function useBatchForm() {
 
   // Shared scan options
   const [scanType, setScanType] = useState<'Scan' | 'Rescan'>('Scan');
-  const [withSlip, setWithSlip] = useState<'with' | 'without'>('with');
+  const [withSlip, setWithSlip] = useState<'with' | 'without'>(withSlipDefault);
   const [pdc, setPdc] = useState(false);
   const [pdcDate, setPdcDate] = useState('');
 
@@ -132,7 +133,6 @@ export function useBatchForm() {
         pdcDate:          pdc ? pdcDate : undefined,
         totalSlips:       0,
         totalAmount:      0,
-        entryMode:        entryMode,
         summRefNo:        summRefNo || undefined,
         pif:              summRefNo || undefined,
       });
@@ -149,6 +149,10 @@ export function useBatchForm() {
         pif: summRefNo || batch.pif,
       });
 
+      // Persist WithSlip preference so next batch creation defaults to same choice
+      setWithSlipDefault(withSlip);
+      setUserSetting('WithSlip', withSlip === 'with' ? 'true' : 'false').catch(() => {});
+
       toast.success(`Batch ${batch.batchNo} created`);
       navigate(`/scan/${batch.batchNo}`);
     } catch (err: any) {
@@ -156,7 +160,7 @@ export function useBatchForm() {
     } finally {
       setSubmitting(false);
     }
-  }, [entryMode, showHiddenFields, totalSlips, totalAmount, pdc, pdcDate, user?.locationId, activeScanner, locationDetails?.locationCode, batchDate, clearingType, summRefNo, pif, scanType, withSlip, navigate]);
+  }, [entryMode, showHiddenFields, totalSlips, totalAmount, pdc, pdcDate, user?.locationId, activeScanner, locationDetails?.locationCode, batchDate, clearingType, summRefNo, pif, scanType, withSlip, setWithSlipDefault, navigate]);
 
   return {
     user,

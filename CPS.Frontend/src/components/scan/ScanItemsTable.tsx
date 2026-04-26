@@ -7,7 +7,7 @@
 // =============================================================================
 
 import React, { useState } from 'react';
-import { getImageUrl } from '../../utils/imageUtils';
+import { getChequeImageUrl, getSlipImageUrl } from '../../utils/imageUtils';
 import type { ScanSessionDto, SlipEntryDto, ChequeItemDto, SlipScanDto } from '../../types';
 import { Icon } from './ScanPageUI';
 
@@ -297,7 +297,7 @@ function SlipScanRow({ scan, idx, group, onImageSelect, onRescan, onDelete }: {
   onRescan?: (item: RescanTarget) => void;
   onDelete: (item: DeleteTarget) => void;
 }) {
-  const imgUrl = scan.imagePath ? getImageUrl(scan.imagePath) : null;
+  const imgUrl = getSlipImageUrl(scan);
 
   return (
     <tr style={{ borderBottom: '1px solid var(--border-subtle)' }} className="scan-table-row">
@@ -324,7 +324,7 @@ function SlipScanRow({ scan, idx, group, onImageSelect, onRescan, onDelete }: {
 
 
       <td style={{ padding: '8px 8px', color: 'var(--fg-faint)', fontFamily: 'var(--font-mono)', fontSize: 10 }}>
-        {scan.imagePath ? scan.imagePath.split(/[\\/]/).pop() : '—'}
+        {scan.imageBaseName ? scan.imageBaseName.split(/[\\/]/).pop() : '—'}
       </td>
 
       <td style={{ padding: '8px 8px' }}>
@@ -346,8 +346,8 @@ function ChequeRow({ cheque, group, onImageSelect, onRescan, onDelete }: {
   onRescan?: (item: RescanTarget) => void;
   onDelete: (item: DeleteTarget) => void;
 }) {
-  const frontUrl = cheque.frontImagePath ? getImageUrl(cheque.frontImagePath) : null;
-  const backUrl = cheque.backImagePath ? getImageUrl(cheque.backImagePath) : null;
+  const frontUrl = getChequeImageUrl(cheque, 'front');
+  const backUrl = getChequeImageUrl(cheque, 'back');
 
   const micr = [cheque.scanMICR1, cheque.scanMICR2, cheque.scanMICR3].filter(Boolean).join(' / ');
 
@@ -375,7 +375,7 @@ function ChequeRow({ cheque, group, onImageSelect, onRescan, onDelete }: {
 
       {/* Front image filename */}
       <td style={{ padding: '8px 8px', color: 'var(--fg-faint)', fontFamily: 'var(--font-mono)', fontSize: 10 }}>
-        {cheque.frontImagePath ? cheque.frontImagePath.split(/[\\/]/).pop() : '—'}
+        {cheque.imageBaseName ? cheque.imageBaseName.split(/[\\/]/).pop() : '—'}
       </td>
 
       <td style={{ padding: '8px 8px' }}>

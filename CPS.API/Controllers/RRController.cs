@@ -26,7 +26,8 @@ public class RRController : ControllerBase
     [HttpGet("{batchId:long}")]
     public async Task<IActionResult> GetItems(long batchId)
     {
-        var items = await _rrService.GetRRItemsAsync(batchId);
+        var userId = int.Parse(User.FindFirstValue("userId")!);
+        var items = await _rrService.GetRRItemsAsync(batchId, userId);
         return Ok(ApiResponse<List<RRItemDto>>.Ok(items));
     }
 

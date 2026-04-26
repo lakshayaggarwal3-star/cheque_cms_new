@@ -31,7 +31,7 @@ public class SlipController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "Scanner,MobileScanner,Admin,Developer")]
+    [Authorize(Roles = "Scanner,Mobile Scanner,Admin,Developer")]
     public async Task<IActionResult> Create([FromBody] CreateSlipEntryRequest request)
     {
         var userId = int.Parse(User.FindFirstValue("userId")!);
@@ -39,9 +39,9 @@ public class SlipController : ControllerBase
         return StatusCode(201, ApiResponse<SlipEntryDto>.Ok(result, "Slip entry created"));
     }
 
-    [HttpPut("{id:int}")]
-    [Authorize(Roles = "Scanner,MobileScanner,Admin,Developer")]
-    public async Task<IActionResult> Update(int id, [FromBody] UpdateSlipEntryRequest request)
+    [HttpPut("{id:long}")]
+    [Authorize(Roles = "Scanner,Mobile Scanner,Admin,Developer")]
+    public async Task<IActionResult> Update(long id, [FromBody] UpdateSlipEntryRequest request)
     {
         var userId = int.Parse(User.FindFirstValue("userId")!);
         var result = await _slipService.UpdateSlipEntryAsync(id, request, userId);
@@ -67,7 +67,7 @@ public class SlipController : ControllerBase
     }
 
     [HttpPost("generate-slip-no/{batchId:long}")]
-    [Authorize(Roles = "Scanner,MobileScanner,Admin,Developer")]
+    [Authorize(Roles = "Scanner,Mobile Scanner,Admin,Developer")]
     public async Task<IActionResult> GenerateSlipNo(long batchId)
     {
         var result = await _slipService.GenerateNextSlipNoAsync(batchId);

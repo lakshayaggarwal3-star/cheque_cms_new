@@ -28,7 +28,7 @@ public interface IScanService
     Task<ChequeItemDto> SaveChequeItemAsync(SaveChequeItemRequest request, int userId);
     Task<ChequeItemDto> UploadMobileChequeAsync(long batchId, MobileUploadChequeRequest request, int userId);
 
-    Task UpdateSlipStatusAsync(long batchId, int slipEntryId, CPS.API.Models.SlipStatus status, int userId);
+    Task UpdateSlipStatusAsync(long batchId, long slipEntryId, CPS.API.Models.SlipStatus status, int userId);
 
     Task CompleteScanAsync(long batchId, int userId);
     Task ReleaseLockAsync(long batchId, int userId);

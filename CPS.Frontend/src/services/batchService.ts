@@ -42,7 +42,6 @@ export async function createBatch(data: {
   totalAmount: number;
   summRefNo?: string;
   pif?: string;
-  entryMode?: string;
 }): Promise<BatchDto> {
   const res = await apiClient.post('/batch', data);
   return extractData<BatchDto>(res);

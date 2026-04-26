@@ -143,7 +143,7 @@ export function DashboardPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const canCreateBatch = user?.roles.some(r => ['Scanner', 'MobileScanner', 'Admin', 'Developer'].includes(r));
+  const canCreateBatch = user?.roles.some(r => ['Scanner', 'Mobile Scanner', 'Admin', 'Developer'].includes(r));
 
   const kpis = [
     { label: 'Batches today',    value: summary?.totalBatchesToday ?? 0, delta: 'Total for today',    tone: 'neutral' as Tone, icon: 'receipt_long' },

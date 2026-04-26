@@ -9,3 +9,17 @@ dotnet run --project CPS.API/CPS.API.csproj --urls "http://localhost:5000"
 
 
 dotnet build CPS.API/CPS.API.csproj
+
+
+
+
+one isisue tha is going on coemptle forver an comebaskevry tim 
+Now I can see exactly what's happening from your screenshot. The URL is http://localhost:5000 (you navigated to Dashboard) but the scan page content is still showing — and the sidebar still shows "Scanning" as the active item even though you're at /. This confirms the root cause: the <Outlet /> content wasn't unmounting/remounting when the route changed.
+
+My fix I just applied addresses this precisely:
+
+key={location.pathname} on the content wrapper div forces React to do a clean unmount of ScanPage and mount of the new page whenever the URL path changes. Without this key, React was reusing the same DOM container and the Outlet sometimes failed to swap the content (specifically coming off the heavy ScanPage component tree).
+
+(!isNoHeaderPage || isMobile) ensures the hamburger button always shows on mobile/small screens, so you can always open the nav sidebar even on the scan/RR detail pages.
+
+The fix is already in Layout.tsx. Just rebuild and test — navigating from the scan page to any sidebar link should now fully switch the content. The nav will feel slightly less instant when leaving the scan page (scanner cleanup runs), but it will always work correctly.

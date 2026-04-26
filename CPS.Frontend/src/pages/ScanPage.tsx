@@ -19,7 +19,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { toast } from '../store/toastStore';
-import { getImageUrl } from '../utils/imageUtils';
+import { getChequeImageUrl, getSlipImageUrl } from '../utils/imageUtils';
 import { useSettingsStore } from '../store/settingsStore';
 import { useScannerLogic } from '../hooks/useScannerLogic';
 import { SlipFormModal } from '../components/SlipFormModal';
@@ -175,26 +175,26 @@ export function ScanPage() {
   const lastActiveItem = viewItems.length > 0 ? viewItems[viewItems.length - 1] as any : null;
 
   const previewFront = viewerFront
-    ?? (lastActiveItem ? (isSlipView ? toImageSrc(lastActiveItem.imagePath) : toImageSrc(lastActiveItem.frontImagePath)) : null)
-    ?? toImageSrc(scanner.currentCheque?.frontImagePath, scanner.mockPreview?.front)
-    ?? toImageSrc(scanner.currentSlipScan?.imagePath, scanner.mockPreview?.front);
+    ?? (lastActiveItem ? (isSlipView ? getSlipImageUrl(lastActiveItem) : getChequeImageUrl(lastActiveItem, 'front')) : null)
+    ?? (scanner.currentCheque ? getChequeImageUrl(scanner.currentCheque, 'front') : scanner.mockPreview?.front)
+    ?? (scanner.currentSlipScan ? getSlipImageUrl(scanner.currentSlipScan) : scanner.mockPreview?.front);
 
   const previewBack = viewerBack
-    ?? (lastActiveItem && !isSlipView ? toImageSrc(lastActiveItem.backImagePath) : null)
-    ?? toImageSrc(scanner.currentCheque?.backImagePath, scanner.mockPreview?.back);
+    ?? (lastActiveItem && !isSlipView ? getChequeImageUrl(lastActiveItem, 'back') : null)
+    ?? (scanner.currentCheque ? getChequeImageUrl(scanner.currentCheque, 'back') : scanner.mockPreview?.back);
 
   const currentViewIdx = (() => {
     if (!viewerFront) return viewItems.length;
-    if (isSlipView) return (viewItems as any[]).findIndex(s => getImageUrl(s.imagePath) === viewerFront);
-    return (viewItems as any[]).findIndex(c => getImageUrl(c.frontImagePath) === viewerFront);
+    if (isSlipView) return (viewItems as any[]).findIndex(s => getSlipImageUrl(s) === viewerFront);
+    return (viewItems as any[]).findIndex(c => getChequeImageUrl(c, 'front') === viewerFront);
   })();
 
   const handleNavLeft = () => {
     const idx = currentViewIdx === -1 ? viewItems.length : currentViewIdx;
     if (idx > 0) {
       const item = viewItems[idx - 1] as any;
-      if (isSlipView) { setViewerFront(getImageUrl(item.imagePath)); setViewerBack(null); setViewerType('slip'); setFlipped(false); }
-      else { setViewerFront(getImageUrl(item.frontImagePath)); setViewerBack(item.backImagePath ? getImageUrl(item.backImagePath) : null); setViewerType('cheque'); setFlipped(false); }
+      if (isSlipView) { setViewerFront(getSlipImageUrl(item)); setViewerBack(null); setViewerType('slip'); setFlipped(false); }
+      else { setViewerFront(getChequeImageUrl(item, 'front')); setViewerBack(getChequeImageUrl(item, 'back')); setViewerType('cheque'); setFlipped(false); }
     }
   };
 
@@ -202,8 +202,8 @@ export function ScanPage() {
     const idx = currentViewIdx === -1 ? viewItems.length : currentViewIdx;
     if (idx < viewItems.length - 1) {
       const item = viewItems[idx + 1] as any;
-      if (isSlipView) { setViewerFront(getImageUrl(item.imagePath)); setViewerBack(null); setViewerType('slip'); setFlipped(false); }
-      else { setViewerFront(getImageUrl(item.frontImagePath)); setViewerBack(item.backImagePath ? getImageUrl(item.backImagePath) : null); setViewerType('cheque'); setFlipped(false); }
+      if (isSlipView) { setViewerFront(getSlipImageUrl(item)); setViewerBack(null); setViewerType('slip'); setFlipped(false); }
+      else { setViewerFront(getChequeImageUrl(item, 'front')); setViewerBack(getChequeImageUrl(item, 'back')); setViewerType('cheque'); setFlipped(false); }
     } else if (idx === viewItems.length - 1) {
       setViewerFront(null); setViewerBack(null); setViewerType(isSlipView ? 'slip' : 'cheque'); setFlipped(false);
     }

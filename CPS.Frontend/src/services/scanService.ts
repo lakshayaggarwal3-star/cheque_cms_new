@@ -87,15 +87,18 @@ export async function saveChequeItem(batchId: number, data: {
   slipEntryId: number;
   chqSeq: number;
   micrRaw?: string;
+  scanMICRRaw?: string;
   chqNo?: string;
+  scanChqNo?: string;
+  rrChqNo?: string;
   scanMICR1?: string;
   scanMICR2?: string;
   scanMICR3?: string;
-  scanAmount?: number;
   frontImagePath?: string;
   backImagePath?: string;
   scannerType?: string;
   scanType?: string;
+  seqNo?: number;
 }): Promise<ChequeItemDto> {
   const res = await apiClient.post(`/scan/${batchId}/cheque/save`, {
     batchId,
@@ -114,11 +117,13 @@ export async function uploadMobileCheque(batchId: number, data: {
   imageFrontTiff?: File;
   imageBackTiff?: File;
   micrRaw?: string;
+  scanMICRRaw?: string;
   chqNo?: string;
+  scanChqNo?: string;
+  rrChqNo?: string;
   scanMICR1?: string;
   scanMICR2?: string;
   scanMICR3?: string;
-  scanAmount?: number;
   scannerType?: string;
 }): Promise<ChequeItemDto> {
   const formData = new FormData();
@@ -129,11 +134,13 @@ export async function uploadMobileCheque(batchId: number, data: {
   if (data.imageFrontTiff) formData.append('imageFrontTiff', data.imageFrontTiff);
   if (data.imageBackTiff) formData.append('imageBackTiff', data.imageBackTiff);
   if (data.micrRaw) formData.append('micrRaw', data.micrRaw);
+  if (data.scanMICRRaw) formData.append('scanMICRRaw', data.scanMICRRaw);
   if (data.chqNo) formData.append('chqNo', data.chqNo);
+  if (data.scanChqNo) formData.append('scanChqNo', data.scanChqNo);
+  if (data.rrChqNo) formData.append('rrChqNo', data.rrChqNo);
   if (data.scanMICR1) formData.append('scanMICR1', data.scanMICR1);
   if (data.scanMICR2) formData.append('scanMICR2', data.scanMICR2);
   if (data.scanMICR3) formData.append('scanMICR3', data.scanMICR3);
-  if (data.scanAmount != null) formData.append('scanAmount', String(data.scanAmount));
   if (data.scannerType) formData.append('scannerType', data.scannerType);
 
   const res = await apiClient.post(`/scan/${batchId}/cheque/upload-mobile`, formData, {

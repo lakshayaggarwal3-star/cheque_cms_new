@@ -12,7 +12,7 @@
  * picks them up automatically by iterating ROLES.
  */
 export interface RoleDefinition {
-  /** The boolean field name on UserDto / form fields */
+  /** The string value stored in the roles array on the backend */
   key: string;
   /** Short display label */
   label: string;
@@ -26,47 +26,47 @@ export interface RoleDefinition {
 
 export const ROLES: RoleDefinition[] = [
   {
-    key: 'roleScanner',
+    key: 'Scanner',
     label: 'Scanner',
     description: 'Create batches, operate scanner, capture cheques and slips.',
     badgeClass: 'bg-blue-100 text-blue-700',
   },
   {
-    key: 'roleMobileScanner',
+    key: 'Mobile Scanner',
     label: 'Mobile Scanner',
     description: 'Create batches and scan/capture using mobile scanner flow.',
     badgeClass: 'bg-cyan-100 text-cyan-700',
   },
   {
-    key: 'roleMaker',
+    key: 'Maker',
     label: 'Maker',
     description: 'Enter cheque and slip data (Phase 2).',
     badgeClass: 'bg-violet-100 text-violet-700',
   },
   {
-    key: 'roleChecker',
+    key: 'Checker',
     label: 'Checker',
     description: 'Blind re-verification of Maker entries, SoD enforced (Phase 2).',
     badgeClass: 'bg-teal-100 text-teal-700',
   },
   {
-    key: 'roleAdmin',
+    key: 'Admin',
     label: 'Admin',
     description: 'Full access — user management, master upload, app settings.',
     badgeClass: 'bg-red-100 text-red-700',
     elevated: true,
   },
   {
-    key: 'roleImageViewer',
+    key: 'Image Viewer',
     label: 'Image Viewer',
     description: 'Restricted role for viewing and reviewing cheque images only.',
     badgeClass: 'bg-emerald-100 text-emerald-700',
   },
   {
-    key: 'isDeveloper',
+    key: 'Developer',
     label: 'Developer',
-    description: 'Admin + mock scan, force status, skip validation.',
-    badgeClass: 'bg-orange-100 text-orange-700',
+    description: 'Super-user with full system access and developer tools.',
+    badgeClass: 'bg-slate-800 text-white',
     elevated: true,
   },
 ];
@@ -77,9 +77,9 @@ export function getRoleByKey(key: string): RoleDefinition | undefined {
 }
 
 /**
- * Given a user object (any shape that has the role boolean flags),
- * return the subset of ROLES that are active for that user.
+ * Returns the subset of ROLES that are present in the user's roles array.
  */
-export function getActiveRoles(user: Record<string, unknown>): RoleDefinition[] {
-  return ROLES.filter(r => Boolean(user[r.key]));
+export function getActiveRoles(user: { roles: string[] }): RoleDefinition[] {
+  if (!user.roles) return [];
+  return ROLES.filter(r => user.roles.includes(r.key));
 }

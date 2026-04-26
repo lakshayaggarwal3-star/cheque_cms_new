@@ -30,8 +30,24 @@ public class RRService : IRRService
         _logger = logger;
     }
 
-    public async Task<List<RRItemDto>> GetRRItemsAsync(long batchId)
+    public async Task<List<RRItemDto>> GetRRItemsAsync(long batchId, int userId)
     {
+        var batch = await _batchRepo.GetByIdAsync(batchId);
+        if (batch != null)
+        {
+            if (!batch.RRStartedAt.HasValue)
+            {
+                batch.RRStartedAt = DateTime.UtcNow;
+                batch.RRStartedBy = userId;
+            }
+
+            // Always set/refresh the lock when the operator opens the RR view
+            batch.RRLockedBy = userId;
+            batch.RRLockedAt = DateTime.UtcNow;
+
+            await _batchRepo.UpdateAsync(batch);
+        }
+
         var cheques = await _slipRepo.GetChequeItemsByBatchAsync(batchId);
         var result = new List<RRItemDto>();
         foreach (var c in cheques)
@@ -71,17 +87,27 @@ public class RRService : IRRService
                 throw new ValidationException("MICR2 must be exactly 6 digits.");
 
             // Store corrections in RR fields — never overwrite ScanMICR fields
-            item.ChqNo = request.ChqNo?.Trim() ?? item.ChqNo;
+            item.RRChqNo = request.RRChqNo?.Trim();
+            item.ChqNo = item.RRChqNo ?? item.ScanChqNo ?? item.ChqNo; // Update main display field
+
             item.RRMICR1 = request.RRMICR1?.Trim();
             item.RRMICR2 = request.RRMICR2?.Trim();
             item.RRMICR3 = request.RRMICR3?.Trim();
-            item.RRAmount = request.RRAmount;
+
+            // Sync final display fields
+            item.MICR1 = item.RRMICR1 ?? item.ScanMICR1;
+            item.MICR2 = item.RRMICR2 ?? item.ScanMICR2;
+            item.MICR3 = item.RRMICR3 ?? item.ScanMICR3;
+
             item.RRNotes = request.RRNotes?.Trim();
             item.RRState = (int)RRState.Repaired;
         }
 
-        item.RRBy = userId;
-        item.RRTime = DateTime.UtcNow;
+        // Apply RowVersion from request to enable optimistic concurrency check
+        item.RowVersion = request.RowVersion;
+
+        item.RRCompletedBy = userId;
+        item.RRCompletedAt = DateTime.UtcNow;
         item.UpdatedBy = userId;
         item.UpdatedAt = DateTime.UtcNow;
 
@@ -94,8 +120,10 @@ public class RRService : IRRService
             throw new ConflictException("Item was modified by another user. Refresh and try again.");
         }
 
-        await _audit.LogAsync("ChequeItems", chequeItemId.ToString(), "UPDATE", old,
-            new { item.ChqNo, item.RRMICR1, item.RRMICR2, item.RRState }, userId);
+        var batch = await _batchRepo.GetByIdAsync(item.BatchId);
+        await _audit.LogAsync("ChequeItem", chequeItemId.ToString(), request.Approve ? "APPROVE" : "REPAIR", 
+            old, new { item.ChqNo, item.RRChqNo, item.MICR1, item.MICR2, item.MICR3, item.RRMICR1, item.RRMICR2, item.RRMICR3, item.RRNotes, item.RRState }, 
+            userId, batchNo: batch?.BatchNo);
 
         var slip = await _slipRepo.GetByIdAsync(item.SlipEntryId);
         return MapToDto(item, slip);
@@ -136,17 +164,22 @@ public class RRService : IRRService
             SlipEntryId = c.SlipEntryId,
             SeqNo = c.SeqNo,
             ChqSeq = c.ChqSeq,
-            ImageFrontPath = c.FrontImagePath,
-            ImageBackPath = c.BackImagePath,
+            ImageBaseName = c.ImageBaseName,
+            FileExtension = c.FileExtension,
             MICRRaw = c.MICRRaw,
+            ScanMICRRaw = c.ScanMICRRaw,
+            MICR1 = c.MICR1,
+            MICR2 = c.MICR2,
+            MICR3 = c.MICR3,
             ChqNo = c.ChqNo,
+            ScanChqNo = c.ScanChqNo,
+            RRChqNo = c.RRChqNo,
             ScanMICR1 = c.ScanMICR1,
             ScanMICR2 = c.ScanMICR2,
             ScanMICR3 = c.ScanMICR3,
             RRMICR1 = c.RRMICR1,
             RRMICR2 = c.RRMICR2,
             RRMICR3 = c.RRMICR3,
-            RRAmount = c.RRAmount,
             RRNotes = c.RRNotes,
             RRState = c.RRState,
             RRStateLabel = stateLabels.TryGetValue(c.RRState, out var lbl) ? lbl : "Unknown",

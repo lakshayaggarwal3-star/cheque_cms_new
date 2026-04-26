@@ -6,11 +6,11 @@
 // Created     : 2026-04-14
 // =============================================================================
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getRRItems, saveRRCorrection, completeRR } from '../services/rrService';
 import { toast } from '../store/toastStore';
-import { getImageUrl } from '../utils/imageUtils';
+import { getChequeImageUrl } from '../utils/imageUtils';
 import { RRItemDto, RRState } from '../types';
 import { Icon, Pill } from '../components/scan';
 import { RRViewport } from './rr/RRViewport';
@@ -24,6 +24,7 @@ export function RRPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [micr, setMicr] = useState({ chqNo: '', micr1: '', micr2: '', micr3: '' });
+  const firstInputRef = useRef<HTMLInputElement | null>(null);
 
   const id = Number(batchId);
 
@@ -60,6 +61,18 @@ export function RRPage() {
 
   useEffect(() => { loadItems(); }, [loadItems]);
 
+  useEffect(() => {
+    if (!loading && items.length > 0) {
+      const timer = setTimeout(() => {
+        if (firstInputRef.current) {
+          firstInputRef.current.focus();
+          firstInputRef.current.select();
+        }
+      }, 200);
+      return () => clearTimeout(timer);
+    }
+  }, [loading, current, items.length]);
+
   const item = items[current];
   const pendingItems = items.filter(i => i.rrState === RRState.NeedsReview);
   const isLastPending = pendingItems.length <= 1;
@@ -76,6 +89,7 @@ export function RRPage() {
     try {
       await saveRRCorrection(item.chequeItemId, {
         chqNo: micr.chqNo,
+        rrChqNo: micr.chqNo, // Specifically set RRChqNo
         rrmicr1: micr.micr1,
         rrmicr2: micr.micr2,
         rrmicr3: micr.micr3,
@@ -103,6 +117,17 @@ export function RRPage() {
       toast.error(err?.response?.data?.message ?? 'Failed to save');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent, nextId?: string) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (nextId) {
+        document.getElementById(nextId)?.focus();
+      } else {
+        handleApproveAndNext();
+      }
     }
   };
 
@@ -180,9 +205,9 @@ export function RRPage() {
           {/* Main Viewport */}
           <div style={{ padding: 16, display: 'flex', flexDirection: 'column', minWidth: 0, overflowY: 'auto' }}>
             <RRViewport 
-              previewFront={item.imageFrontPath ? getImageUrl(item.imageFrontPath) : null}
-              previewBack={item.imageBackPath ? getImageUrl(item.imageBackPath) : null}
-              filename={item.imageFrontPath?.split(/[\\/]/).pop()}
+              previewFront={getChequeImageUrl(item, 'front')}
+              previewBack={getChequeImageUrl(item, 'back')}
+              filename={`${item.imageBaseName}CF${item.fileExtension}`}
               itemTitle={`Cheque Seq #${item.chqSeq}`}
             />
           </div>
@@ -198,10 +223,23 @@ export function RRPage() {
               <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--fg-faint)', textTransform: 'uppercase', marginBottom: 8, letterSpacing: '.05em' }}>
                 Captured Scan MICR
               </div>
+              
+              {/* Added: Complete Raw MICR String */}
+              <div style={{ 
+                fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--accent)', 
+                background: 'rgba(0,0,0,0.05)', padding: '4px 8px', borderRadius: 4,
+                marginBottom: 10, wordBreak: 'break-all', border: '1px solid var(--border-subtle)'
+              }}>
+                {item.scanMICRRaw || item.micrRaw || 'No Raw Data'}
+              </div>
+
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--fg-muted)', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  <span style={{ fontSize: 9, opacity: 0.6 }}>CHQ</span>
-                  <span style={{ color: 'var(--fg)', fontWeight: 600 }}>{item.chqNo ?? '—'}</span>
+                  <span style={{ fontSize: 9, opacity: 0.6 }}>SCAN CHQ</span>
+                  <span style={{ color: 'var(--fg)', fontWeight: 600 }}>{item.scanChqNo || '—'}</span>
+                  {item.rrChqNo && item.rrChqNo !== item.scanChqNo && (
+                    <span style={{ fontSize: 9, color: 'var(--success)', fontWeight: 700, marginTop: 2 }}>RR: {item.rrChqNo}</span>
+                  )}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                   <span style={{ fontSize: 9, opacity: 0.6 }}>MICR1</span>
@@ -225,11 +263,11 @@ export function RRPage() {
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 12px' }}>
                 {[
-                  { label: 'Cheque No (6)', key: 'chqNo', maxLen: 6, icon: 'tag' },
-                  { label: 'MICR1 (9)', key: 'micr1', maxLen: 9, icon: 'digits' },
-                  { label: 'MICR2 (6)', key: 'micr2', maxLen: 6, icon: 'location_on' },
-                  { label: 'MICR3 (2)', key: 'micr3', maxLen: 2, icon: 'category' },
-                ].map(({ label, key, maxLen, icon }) => (
+                  { label: 'Cheque No (6)', key: 'chqNo', maxLen: 6, icon: 'tag', id: 'rr_chqNo', nextId: 'rr_micr1' },
+                  { label: 'MICR1 (9)', key: 'micr1', maxLen: 9, icon: 'numbers', id: 'rr_micr1', nextId: 'rr_micr2' },
+                  { label: 'MICR2 (6)', key: 'micr2', maxLen: 6, icon: 'apartment', id: 'rr_micr2', nextId: 'rr_micr3' },
+                  { label: 'MICR3 (2)', key: 'micr3', maxLen: 2, icon: 'category', id: 'rr_micr3', nextId: '' },
+                ].map(({ label, key, maxLen, icon, id: inputId, nextId }) => (
                   <div key={key}>
                     <label style={{ display: 'block', fontSize: 10, fontWeight: 500, color: 'var(--fg-muted)', marginBottom: 4 }}>
                       {label}
@@ -239,8 +277,11 @@ export function RRPage() {
                         <Icon name={icon} size={12} />
                       </span>
                       <input
+                        id={inputId}
+                        ref={key === 'chqNo' ? firstInputRef : null}
                         value={micr[key as keyof typeof micr]}
                         onChange={(e) => setMicr(m => ({ ...m, [key]: e.target.value }))}
+                        onKeyDown={(e) => handleKeyDown(e, nextId)}
                         maxLength={maxLen}
                         className="input-field"
                         style={{ paddingLeft: 26, paddingRight: 8, height: 32, fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)' }}

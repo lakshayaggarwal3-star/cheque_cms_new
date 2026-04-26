@@ -29,13 +29,6 @@ public class UserMaster
     public string? Email { get; set; }
 
     public bool IsActive { get; set; } = true;
-    public bool RoleScanner { get; set; } = false;
-    public bool RoleMobileScanner { get; set; } = false;
-    public bool RoleMaker { get; set; } = false;
-    public bool RoleChecker { get; set; } = false;
-    public bool RoleAdmin { get; set; } = false;
-    public bool RoleImageViewer { get; set; } = false;
-    public bool IsDeveloper { get; set; } = false;
 
     public int? DefaultLocationID { get; set; }
 

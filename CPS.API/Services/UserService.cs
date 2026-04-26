@@ -63,13 +63,6 @@ public class UserService : IUserService
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password, 12),
             Email = request.Email?.Trim(),
             DefaultLocationID = request.DefaultLocationID,
-            RoleScanner = request.RoleScanner,
-            RoleMobileScanner = request.RoleMobileScanner,
-            RoleMaker = request.RoleMaker,
-            RoleChecker = request.RoleChecker,
-            RoleAdmin = request.RoleAdmin,
-            RoleImageViewer = request.RoleImageViewer,
-            IsDeveloper = request.IsDeveloper,
             IsActive = true,
             CreatedBy = createdBy,
             CreatedAt = DateTime.UtcNow
@@ -78,6 +71,8 @@ public class UserService : IUserService
         // Save actual role values as-is (no override)
 
         await _userRepo.CreateAsync(user);
+        await _userRepo.SyncUserRolesAsync(user.UserID, request.Roles, request.IsDeveloper);
+
         await _audit.LogAsync("UserMaster", user.UserID.ToString(), "INSERT", null,
             new { user.EmployeeID, user.Username }, createdBy);
 
@@ -92,18 +87,11 @@ public class UserService : IUserService
         if (await _userRepo.ExistsUsernameAsync(request.Username, userId))
             throw new ConflictException($"Username '{request.Username}' already taken.");
 
-        var old = new { user.Username, user.RoleAdmin, user.RoleScanner };
+        var old = new { user.Username };
 
         user.Username = request.Username.Trim();
         user.Email = request.Email?.Trim();
         user.DefaultLocationID = request.DefaultLocationID;
-        user.RoleScanner = request.RoleScanner;
-        user.RoleMobileScanner = request.RoleMobileScanner;
-        user.RoleMaker = request.RoleMaker;
-        user.RoleChecker = request.RoleChecker;
-        user.RoleAdmin = request.RoleAdmin;
-        user.RoleImageViewer = request.RoleImageViewer;
-        user.IsDeveloper = request.IsDeveloper;
         user.UpdatedBy = updatedBy;
         user.UpdatedAt = DateTime.UtcNow;
 
@@ -111,8 +99,10 @@ public class UserService : IUserService
         // Access control is handled at runtime - Admin/Developer get all permissions regardless of individual role flags
 
         await _userRepo.UpdateAsync(user);
+        await _userRepo.SyncUserRolesAsync(user.UserID, request.Roles, request.IsDeveloper);
+
         await _audit.LogAsync("UserMaster", userId.ToString(), "UPDATE", old,
-            new { user.Username, user.RoleAdmin }, updatedBy);
+            new { user.Username }, updatedBy);
 
         return MapToDto(user);
     }
@@ -198,13 +188,8 @@ public class UserService : IUserService
         Email = u.Email,
         IsActive = u.IsActive,
         IsLocked = u.IsLocked,
-        RoleScanner = u.RoleScanner,
-        RoleMobileScanner = u.RoleMobileScanner,
-        RoleMaker = u.RoleMaker,
-        RoleChecker = u.RoleChecker,
-        RoleAdmin = u.RoleAdmin,
-        RoleImageViewer = u.RoleImageViewer,
-        IsDeveloper = u.IsDeveloper,
+        Roles = u.UserRoles.Where(ur => ur.Role != null).Select(ur => ur.Role!.RoleName).ToList(),
+        IsDeveloper = u.UserRoles.Any(ur => ur.Role != null && ur.Role.RoleName == "Developer"),
         DefaultLocationID = u.DefaultLocationID,
         DefaultLocationName = u.DefaultLocation?.LocationName,
         CreatedAt = u.CreatedAt?.ToString("yyyy-MM-dd HH:mm:ss")

@@ -20,16 +20,22 @@ public class UserRepository : IUserRepository
     public async Task<UserMaster?> GetByIdAsync(int userId) =>
         await _db.Users
             .Include(u => u.DefaultLocation)
+            .Include(u => u.UserRoles)
+                .ThenInclude(ur => ur.Role)
             .FirstOrDefaultAsync(u => u.UserID == userId && !u.IsDeleted);
 
     public async Task<UserMaster?> GetByLoginIdAsync(string loginId) =>
         await _db.Users
+            .Include(u => u.UserRoles)
+                .ThenInclude(ur => ur.Role)
             .FirstOrDefaultAsync(u =>
                 (u.EmployeeID == loginId || u.Username == loginId) && !u.IsDeleted);
 
     public async Task<List<UserMaster>> GetAllAsync() =>
         await _db.Users
             .Include(u => u.DefaultLocation)
+            .Include(u => u.UserRoles)
+                .ThenInclude(ur => ur.Role)
             .Where(u => !u.IsDeleted)
             .OrderBy(u => u.EmployeeID)
             .ToListAsync();
@@ -79,6 +85,46 @@ public class UserRepository : IUserRepository
     public async Task AddLocationHistoryAsync(UserLocationHistory history)
     {
         _db.UserLocationHistories.Add(history);
+        await _db.SaveChangesAsync();
+    }
+
+    public async Task<List<Role>> GetAllRolesAsync() =>
+        await _db.Roles.ToListAsync();
+
+    public async Task<Role?> GetRoleByNameAsync(string roleName) =>
+        await _db.Roles.FirstOrDefaultAsync(r => r.RoleName == roleName);
+
+    public async Task SyncUserRolesAsync(int userId, List<string> roleNames, bool isDeveloper)
+    {
+        var existing = await _db.UserRoles
+            .Include(ur => ur.Role)
+            .Where(ur => ur.UserID == userId)
+            .ToListAsync();
+
+        _db.UserRoles.RemoveRange(existing);
+
+        var allRoles = await _db.Roles.ToListAsync();
+        
+        var toAdd = roleNames
+            .Select(name => allRoles.FirstOrDefault(r => r.RoleName == name))
+            .Where(r => r != null)
+            .Select(r => new UserRole { UserID = userId, RoleID = r!.RoleID })
+            .ToList();
+
+        if (isDeveloper)
+        {
+            var devRole = allRoles.FirstOrDefault(r => r.RoleName == "Developer");
+            if (devRole != null && !toAdd.Any(ur => ur.RoleID == devRole.RoleID))
+            {
+                toAdd.Add(new UserRole { UserID = userId, RoleID = devRole.RoleID });
+            }
+        }
+
+        if (toAdd.Any())
+        {
+            _db.UserRoles.AddRange(toAdd);
+        }
+
         await _db.SaveChangesAsync();
     }
 }
