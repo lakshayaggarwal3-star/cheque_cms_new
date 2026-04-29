@@ -16,7 +16,7 @@ namespace CPS.API.Controllers;
 
 [ApiController]
 [Route("api/scan")]
-[Authorize(Roles = "Scanner,Mobile Scanner,Admin,Developer")]
+[Authorize]
 public class ScanController : ControllerBase
 {
     private readonly IScanService _scanService;

@@ -731,14 +731,14 @@ Pre-built Excel templates with correct column headers downloadable from UI.
 
 #### BatchNo — system-generated internal identifier
 
-**Format**: `{PIFPrefix}{DDMMYYYY}{seq:D2}`
+**Format**: `{ScannerPart(6)}{YYMMDD}{seq:D4}`
 
-Example: `AHM1404202601`
+Example: `1281282604270001`
 
-- `PIFPrefix` = `Location.PIFPrefix` for the selected location
-- Date = batch date in DDMMYYYY format
-- Sequence = day-wise counter per location, starting at 1, zero-padded to **2 digits** (01, 02 … 99)
-- Sequence resets to 1 each new date per location
+- `ScannerPart` = `Scanner.ScannerID`. If the ScannerID is **3 digits**, it is **duplicated** (e.g., "128" becomes "128128", "012" becomes "012012"). If it is **6 digits**, it is used as is.
+- Date = batch date in **YYMMDD** format (last 2 digits of year, month, date).
+- Sequence = day-wise counter per location/scanner, starting at 1, zero-padded to **4 digits** (0001, 0002 … 9999).
+- Sequence resets to 1 each new date per location/scanner mapping.
 
 **Safe generation** (transaction + lock — see section 3.7):
 - Always use `UPDATE BatchSequences WITH (UPDLOCK)` inside a transaction

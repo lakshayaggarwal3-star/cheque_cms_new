@@ -87,9 +87,13 @@ public class UserService : IUserService
         if (await _userRepo.ExistsUsernameAsync(request.Username, userId))
             throw new ConflictException($"Username '{request.Username}' already taken.");
 
-        var old = new { user.Username };
+        if (await _userRepo.ExistsEmployeeIdAsync(request.EmployeeID, userId))
+            throw new ConflictException($"Employee ID '{request.EmployeeID}' already exists for another user.");
+
+        var old = new { user.Username, user.EmployeeID };
 
         user.Username = request.Username.Trim();
+        user.EmployeeID = request.EmployeeID.Trim();
         user.Email = request.Email?.Trim();
         user.DefaultLocationID = request.DefaultLocationID;
         user.UpdatedBy = updatedBy;
@@ -102,9 +106,24 @@ public class UserService : IUserService
         await _userRepo.SyncUserRolesAsync(user.UserID, request.Roles, request.IsDeveloper);
 
         await _audit.LogAsync("UserMaster", userId.ToString(), "UPDATE", old,
-            new { user.Username }, updatedBy);
+            new { user.Username, user.EmployeeID }, updatedBy);
 
         return MapToDto(user);
+    }
+
+    public async Task DeleteAsync(int userId, int deletedBy)
+    {
+        var user = await _userRepo.GetByIdAsync(userId)
+            ?? throw new NotFoundException($"User {userId} not found.");
+
+        user.IsDeleted = true;
+        user.IsActive = false;
+        user.UpdatedBy = deletedBy;
+        user.UpdatedAt = DateTime.UtcNow;
+        await _userRepo.UpdateAsync(user);
+
+        await _audit.LogAsync("UserMaster", userId.ToString(), "DELETE",
+            new { user.Username, user.EmployeeID }, null, deletedBy);
     }
 
     public async Task AssignLocationAsync(int userId, AssignLocationRequest request, int assignedBy)

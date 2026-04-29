@@ -84,4 +84,12 @@ public class UserController : ControllerBase
         await _userService.UnlockAsync(id, updatedBy);
         return Ok(ApiResponse<object>.Ok(null, "User unlocked"));
     }
+
+    [HttpDelete("{id:int}")]
+    public async Task<IActionResult> Delete(int id)
+    {
+        var deletedBy = int.Parse(User.FindFirstValue("userId")!);
+        await _userService.DeleteAsync(id, deletedBy);
+        return Ok(ApiResponse<object>.Ok(null, "User deleted"));
+    }
 }

@@ -122,6 +122,7 @@
   html {
     font-size: 16px;
     transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+    overscroll-behavior: none; /* Disable browser gestures like pull-to-refresh and swipe-back */
   }
 
   body {
@@ -131,6 +132,7 @@
     -webkit-font-smoothing: antialiased;
     background: var(--bg);
     color: var(--fg);
+    overscroll-behavior: none;
   }
 
   input, textarea, select {
@@ -450,6 +452,15 @@
     transform: translateX(0);
     box-shadow: var(--shadow-lg);
   }
+
+  /* Hide scrollbar in sidebar nav */
+  .app-sidebar nav::-webkit-scrollbar {
+    display: none;
+  }
+  .app-sidebar nav {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
 }
 
 /* Backdrop overlay for mobile sidebar — NO blur (blur bleeds onto sidebar) */
@@ -466,7 +477,7 @@
 /* Page padding: smaller on mobile */
 @media (max-width: 767px) {
   .page-content {
-    padding: 16px 16px 32px !important;
+    padding: 16px 16px 80px !important;
   }
 }
 
@@ -777,72 +788,35 @@ button .material-symbols-outlined {
   font-variation-settings: 'FILL' 0, 'wght' 500, 'GRAD' 0, 'opsz' 20;
 }
 
-/* Mobile Bottom Navigation (Floating Pill) */
-.mobile-bottom-nav {
-  display: none;
+
+
+/* Modal handling: move to top on mobile for keyboard space */
+.modal-overlay-container {
+  transition: all var(--dur-normal) var(--ease);
+  align-items: center;
 }
 
+/* On mobile, or when keyboard might be open (focus-within) */
 @media (max-width: 767px) {
-  .mobile-bottom-nav {
-    display: flex;
-    position: fixed;
-    bottom: 24px;
-    left: 20px;
-    right: 20px;
-    height: 68px;
-    background: var(--bg-raised);
-    border: 1px solid var(--border);
-    border-radius: 34px;
-    align-items: center;
-    justify-content: space-around;
-    padding: 0 12px;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15), 0 4px 12px rgba(0, 0, 0, 0.05);
-    z-index: 1000;
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s var(--ease);
+  .modal-overlay-container:focus-within {
+    align-items: flex-start !important;
+    padding: 16px !important;
+    padding-top: 24px !important;
+  }
+  
+  /* Fallback: even if not focused, if it's too tall, let it start from top */
+  .modal-overlay-container {
+    padding: 16px;
+    overflow-y: auto;
   }
 
-  .mobile-bottom-nav.hidden {
-    transform: translateY(120px);
-    opacity: 0;
-    pointer-events: none;
+  /* Force single column for grids inside modals on mobile */
+  .slip-form-grid, .stat-grid, .config-grid {
+    grid-template-columns: 1fr !important;
   }
-
-  .mobile-nav-item {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
-    color: var(--fg-muted);
-    text-decoration: none;
-    flex: 1;
-    height: 100%;
-    transition: all 0.2s var(--ease);
-    border-radius: 20px;
-  }
-
-  .mobile-nav-item.active {
-    color: var(--accent-500);
-  }
-
-  .mobile-nav-item span {
-    font-size: 10px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.02em;
-  }
-
-  .mobile-nav-item:active {
-    background: var(--bg-active);
-    transform: scale(0.92);
-  }
-}
-
-/* Adjust page padding for mobile bottom nav */
-@media (max-width: 767px) {
-  .page-content {
-    padding-bottom: 110px !important;
+  
+  /* Ensure inputs are easy to tap and prevent iOS auto-zoom */
+  .input-field, input, select, textarea {
+    font-size: 16px !important;
   }
 }

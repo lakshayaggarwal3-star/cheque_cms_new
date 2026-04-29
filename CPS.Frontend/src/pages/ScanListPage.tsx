@@ -13,6 +13,7 @@ import { getBatchList } from '../services/batchService';
 import { useAuthStore } from '../store/authStore';
 import { BatchDto, BatchStatus, BatchStatusLabels } from '../types';
 import { toast } from '../store/toastStore';
+import { QueueTabs } from '../components/QueueTabs';
 
 // ── primitives ────────────────────────────────────────────────────────────────
 
@@ -129,6 +130,7 @@ export function ScanListPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0, height: '100%' }}>
+      <QueueTabs />
       {/* Table card */}
       <div style={{
         background: 'var(--bg-raised)', border: '1px solid var(--border)',

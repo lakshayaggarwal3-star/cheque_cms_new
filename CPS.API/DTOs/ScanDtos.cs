@@ -71,6 +71,7 @@ public class MobileUploadSlipItemRequest
     public long SlipEntryId { get; set; }
     public int ScanOrder { get; set; } = 1;
     public IFormFile? Image { get; set; }
+    public IFormFile? ImageOriginal { get; set; }
     public string ScannerType { get; set; } = "Mobile-Camera";
 }
 
@@ -90,6 +91,8 @@ public class MobileUploadChequeRequest
     public IFormFile? ImageBack { get; set; }
     public IFormFile? ImageFrontTiff { get; set; }
     public IFormFile? ImageBackTiff { get; set; }
+    public IFormFile? ImageFrontOriginal { get; set; }
+    public IFormFile? ImageBackOriginal { get; set; }
     public string? ChqNo { get; set; }
     public string? ScanChqNo { get; set; }
     public string? RRChqNo { get; set; }

@@ -126,9 +126,11 @@ export function SlipFormModal({ batchId, defaultPickupPoint, existingSlips = [],
   }, [uniqueClients, clientSearchTerm]);
 
   const getPickupPointDisplay = (c: ClientAutoFillDto) => {
-    return c.pickupPointCode
-      ? `${c.pickupPointCode}${c.pickupPointDesc ? ' - ' + c.pickupPointDesc : ''}`
-      : c.cityCode || '';
+    // Show [CityCode] / [PickupPointCode] - [Description]
+    const loc = c.cityCode || 'N/A';
+    const pp = c.pickupPointCode ? ` / ${c.pickupPointCode}` : '';
+    const desc = c.pickupPointDesc ? ` - ${c.pickupPointDesc}` : '';
+    return `${loc}${pp}${desc}`;
   };
 
   const handleClientSelect = (client: ClientAutoFillDto) => {
@@ -241,15 +243,17 @@ export function SlipFormModal({ batchId, defaultPickupPoint, existingSlips = [],
   };
 
   return (
-    <div style={{
+    <div className="modal-overlay-container" style={{
       position: 'fixed', inset: 0,
-      background: 'rgb(0 0 0 / 55%)',
+      background: 'rgb(0 0 0 / 65%)',
+      backdropFilter: 'blur(4px)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      zIndex: 60, padding: 16,
+      zIndex: 1000, padding: 16,
+      overflowY: 'auto',
     }}>
       <div className="card" style={{
         width: '100%', maxWidth: 560,
-        maxHeight: 'calc(100dvh - 2rem)',
+        maxHeight: 'none',
         display: 'flex', flexDirection: 'column',
         overflow: 'hidden',
         borderRadius: 'var(--r-xl)',
@@ -289,9 +293,9 @@ export function SlipFormModal({ batchId, defaultPickupPoint, existingSlips = [],
         </div>
 
         {/* Body */}
-        <div style={{ padding: '20px 24px 24px', overflowY: 'auto', minHeight: 0 }}>
+        <div style={{ padding: '20px 24px 24px', overflowY: 'visible', minHeight: 0 }}>
           <form onSubmit={handleSubmit(onSubmit)}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px 14px' }}>
+            <div className="slip-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px 14px' }}>
 
               {/* Deposit Slip No */}
               <div style={{ gridColumn: 'span 1' }}>

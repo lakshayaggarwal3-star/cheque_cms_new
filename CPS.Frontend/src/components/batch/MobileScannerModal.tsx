@@ -37,11 +37,12 @@ export function MobileScannerModal({ hasBothRoles, submitting, onClose, onSubmit
   };
 
   return (
-    <div style={{
+    <div className="modal-overlay-container" style={{
       position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-      backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(3px)',
+      backgroundColor: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      zIndex: 100, padding: 24, animation: 'fadeIn 0.2s ease-out'
+      zIndex: 1000, padding: '20px', animation: 'fadeIn 0.2s ease-out',
+      overflowY: 'auto'
     }}>
       <form
         onSubmit={handleSubmit}
@@ -93,7 +94,7 @@ export function MobileScannerModal({ hasBothRoles, submitting, onClose, onSubmit
             {modalErrors.summ && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--danger)', marginTop: 4 }}>{modalErrors.summ}</div>}
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12 }}>
+          <div className="slip-form-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12 }}>
             <div style={{ opacity: !modalSumm.trim() ? 0.6 : 1, transition: 'opacity 0.2s var(--ease)' }}>
               <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--fg-muted)', display: 'block', marginBottom: 6 }}>
                 Total Slips <span style={{ color: 'var(--danger)' }}>*</span>

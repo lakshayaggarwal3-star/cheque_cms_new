@@ -41,6 +41,7 @@ export interface CreateUserRequest {
 }
 
 export interface UpdateUserRequest {
+  employeeID: string;
   username: string;
   email?: string;
   defaultLocationID?: number;
@@ -72,4 +73,8 @@ export async function deactivateUser(id: number): Promise<void> {
 
 export async function activateUser(id: number): Promise<void> {
   await apiClient.put(`/users/${id}/status`, null, { params: { isActive: true } });
+}
+
+export async function deleteUser(id: number): Promise<void> {
+  await apiClient.delete(`/users/${id}`);
 }

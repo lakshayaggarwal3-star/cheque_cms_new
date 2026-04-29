@@ -25,7 +25,6 @@ export function BatchCreatePage() {
 
   return (
     <div style={{ position: 'relative', minHeight: '100%' }}>
-
       {/* Top Section: All batch info in responsive grid */}
       <div style={{
         background: 'var(--bg-raised)', border: '1px solid var(--border)',
