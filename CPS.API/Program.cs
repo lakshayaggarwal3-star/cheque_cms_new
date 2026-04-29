@@ -186,9 +186,17 @@ try
     app.UseMiddleware<RequestLoggingMiddleware>();
 
     app.UseDefaultFiles();
-    app.UseStaticFiles();
+    
+    // Enable .tflite file serving
+    var provider = new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider();
+    provider.Mappings[".tflite"] = "application/octet-stream";
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        ContentTypeProvider = provider
+    });
 
     app.UseAuthentication();
+    app.UseMiddleware<SessionValidationMiddleware>();
     app.UseAuthorization();
 
     app.MapControllers();

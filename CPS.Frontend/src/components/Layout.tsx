@@ -177,13 +177,14 @@ const PAGE_TITLES: Record<string, { title: string; subtitle: string }> = {
 
 // ── Sidebar ───────────────────────────────────────────────────────────────────
 
-function Sidebar({ expanded, open, currentPath, onNav, onLogout, user }: {
+function Sidebar({ expanded, open, currentPath, onNav, onLogout, user, isMobile }: {
   expanded: boolean;
   open: boolean;
   currentPath: string;
   onNav: (path: string) => void;
   onLogout: () => void;
   user: { username: string; locationName: string; roles: string[]; isDeveloper?: boolean } | null;
+  isMobile: boolean;
 }) {
   const W = expanded ? 232 : 60;
 
@@ -208,7 +209,9 @@ function Sidebar({ expanded, open, currentPath, onNav, onLogout, user }: {
         display: 'flex', flexDirection: 'column',
         transition: 'width var(--dur) var(--ease), min-width var(--dur) var(--ease)',
         position: 'relative', zIndex: 10,
-        height: '100vh', flexShrink: 0,
+        height: isMobile ? '100dvh' : '100vh', 
+        maxHeight: isMobile ? '100dvh' : '100vh',
+        flexShrink: 0,
         overflow: 'hidden',
       }}
     >
@@ -235,8 +238,9 @@ function Sidebar({ expanded, open, currentPath, onNav, onLogout, user }: {
         flex: 1,
         padding: expanded ? '6px 10px' : '6px 0',
         display: 'flex', flexDirection: 'column', gap: 2,
-        overflowY: 'auto',
+        overflowY: isMobile ? 'hidden' : 'auto',
         scrollbarWidth: 'none',
+        msOverflowStyle: 'none',
       }}>
         {NAV_LINKS.filter(l => hasRole(l.roles)).map(l => (
           <NavItem key={l.id} icon={l.icon} label={l.label}
@@ -336,21 +340,7 @@ export function Layout() {
     return true;
   });
 
-  // Scroll logic for mobile bottom nav visibility
-  const [showBottomNav, setShowBottomNav] = useState(true);
-  const [lastScrollY, setLastScrollY] = useState(0);
 
-  const handleMainScroll = (e: React.UIEvent<HTMLElement>) => {
-    if (!isMobile) return;
-    const currentScrollY = e.currentTarget.scrollTop;
-    // Hide if scrolling down and past a small threshold
-    if (currentScrollY > lastScrollY && currentScrollY > 60) {
-      setShowBottomNav(false);
-    } else {
-      setShowBottomNav(true);
-    }
-    setLastScrollY(currentScrollY);
-  };
 
   useEffect(() => {
     const onResize = () => {
@@ -415,12 +405,13 @@ export function Layout() {
         onNav={handleNav}
         onLogout={handleLogout}
         user={user}
+        isMobile={isMobile}
       />
       
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
-        {/* Always show TopBar on mobile so the hamburger stays reachable.
-            On desktop, hide it for no-header pages (scan, rr detail). */}
-        {(!isNoHeaderPage || isMobile) && (
+        {/* Always hide TopBar for no-header pages (scan detail, rr detail) even on mobile
+            to give maximum screen space for capture/edit. */}
+        {!isNoHeaderPage && (
           <TopBar
             onToggle={() => setSidebarOpen(o => !o)}
             title={pageInfo.title}
@@ -430,13 +421,15 @@ export function Layout() {
         )}
 
         <main 
-          onScroll={handleMainScroll}
           style={{
             flex: 1,
-            overflow: isNoHeaderPage && !isMobile ? 'hidden' : 'auto',
+            overflowX: 'hidden',
+            overflowY: isNoHeaderPage ? 'hidden' : 'auto',
             display: 'flex',
             flexDirection: 'column',
-            position: 'relative'
+            position: 'relative',
+            WebkitOverflowScrolling: 'touch',
+            touchAction: isNoHeaderPage ? 'none' : 'pan-y',
           }}
         >
           {/* key={pathname} forces a clean Outlet remount whenever the route path
@@ -460,27 +453,7 @@ export function Layout() {
         </main>
       </div>
 
-      {/* Floating Mobile Bottom Nav */}
-      {isMobile && ['/', '/all-batches', '/rr', '/scan'].includes(location.pathname) && (
-        <nav className={`mobile-bottom-nav${!showBottomNav ? ' hidden' : ''}`}>
-          <Link to="/" className={`mobile-nav-item${location.pathname === '/' ? ' active' : ''}`}>
-            <Icon name="home" size={24} weight={location.pathname === '/' ? 500 : 400} />
-            <span>Home</span>
-          </Link>
-          <Link to="/batch/create" className={`mobile-nav-item${location.pathname === '/batch/create' ? ' active' : ''}`}>
-            <Icon name="add_circle" size={24} weight={location.pathname === '/batch/create' ? 500 : 400} />
-            <span>New Batch</span>
-          </Link>
-          <Link to="/all-batches" className={`mobile-nav-item${location.pathname === '/all-batches' ? ' active' : ''}`}>
-            <Icon name="list_alt" size={24} weight={location.pathname === '/all-batches' ? 500 : 400} />
-            <span>All Batches</span>
-          </Link>
-          <Link to="/admin/settings" className={`mobile-nav-item${location.pathname === '/admin/settings' ? ' active' : ''}`}>
-            <Icon name="settings" size={24} weight={location.pathname === '/admin/settings' ? 500 : 400} />
-            <span>Settings</span>
-          </Link>
-        </nav>
-      )}
+
     </div>
   );
 }

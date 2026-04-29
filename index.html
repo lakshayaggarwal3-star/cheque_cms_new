@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>DocScan</title>
+
+<!-- OpenCV first, then jscanify -->
+<script src="https://docs.opencv.org/4.7.0/opencv.js" async></script>
+<script src="https://cdn.jsdelivr.net/gh/ColonelParrot/jscanify@master/src/jscanify.min.js"></script>
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap');
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#07080f;--surface:#0f1018;--card:#13151f;--border:#1e2030;
+  --accent:#00e5ff;--success:#34d399;--warn:#fbbf24;--danger:#f87171;
+  --text:#e2e4f0;--muted:#555870;
+  --mono:'Space Mono',monospace;--sans:'Syne',sans-serif;
+}
+html,body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh;overflow-x:hidden}
+
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100}
+.logo{font-size:1.3rem;font-weight:800}.logo .hi{color:var(--accent)}.logo .lo{color:var(--text)}
+#cv-status{font-family:var(--mono);font-size:.6rem;padding:4px 12px;border-radius:20px;background:var(--card);border:1px solid var(--border);color:var(--muted)}
+#cv-status.loading{color:var(--warn);border-color:var(--warn);animation:blink 1s infinite}
+#cv-status.ready{color:var(--success);border-color:var(--success)}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.4}}
+
+.page{max-width:720px;margin:0 auto;padding:20px 14px 60px;display:flex;flex-direction:column;gap:16px}
+
+/* Camera */
+.camera-block{position:relative;width:100%;border-radius:18px;overflow:hidden;background:#000;border:1px solid var(--border);aspect-ratio:4/3}
+#video{width:100%;height:100%;object-fit:cover;display:block}
+#highlight-canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+#manual-canvas{position:absolute;inset:0;width:100%;height:100%;display:none;touch-action:none}
+.cam-badge{position:absolute;top:10px;left:10px;font-family:var(--mono);font-size:.55rem;background:rgba(0,0,0,.8);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--muted);z-index:5}
+.cam-badge.found{color:var(--success);border-color:var(--success)}
+.cam-badge.manual{color:var(--warn);border-color:var(--warn)}
+#doc-label{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);font-family:var(--mono);font-size:.6rem;background:rgba(0,0,0,.8);border-radius:8px;padding:5px 14px;white-space:nowrap;color:var(--muted);border:1px solid var(--border);z-index:5;transition:all .3s}
+#doc-label.found{color:var(--success);border-color:var(--success)}
+#doc-label.manual{color:var(--warn);border-color:var(--warn)}
+
+/* Controls */
+.controls{display:flex;gap:8px;flex-wrap:wrap}
+.btn{flex:1;min-width:90px;padding:12px 8px;border-radius:12px;border:none;font-family:var(--sans);font-size:.8rem;font-weight:600;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:6px}
+.btn-primary{background:var(--accent);color:#000}.btn-primary:hover{filter:brightness(1.1)}
+.btn-secondary{background:var(--card);color:var(--text);border:1px solid var(--border)}
+.btn-warn{background:var(--warn);color:#000}
+.btn-success{background:var(--success);color:#000}
+.btn:disabled{opacity:.35;cursor:not-allowed}
+
+/* Manual tip */
+.manual-tip{background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);border-radius:12px;padding:14px;font-size:.78rem;color:var(--text);line-height:1.6;display:none}
+.manual-tip.show{display:block}
+.manual-tip strong{color:var(--warn)}
+.manual-actions{display:flex;gap:8px;margin-top:10px}
+
+/* How it works */
+.how-panel{background:var(--card);border:1px solid var(--border);border-radius:16px;overflow:hidden}
+.how-header{padding:14px 16px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;font-size:.8rem;font-weight:600;color:var(--text);user-select:none}
+.how-header .arrow{transition:transform .3s;font-size:.7rem;color:var(--muted)}
+.how-header.open .arrow{transform:rotate(180deg)}
+.how-body{display:none;border-top:1px solid var(--border)}
+.how-body.open{display:block}
+.how-step{display:flex;gap:12px;padding:12px 16px;border-bottom:1px solid var(--border)}
+.how-step:last-child{border-bottom:none}
+.how-num{width:24px;height:24px;border-radius:50%;background:var(--border);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:.6rem;color:var(--muted);flex-shrink:0;margin-top:2px}
+.how-body-text{font-size:.75rem;color:var(--muted);line-height:1.6;flex:1}
+.how-body-text strong{color:var(--text)}
+.how-body-text code{font-family:var(--mono);font-size:.65rem;background:var(--border);padding:1px 4px;border-radius:3px;color:var(--accent)}
+.step-tag{font-family:var(--mono);font-size:.58rem;background:var(--border);border-radius:4px;padding:2px 6px;color:#a78bfa;margin-left:4px}
+.step-tag.key{color:#34d399;background:rgba(52,211,153,.15)}
+
+/* Output */
+.output-block{border:1px solid var(--border);border-radius:16px;overflow:hidden;background:var(--card)}
+.tab-bar{display:flex;border-bottom:1px solid var(--border)}
+.tab{flex:1;padding:10px 6px;text-align:center;font-size:.72rem;font-weight:600;color:var(--muted);cursor:pointer;border:none;background:none;font-family:var(--sans);border-bottom:2px solid transparent;transition:all .2s}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.tab-pane{display:none;padding:14px}
+.tab-pane.active{display:block}
+.canvas-wrap{width:100%;display:flex;justify-content:center;background:#000;border-radius:10px;overflow:hidden;min-height:180px;align-items:center}
+#result-canvas,#warped-canvas{max-width:100%;max-height:65vh;display:block}
+.empty-state{text-align:center;padding:24px;color:var(--muted);font-size:.78rem;font-family:var(--mono)}
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.info-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px}
+.info-card .label{font-family:var(--mono);font-size:.58rem;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px}
+.info-card .value{font-size:1rem;font-weight:800;color:var(--accent);font-family:var(--mono)}
+
+#download-btn{width:100%;display:none}
+#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 20px;font-size:.8rem;font-family:var(--mono);color:var(--text);transition:transform .3s cubic-bezier(.34,1.56,.64,1);z-index:999;white-space:nowrap}
+#toast.show{transform:translateX(-50%) translateY(0)}
+::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo"><span class="hi">Doc</span><span class="lo">Scan</span></div>
+  <div id="cv-status" class="loading">⏳ Loading…</div>
+</header>
+
+<div class="page">
+
+  <!-- CAMERA -->
+  <div class="camera-block">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="highlight-canvas"></canvas>
+    <canvas id="manual-canvas"></canvas>
+    <div class="cam-badge" id="cam-badge">● LIVE</div>
+    <div id="doc-label">Start camera to begin</div>
+  </div>
+
+  <!-- CONTROLS -->
+  <div class="controls">
+    <button class="btn btn-primary" id="btn-start" onclick="startCamera()">📷 Start</button>
+    <button class="btn btn-secondary" id="btn-live" onclick="toggleLive()" disabled>👁 Live: OFF</button>
+    <button class="btn btn-secondary" id="btn-scan" onclick="captureAndScan()" disabled>🔍 Scan</button>
+    <button class="btn btn-warn" id="btn-manual" onclick="toggleManual()" disabled>✋ Manual</button>
+  </div>
+
+  <!-- MANUAL TIP -->
+  <div class="manual-tip" id="manual-tip">
+    <strong>✋ Manual Corner Mode</strong> — Drag the 4 corner handles onto the document corners, then tap Warp.
+    <div class="manual-actions">
+      <button class="btn btn-warn" style="flex:1" onclick="warpManual()">⚡ Warp Manual</button>
+      <button class="btn btn-secondary" style="flex:1" onclick="cancelManual()">✕ Cancel</button>
+    </div>
+  </div>
+
+  <!-- HOW IT WORKS (collapsible) -->
+  <div class="how-panel">
+    <div class="how-header" id="how-hdr" onclick="toggleHow()">
+      <span>⚙ How jscanify detects your document</span>
+      <span class="arrow">▼</span>
+    </div>
+    <div class="how-body" id="how-body">
+
+      <div class="how-step">
+        <div class="how-num">1</div>
+        <div class="how-body-text">
+          <strong>Grayscale + Blur</strong> <span class="step-tag">cvtColor + GaussianBlur</span><br>
+          Converts RGB to luminance, then applies Gaussian smoothing to remove camera sensor noise before edge detection. Without blurring, tiny pixel variations create hundreds of fake edges.
+        </div>
+      </div>
+
+      <div class="how-step">
+        <div class="how-num">2</div>
+        <div class="how-body-text">
+          <strong>Canny Edge Detection</strong> <span class="step-tag">Canny</span><br>
+          Computes intensity gradients across the image. Two thresholds (hysteresis): strong edges kept, weak edges kept only if connected to strong ones. Result = thin, 1-pixel-wide edge lines.
+        </div>
+      </div>
+
+      <div class="how-step">
+        <div class="how-num">3</div>
+        <div class="how-body-text">
+          <strong>Morphological Close</strong> <span class="step-tag key">GAP FIXER</span><br>
+          <code>MORPH_CLOSE</code> = dilate then erode. Dilate expands edges and bridges gaps (like where your fingers broke the outline). Erode shrinks back to original thickness but keeps the gap filled. This is why jscanify works better — it includes this step by default.
+        </div>
+      </div>
+
+      <div class="how-step">
+        <div class="how-num">4</div>
+        <div class="how-body-text">
+          <strong>Find Contours</strong> <span class="step-tag">findContours</span><br>
+          Traces all closed edge loops. Only outer boundaries (<code>RETR_EXTERNAL</code>) — inner document text and lines are ignored entirely.
+        </div>
+      </div>
+
+      <div class="how-step">
+        <div class="how-num">5</div>
+        <div class="how-body-text">
+          <strong>Largest Contour → Polygon Approx</strong> <span class="step-tag">approxPolyDP</span><br>
+          Picks the contour with the largest area (assuming document is the dominant object). Douglas–Peucker simplification reduces it to 4 points. jscanify also validates the result is a reasonable quadrilateral.
+        </div>
+      </div>
+
+      <div class="how-step">
+        <div class="how-num">6</div>
+        <div class="how-body-text">
+          <strong>Perspective Warp</strong> <span class="step-tag">getPerspectiveTransform + warpPerspective</span><br>
+          Sorts 4 corners into TL/TR/BR/BL order. Computes a homography matrix mapping them to a flat rectangle. <code>warpPerspective</code> remaps every pixel — output is as if the camera was directly above the document.
+        </div>
+      </div>
+
+      <div class="how-step">
+        <div class="how-num">7</div>
+        <div class="how-body-text">
+          <strong>Why it sometimes still fails</strong><br>
+          jscanify assumes the document is the <b>largest closed contour</b>. If your body/background is larger = it picks wrong object. Best results: document on a plain contrasting surface, all 4 corners visible, good lighting. If it still fails → use <b>✋ Manual</b> mode.
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- OUTPUT -->
+  <div class="output-block">
+    <div class="tab-bar">
+      <button class="tab active" onclick="switchTab('live')">Live View</button>
+      <button class="tab" onclick="switchTab('warped')">Scanned</button>
+      <button class="tab" onclick="switchTab('stats')">Stats</button>
+    </div>
+
+    <div class="tab-pane active" id="tab-live">
+      <div class="canvas-wrap">
+        <canvas id="result-canvas"></canvas>
+        <div class="empty-state" id="empty-live">Tap Scan or enable Live mode</div>
+      </div>
+    </div>
+
+    <div class="tab-pane" id="tab-warped">
+      <div class="canvas-wrap">
+        <canvas id="warped-canvas"></canvas>
+        <div class="empty-state" id="empty-warped">No warped output yet</div>
+      </div>
+    </div>
+
+    <div class="tab-pane" id="tab-stats">
+      <div class="info-grid">
+        <div class="info-card"><div class="label">Resolution</div><div class="value" id="stat-res">—</div></div>
+        <div class="info-card"><div class="label">Mode</div><div class="value" id="stat-mode">—</div></div>
+        <div class="info-card"><div class="label">Doc Found</div><div class="value" id="stat-found">—</div></div>
+        <div class="info-card"><div class="label">Output Size</div><div class="value" id="stat-out">—</div></div>
+        <div class="info-card"><div class="label">Scan Time</div><div class="value" id="stat-time">—</div></div>
+        <div class="info-card"><div class="label">Library</div><div class="value" id="stat-lib">jscanify</div></div>
+      </div>
+    </div>
+  </div>
+
+  <button class="btn btn-success" id="download-btn" onclick="downloadResult()">⬇ Download Scanned Document</button>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let scanner = null;
+let stream  = null;
+let liveRunning = false;
+let liveTimer   = null;
+let manualMode  = false;
+let manualCorners = null;
+let dragging = -1;
+let frozenFrame = null; // canvas frozen for manual mode
+
+const video     = document.getElementById('video');
+const hlCanvas  = document.getElementById('highlight-canvas');
+const manCanvas = document.getElementById('manual-canvas');
+const hlCtx     = hlCanvas.getContext('2d');
+const mcCtx     = manCanvas.getContext('2d');
+
+// ── Wait for both OpenCV AND jscanify ─────────────────────────────────────
+window.addEventListener('load', () => {
+  const poll = setInterval(() => {
+    if (typeof cv !== 'undefined' && cv.Mat && typeof jscanify !== 'undefined') {
+      clearInterval(poll);
+      scanner = new jscanify();
+      const el = document.getElementById('cv-status');
+      el.textContent = '✓ jscanify Ready';
+      el.className = 'ready';
+      toast('jscanify + OpenCV loaded ✓');
+    }
+  }, 300);
+});
+
+// ── Camera ────────────────────────────────────────────────────────────────
+async function startCamera() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 960 } },
+      audio: false
+    });
+    video.srcObject = stream;
+    video.onloadedmetadata = () => {
+      // Size canvases to the container's CSS dimensions (not native video resolution)
+      // so CSS won't apply non-uniform scaling that causes visible stretch.
+      const block = video.parentElement;
+      const cw = block.clientWidth  || video.videoWidth;
+      const ch = block.clientHeight || video.videoHeight;
+      hlCanvas.width  = cw;  hlCanvas.height = ch;
+      manCanvas.width = cw;  manCanvas.height = ch;
+    };
+    document.getElementById('btn-start').disabled  = true;
+    document.getElementById('btn-live').disabled   = false;
+    document.getElementById('btn-scan').disabled   = false;
+    document.getElementById('btn-manual').disabled = false;
+    setLabel('Point camera at document', '');
+    document.getElementById('cam-badge').textContent = '● LIVE';
+    toast('Camera started 📷');
+  } catch(e) { toast('Camera error: ' + e.message); }
+}
+
+// ── Capture video frame matching CSS object-fit:cover ────────────────────
+// Returns a canvas of exactly (w×h) containing only the portion of the video
+// that is actually visible — the same crop the CSS cover shows.
+function captureVideoFrame(w, h) {
+  const vw = video.videoWidth, vh = video.videoHeight;
+  const containerAR = w / h, videoAR = vw / vh;
+  let sx = 0, sy = 0, sw = vw, sh = vh;
+  if (videoAR > containerAR) {
+    sw = Math.round(vh * containerAR);
+    sx = Math.round((vw - sw) / 2);
+  } else if (videoAR < containerAR) {
+    sh = Math.round(vw / containerAR);
+    sy = Math.round((vh - sh) / 2);
+  }
+  const fc = document.createElement('canvas');
+  fc.width = w; fc.height = h;
+  fc.getContext('2d').drawImage(video, sx, sy, sw, sh, 0, 0, w, h);
+  return fc;
+}
+
+// ── Live highlight loop ───────────────────────────────────────────────────
+function toggleLive() {
+  liveRunning = !liveRunning;
+  const btn = document.getElementById('btn-live');
+  if (liveRunning) {
+    btn.textContent = '👁 Live: ON';
+    btn.classList.replace('btn-secondary', 'btn-primary');
+    liveLoop();
+  } else {
+    btn.textContent = '👁 Live: OFF';
+    btn.classList.replace('btn-primary', 'btn-secondary');
+    clearTimeout(liveTimer);
+    hlCtx.clearRect(0, 0, hlCanvas.width, hlCanvas.height);
+    setLabel('Point camera at document', '');
+    document.getElementById('cam-badge').className = 'cam-badge';
+  }
+}
+
+function liveLoop() {
+  if (!liveRunning) return;
+  if (scanner && video.readyState === 4) {
+    try {
+      const tmp = captureVideoFrame(hlCanvas.width, hlCanvas.height);
+      const highlighted = scanner.highlightPaper(tmp);
+      hlCtx.clearRect(0, 0, hlCanvas.width, hlCanvas.height);
+      hlCtx.drawImage(highlighted, 0, 0); // 1-to-1, no CSS distortion
+
+      // Check if paper was found by looking for non-transparent pixels in a test region
+      const badge = document.getElementById('cam-badge');
+      badge.className = 'cam-badge found';
+      badge.textContent = '● DETECTING';
+      setLabel('Document highlighted — tap Scan', 'found');
+
+    } catch(e) {
+      document.getElementById('cam-badge').className = 'cam-badge';
+      setLabel('No document detected…', '');
+    }
+  }
+  liveTimer = setTimeout(liveLoop, 200);
+}
+
+// ── Detect document corners via OpenCV (returns [{x,y}×4] or null) ────────
+function detectCorners(canvas) {
+  let src = null, gray = null, blurred = null, edges = null, closed = null;
+  let kernel = null, contours = null, hierarchy = null, approx = null;
+  try {
+    src       = cv.imread(canvas);
+    gray      = new cv.Mat();
+    blurred   = new cv.Mat();
+    edges     = new cv.Mat();
+    closed    = new cv.Mat();
+    kernel    = cv.Mat.ones(9, 9, cv.CV_8U);
+    contours  = new cv.MatVector();
+    hierarchy = new cv.Mat();
+
+    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+    cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
+    cv.Canny(blurred, edges, 75, 200);
+    cv.morphologyEx(edges, closed, cv.MORPH_CLOSE, kernel);
+    cv.findContours(closed, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+    const totalArea = canvas.width * canvas.height;
+    let maxArea = 0, bestIdx = -1;
+    for (let i = 0; i < contours.size(); i++) {
+      const a = cv.contourArea(contours.get(i));
+      // must be between 5% and 95% of frame — filters out tiny noise and full-frame background
+      if (a > maxArea && a > totalArea * 0.05 && a < totalArea * 0.95) {
+        maxArea = a; bestIdx = i;
+      }
+    }
+    if (bestIdx < 0) return null;
+
+    const cnt  = contours.get(bestIdx);
+    const peri = cv.arcLength(cnt, true);
+    approx = new cv.Mat();
+
+    // Try progressively looser epsilon until approxPolyDP gives exactly 4 corners
+    let got4 = false;
+    for (let eps = 0.02; eps <= 0.12 && !got4; eps += 0.01) {
+      cv.approxPolyDP(cnt, approx, eps * peri, true);
+      if (approx.rows === 4) got4 = true;
+    }
+
+    if (got4) {
+      const pts = [];
+      for (let i = 0; i < 4; i++)
+        pts.push({ x: approx.data32S[i * 2], y: approx.data32S[i * 2 + 1] });
+      return pts;
+    }
+
+    // Fallback: axis-aligned bounding rect of the largest contour
+    const r = cv.boundingRect(cnt);
+    return [
+      { x: r.x,          y: r.y          },
+      { x: r.x + r.width, y: r.y         },
+      { x: r.x + r.width, y: r.y + r.height },
+      { x: r.x,           y: r.y + r.height }
+    ];
+  } catch(e) {
+    return null;
+  } finally {
+    [src, gray, blurred, edges, closed, kernel, hierarchy, approx]
+      .forEach(m => { try { m && m.delete(); } catch(_){} });
+    try { contours && contours.delete(); } catch(_){}
+  }
+}
+
+// ── Capture & Scan ────────────────────────────────────────────────────────
+async function captureAndScan() {
+  if (!scanner) { toast('jscanify not ready yet'); return; }
+  if (!stream)  { toast('Start camera first'); return; }
+
+  const t0 = performance.now();
+  cancelManual();
+
+  // Display-sized frame: matches exactly what the user sees (cover-cropped, no stretch)
+  const dw = hlCanvas.width, dh = hlCanvas.height;
+  const fc = captureVideoFrame(dw, dh);
+  frozenFrame = fc;
+
+  // Native-resolution frame for a high-quality final crop
+  const native = document.createElement('canvas');
+  native.width = video.videoWidth; native.height = video.videoHeight;
+  native.getContext('2d').drawImage(video, 0, 0);
+
+  // Show jscanify highlight outline in Live View tab (1-to-1, no distortion)
+  let highlighted;
+  try {
+    highlighted = scanner.highlightPaper(fc);
+  } catch(e) {
+    toast('Detection error: ' + e.message);
+    return;
+  }
+  const rc = document.getElementById('result-canvas');
+  rc.width = dw; rc.height = dh;
+  rc.getContext('2d').drawImage(highlighted, 0, 0);
+  document.getElementById('empty-live').style.display = 'none';
+
+  // Detect corners on the display-sized frame, then map to native resolution for crop
+  const corners = detectCorners(fc);
+  let docFound  = false;
+  const t1 = performance.now();
+
+  if (corners) {
+    // Map display corners → native coordinates
+    const vw = video.videoWidth, vh = video.videoHeight;
+    const containerAR = dw / dh, videoAR = vw / vh;
+    let sx = 0, sy = 0, sw = vw, sh = vh;
+    if (videoAR > containerAR) { sw = Math.round(vh * containerAR); sx = Math.round((vw - sw) / 2); }
+    else if (videoAR < containerAR) { sh = Math.round(vw / containerAR); sy = Math.round((vh - sh) / 2); }
+
+    const toNX = c => sx + c.x * (sw / dw);
+    const toNY = c => sy + c.y * (sh / dh);
+    const nxs = corners.map(toNX), nys = corners.map(toNY);
+    const nx0 = Math.max(0,  Math.min(...nxs));
+    const ny0 = Math.max(0,  Math.min(...nys));
+    const nx1 = Math.min(vw, Math.max(...nxs));
+    const ny1 = Math.min(vh, Math.max(...nys));
+    const cw  = Math.round(nx1 - nx0), ch = Math.round(ny1 - ny0);
+
+    const wc = document.getElementById('warped-canvas');
+    wc.width = cw; wc.height = ch;
+    wc.getContext('2d').drawImage(native, nx0, ny0, cw, ch, 0, 0, cw, ch);
+    document.getElementById('empty-warped').style.display  = 'none';
+    document.getElementById('download-btn').style.display  = 'flex';
+    document.getElementById('cam-badge').className = 'cam-badge found';
+    document.getElementById('cam-badge').textContent = '✓ SCANNED';
+    setLabel('✓ Document captured!', 'found');
+    toast('✓ Document region captured');
+    switchTab('warped');
+    document.getElementById('stat-out').textContent = cw + '×' + ch;
+    docFound = true;
+  } else {
+    document.getElementById('cam-badge').className = 'cam-badge';
+    setLabel('Not detected — try Manual ✋', '');
+    toast('Auto failed — use ✋ Manual mode');
+    document.getElementById('manual-tip').classList.add('show');
+    document.getElementById('stat-out').textContent = '—';
+  }
+
+  document.getElementById('stat-res').textContent   = video.videoWidth + '×' + video.videoHeight;
+  document.getElementById('stat-mode').textContent  = 'jscanify';
+  document.getElementById('stat-found').textContent = docFound ? 'YES ✓' : 'NO ✗';
+  document.getElementById('stat-time').textContent  = Math.round(t1 - t0) + 'ms';
+}
+
+// ── Manual Corner Mode ────────────────────────────────────────────────────
+function toggleManual() {
+  if (manualMode) { cancelManual(); return; }
+  if (!stream) { toast('Start camera first'); return; }
+
+  frozenFrame = captureVideoFrame(manCanvas.width, manCanvas.height);
+
+  manualMode = true;
+  manCanvas.style.display = 'block';
+  // default corners slightly inset
+  const mx = w * 0.15, my = h * 0.15;
+  manualCorners = [
+    {x: mx,     y: my    },
+    {x: w - mx, y: my    },
+    {x: w - mx, y: h - my},
+    {x: mx,     y: h - my}
+  ];
+
+  drawManual();
+  document.getElementById('manual-tip').classList.add('show');
+  document.getElementById('btn-manual').textContent = '✋ Manual: ON';
+  document.getElementById('btn-manual').classList.replace('btn-warn', 'btn-primary');
+  document.getElementById('cam-badge').className = 'cam-badge manual';
+  document.getElementById('cam-badge').textContent = '✋ MANUAL';
+  setLabel('Drag corners to document edges', 'manual');
+
+  manCanvas.addEventListener('mousedown',  mStart);
+  manCanvas.addEventListener('mousemove',  mMove);
+  manCanvas.addEventListener('mouseup',    mEnd);
+  manCanvas.addEventListener('touchstart', tStart, {passive:false});
+  manCanvas.addEventListener('touchmove',  tMove,  {passive:false});
+  manCanvas.addEventListener('touchend',   mEnd);
+}
+
+function cancelManual() {
+  manualMode = false; dragging = -1;
+  manCanvas.style.display = 'none';
+  document.getElementById('manual-tip').classList.remove('show');
+  document.getElementById('btn-manual').textContent = '✋ Manual';
+  document.getElementById('btn-manual').classList.replace('btn-primary', 'btn-warn');
+  document.getElementById('cam-badge').className = 'cam-badge';
+  document.getElementById('cam-badge').textContent = '● LIVE';
+  setLabel('Point camera at document', '');
+  manCanvas.removeEventListener('mousedown',  mStart);
+  manCanvas.removeEventListener('mousemove',  mMove);
+  manCanvas.removeEventListener('mouseup',    mEnd);
+  manCanvas.removeEventListener('touchstart', tStart);
+  manCanvas.removeEventListener('touchmove',  tMove);
+  manCanvas.removeEventListener('touchend',   mEnd);
+}
+
+function warpManual() {
+  if (!manualCorners || !frozenFrame) { toast('No frame to warp'); return; }
+  if (!scanner) { toast('jscanify not ready'); return; }
+
+  // Use jscanify extractPaper with manual corners by passing them
+  // jscanify v1.3+ supports passing corners directly
+  try {
+    const outW = 794, outH = 1123;
+    const c = manualCorners;
+    // Sort corners: TL, TR, BR, BL
+    const sorted = sortCorners(c);
+
+    // Use OpenCV directly for the warp since we have exact corners
+    const [tl, tr, br, bl] = sorted;
+    const dw = Math.round(Math.max(
+      Math.hypot(br.x - bl.x, br.y - bl.y),
+      Math.hypot(tr.x - tl.x, tr.y - tl.y)
+    ));
+    const dh = Math.round(Math.max(
+      Math.hypot(tr.x - br.x, tr.y - br.y),
+      Math.hypot(tl.x - bl.x, tl.y - bl.y)
+    ));
+
+    const sp = cv.matFromArray(4,1,cv.CV_32FC2,[tl.x,tl.y, tr.x,tr.y, br.x,br.y, bl.x,bl.y]);
+    const dp = cv.matFromArray(4,1,cv.CV_32FC2,[0,0, dw,0, dw,dh, 0,dh]);
+    const M  = cv.getPerspectiveTransform(sp, dp);
+    const srcMat  = cv.imread(frozenFrame);
+    const warpMat = new cv.Mat();
+    cv.warpPerspective(srcMat, warpMat, M, new cv.Size(dw, dh));
+
+    const wc = document.getElementById('warped-canvas');
+    wc.width = dw; wc.height = dh;
+    cv.imshow(wc, warpMat);
+    document.getElementById('empty-warped').style.display = 'none';
+    document.getElementById('download-btn').style.display = 'flex';
+
+    document.getElementById('stat-res').textContent   = frozenFrame.width + '×' + frozenFrame.height;
+    document.getElementById('stat-mode').textContent  = 'Manual';
+    document.getElementById('stat-found').textContent = 'MANUAL';
+    document.getElementById('stat-out').textContent   = dw + '×' + dh;
+
+    [sp, dp, M, srcMat, warpMat].forEach(m => m.delete());
+    cancelManual();
+    switchTab('warped');
+    toast('✓ Manual warp done');
+  } catch(e) {
+    toast('Warp error: ' + e.message);
+    console.error(e);
+  }
+}
+
+function drawManual() {
+  if (!manualMode || !frozenFrame) return;
+  mcCtx.clearRect(0, 0, manCanvas.width, manCanvas.height);
+  mcCtx.drawImage(frozenFrame, 0, 0);
+  mcCtx.fillStyle = 'rgba(0,0,0,0.5)';
+  mcCtx.fillRect(0, 0, manCanvas.width, manCanvas.height);
+
+  const c = manualCorners;
+  mcCtx.beginPath();
+  mcCtx.moveTo(c[0].x, c[0].y);
+  c.forEach(p => mcCtx.lineTo(p.x, p.y));
+  mcCtx.closePath();
+  mcCtx.fillStyle   = 'rgba(0,229,255,0.15)';
+  mcCtx.fill();
+  mcCtx.strokeStyle = '#00e5ff';
+  mcCtx.lineWidth   = 2;
+  mcCtx.stroke();
+
+  c.forEach((pt, i) => {
+    mcCtx.beginPath();
+    mcCtx.arc(pt.x, pt.y, 20, 0, Math.PI * 2);
+    mcCtx.fillStyle   = dragging === i ? '#fbbf24' : '#00e5ff';
+    mcCtx.fill();
+    mcCtx.strokeStyle = '#000';
+    mcCtx.lineWidth   = 2;
+    mcCtx.stroke();
+    mcCtx.fillStyle       = '#000';
+    mcCtx.font            = 'bold 11px monospace';
+    mcCtx.textAlign       = 'center';
+    mcCtx.textBaseline    = 'middle';
+    mcCtx.fillText(['TL','TR','BR','BL'][i], pt.x, pt.y);
+  });
+}
+
+function getPos(e) {
+  const r  = manCanvas.getBoundingClientRect();
+  const sx = manCanvas.width  / r.width;
+  const sy = manCanvas.height / r.height;
+  const cl = e.touches ? e.touches[0] : e;
+  return { x: (cl.clientX - r.left) * sx, y: (cl.clientY - r.top) * sy };
+}
+function mStart(e)  { const p=getPos(e); dragging=manualCorners.findIndex(c=>Math.hypot(c.x-p.x,c.y-p.y)<35); drawManual(); }
+function mMove(e)   { if(dragging<0)return; const p=getPos(e); manualCorners[dragging]={x:p.x,y:p.y}; drawManual(); }
+function mEnd()     { dragging=-1; drawManual(); }
+function tStart(e)  { e.preventDefault(); mStart(e); }
+function tMove(e)   { e.preventDefault(); mMove(e); }
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+function sortCorners(pts) {
+  const cx = pts.reduce((s,p)=>s+p.x,0)/4;
+  const cy = pts.reduce((s,p)=>s+p.y,0)/4;
+  return [
+    pts.find(p=>p.x<cx&&p.y<cy) ||pts[0],
+    pts.find(p=>p.x>=cx&&p.y<cy)||pts[1],
+    pts.find(p=>p.x>=cx&&p.y>=cy)||pts[2],
+    pts.find(p=>p.x<cx&&p.y>=cy)||pts[3],
+  ];
+}
+
+function toggleHow() {
+  const hdr  = document.getElementById('how-hdr');
+  const body = document.getElementById('how-body');
+  hdr.classList.toggle('open');
+  body.classList.toggle('open');
+}
+
+function setLabel(t, c) {
+  const el = document.getElementById('doc-label');
+  el.textContent = t; el.className = c;
+}
+function switchTab(name) {
+  const names = ['live','warped','stats'];
+  document.querySelectorAll('.tab').forEach((t,i)=>t.className='tab'+(names[i]===name?' active':''));
+  document.querySelectorAll('.tab-pane').forEach(p=>p.className='tab-pane');
+  document.getElementById('tab-'+name).className='tab-pane active';
+}
+function downloadResult() {
+  const c = document.getElementById('warped-canvas');
+  if (!c.width) return;
+  const a = document.createElement('a');
+  a.download = 'scanned-doc-' + Date.now() + '.png';
+  a.href = c.toDataURL('image/png');
+  a.click();
+}
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 3000);
+}
+</script>
+</body>
+</html>

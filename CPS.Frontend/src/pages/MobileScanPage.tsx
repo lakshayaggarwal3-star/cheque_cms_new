@@ -1,16 +1,17 @@
 // =============================================================================
 // File        : MobileScanPage.tsx
-// Project     : CPS â€” Cheque Processing System
+// Project     : CPS \u2014 Cheque Processing System
 // Module      : Scanning
-// Description : Mobile camera scanning page â€” design-system matched, clean flow
+// Description : Mobile camera scanning page \u2014 design-system matched, clean flow
 // Created     : 2026-04-14
-// Updated     : 2026-04-24
+// Updated     : 2026-04-27
 // =============================================================================
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { getBatchByNumber } from '../services/batchService';
-import { completeScan, getScanSession, startScan, uploadMobileCheque, uploadMobileSlipItem } from '../services/scanService';
+import { completeChequePhase, completeScan, completeSlipPhase, getScanSession, releaseScanLock, startScan, uploadMobileCheque, uploadMobileSlipItem } from '../services/scanService';
+import { useAuthStore } from '../store/authStore';
 import { toast } from '../store/toastStore';
 import type { ScanSessionDto } from '../types';
 import { BatchStatus } from '../types';
@@ -19,19 +20,19 @@ import { SlipFormModal } from '../components/SlipFormModal';
 import { CameraCapturePro } from '../components/CameraCapturePro';
 import { ImageEditModalMobile } from '../components/ImageEditModalMobile';
 
-// â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Types ---------------------------------------------------------------------
 
 type Step =
   | 'slip-entry'      // fill in slip form
   | 'slip-capture'    // capture slip image(s)
-  | 'slip-done'       // slip captured â€” choose next
+  | 'slip-done'       // slip captured \u2014 choose next
   | 'cheque-front'    // capture cheque front
   | 'cheque-back'     // capture cheque back
   | 'cheque-review';  // review both, save or retake
 
 type EditTarget = 'slip' | 'cheque-front' | 'cheque-back';
 
-// â”€â”€ Style constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Style constants -----------------------------------------------------------
 
 const card: React.CSSProperties = {
   background: 'var(--bg-raised)',
@@ -68,6 +69,7 @@ const missingThumb: React.CSSProperties = {
 export function MobileScanPage() {
   const { batchNo } = useParams<{ batchNo: string }>();
   const navigate = useNavigate();
+  const { user } = useAuthStore();
   const [id, setId] = useState<number>(0);
 
   const [session, setSession] = useState<ScanSessionDto | null>(null);
@@ -83,10 +85,15 @@ export function MobileScanPage() {
 
   // Captured files per step
   const [slipFile, setSlipFile] = useState<File | null>(null);
+  const [slipFileOriginal, setSlipFileOriginal] = useState<File | null>(null);
   const [slipPreview, setSlipPreview] = useState<string | null>(null);
+
   const [frontFile, setFrontFile] = useState<File | null>(null);
+  const [frontFileOriginal, setFrontFileOriginal] = useState<File | null>(null);
   const [frontPreview, setFrontPreview] = useState<string | null>(null);
+
   const [backFile, setBackFile] = useState<File | null>(null);
+  const [backFileOriginal, setBackFileOriginal] = useState<File | null>(null);
   const [backPreview, setBackPreview] = useState<string | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
 
@@ -97,7 +104,13 @@ export function MobileScanPage() {
   const [showSlipForm, setShowSlipForm] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
   const [cameraMode, setCameraMode] = useState<'slip' | 'cheque'>('slip');
-  const [editState, setEditState] = useState<{ file: File; target: EditTarget; title: string } | null>(null);
+  const [editState, setEditState] = useState<{ file: File; target: EditTarget; title: string; isScan?: boolean; isSlip?: boolean } | null>(null);
+
+  // -- Inactivity Lock Logic --
+  const [lastActivity, setLastActivity] = useState(Date.now());
+  const INACTIVITY_LIMIT = 5 * 60 * 1000; // 5 minutes in ms
+  const WARNING_LIMIT = 4.5 * 60 * 1000; // 4.5 minutes in ms (show toast warning)
+  const [hasWarned, setHasWarned] = useState(false);
 
   const allCheques = useMemo(
     () => session?.slipGroups?.flatMap(g => g.cheques ?? []) ?? [],
@@ -108,11 +121,64 @@ export function MobileScanPage() {
     [session?.slipGroups]
   );
 
-  const allSlipsDone = (session?.slipGroups?.length ?? 0) >= (batchDetails?.totalSlips ?? session?.totalSlipEntries ?? 0);
-  const allChequesDone = session?.slipGroups?.length ? session.slipGroups.every(g => (g.cheques?.length ?? 0) >= g.totalInstruments) : false;
-  const canCompleteBatch = allSlipsDone && allChequesDone;
+  const allSlipsDone = (session?.slipGroups?.length ?? 0) === (session?.totalSlipEntries ?? 0);
+  const allChequesDone = session?.slipGroups?.length ? session.slipGroups.every(g => (g.cheques?.length ?? 0) === g.totalInstruments) : false;
+  const canCompleteBatch = allSlipsDone && allChequesDone && (session?.slipGroups?.length ?? 0) > 0;
 
-  // â”€â”€ Load session â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // -- Inactivity Monitoring --
+  useEffect(() => {
+    const updateActivity = () => {
+      setLastActivity(Date.now());
+      setHasWarned(false);
+    };
+    window.addEventListener('touchstart', updateActivity);
+    window.addEventListener('mousedown', updateActivity);
+    window.addEventListener('scroll', updateActivity);
+    window.addEventListener('keydown', updateActivity);
+    return () => {
+      window.removeEventListener('touchstart', updateActivity);
+      window.removeEventListener('mousedown', updateActivity);
+      window.removeEventListener('scroll', updateActivity);
+      window.removeEventListener('keydown', updateActivity);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (loading || !id) return;
+    const timer = setInterval(() => {
+      const now = Date.now();
+      const elapsed = now - lastActivity;
+
+      if (elapsed > INACTIVITY_LIMIT) {
+        handleAutoRelease();
+      } else if (elapsed > WARNING_LIMIT && !hasWarned) {
+        setHasWarned(true);
+        toast.info('Session expiring soon due to inactivity...');
+      }
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [id, loading, lastActivity, hasWarned]);
+
+  const handleAutoRelease = async () => {
+    if (!id) return;
+    try {
+      await releaseScanLock(id);
+      toast.warning('Session released due to inactivity');
+    } finally {
+      navigate('/all-batches');
+    }
+  };
+
+  // -- Release lock on unmount --
+  useEffect(() => {
+    return () => {
+      if (id) {
+        releaseScanLock(id).catch(() => {});
+      }
+    };
+  }, [id]);
+
+  // -- Load session --------------------------------------------------------------
 
   useEffect(() => {
     const init = async () => {
@@ -131,40 +197,46 @@ export function MobileScanPage() {
         const scanSession = await getScanSession(batchId);
         setSession(scanSession);
 
-        // Resume â€” find latest active slip
-        if (scanSession.slipGroups?.length) {
-          const latest = scanSession.slipGroups[scanSession.slipGroups.length - 1];
-          setActiveSlipId(latest.slipEntryId);
-          setActiveSlipNo(latest.depositSlipNo ?? latest.slipNo ?? '');
-        }
-
-        // Auto-start if not started yet
-        if (scanSession.batchStatus === BatchStatus.Created || scanSession.batchStatus === BatchStatus.ScanningPending) {
-          setBusy(true);
-          try {
-            await startScan(batchId, scanSession.withSlip ?? false, scanSession.scanType ?? 'Scan');
+        if (scanSession.resumeState?.activeSlipEntryId) {
+          const rs = scanSession.resumeState;
+          setActiveSlipId(rs.activeSlipEntryId ?? null);
+          setActiveSlipNo(rs.activeSlipNo ?? '');
+          
+          if (rs.resumeStep === 'SlipScan') {
+            setStep('slip-capture');
+          } else if (rs.resumeStep === 'ChequeScan') {
+            setStep('cheque-front');
+          } else {
             setStep('slip-entry');
-            setShowSlipForm(true);
-          } catch (e: any) {
-            toast.error(e?.response?.data?.message ?? 'Failed to start capture');
-          } finally {
-            setBusy(false);
           }
         } else {
-          // Already in progress — Resume intelligently
-          if (scanSession.withSlip) {
-            const latest = scanSession.slipGroups?.[scanSession.slipGroups.length - 1];
-            const hasSlips = (latest?.slipItems?.length ?? 0) > 0;
-            const needsCheques = (latest?.cheques?.length ?? 0) < (latest?.totalInstruments ?? 0);
+           setActiveSlipId(null);
+           setActiveSlipNo('');
+        }
 
-            if (hasSlips && needsCheques) {
-              setStep('cheque-front');
-            } else {
-              setStep('slip-done');
-            }
-          } else {
-            setStep('cheque-front');
-          }
+        const isStartable = 
+          scanSession.batchStatus === BatchStatus.Created || 
+          scanSession.batchStatus === BatchStatus.ScanningPending || 
+          scanSession.batchStatus === BatchStatus.ScanningInProgress;
+
+        if (isStartable) {
+           setBusy(true);
+           try {
+             await startScan(batchId, scanSession.withSlip ?? false, scanSession.scanType ?? 'Scan');
+             
+             const fresh = await getScanSession(batchId);
+             setSession(fresh);
+             
+             if (!scanSession.resumeState?.activeSlipEntryId) {
+                setStep('slip-entry');
+                setShowSlipForm(true);
+             }
+           } catch (e: any) {
+             const msg = e?.response?.data?.message ?? 'Failed to start capture';
+             toast.error(msg);
+           } finally {
+             setBusy(false);
+           }
         }
       } catch {
         toast.error('Failed to load scan session');
@@ -179,24 +251,45 @@ export function MobileScanPage() {
   useEffect(() => () => { if (frontPreview) URL.revokeObjectURL(frontPreview); }, [frontPreview]);
   useEffect(() => () => { if (backPreview) URL.revokeObjectURL(backPreview); }, [backPreview]);
 
-  // â”€â”€ Capture actions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  const applyEditedImage = (target: string, file: File, previewUrl: string, originalFile?: File) => {
+    if (target === 'slip') {
+      if (slipPreview) URL.revokeObjectURL(slipPreview);
+      setSlipFile(file);
+      setSlipPreview(previewUrl);
+      if (originalFile) setSlipFileOriginal(originalFile);
+      return;
+    }
+    if (target === 'cheque-front') {
+      if (frontPreview) URL.revokeObjectURL(frontPreview);
+      setFrontFile(file);
+      setFrontPreview(previewUrl);
+      if (originalFile) setFrontFileOriginal(originalFile);
+      return;
+    }
+    if (target === 'cheque-back') {
+      if (backPreview) URL.revokeObjectURL(backPreview);
+      setBackFile(file);
+      setBackPreview(previewUrl);
+      if (originalFile) setBackFileOriginal(originalFile);
+    }
+  };
+
+  // -- Capture actions -----------------------------------------------------------
 
   const openCamera = (mode: 'slip' | 'cheque') => {
     setCameraMode(mode);
     setShowCamera(true);
   };
 
-  const onCameraCapture = (file: File, _position: 'front' | 'back') => {
+  const onCameraCapture = (file: File, _position: 'front' | 'back', isScan: boolean) => {
     setShowCamera(false);
+    const editTitle = isScan ? 'Review Scan' : 'Edit Image';
     if (step === 'slip-capture') {
-      // Open edit modal immediately â€” user edits then saves
-      setEditState({ file, target: 'slip', title: 'Edit Slip Image' });
+      setEditState({ file, target: 'slip', title: `Review Slip ${isScan ? 'Scan' : 'Capture'}`, isScan, isSlip: true });
     } else if (step === 'cheque-front') {
-      // Open edit modal for front; after save, auto-open camera for back
-      setEditState({ file, target: 'cheque-front', title: 'Edit Cheque Front' });
+      setEditState({ file, target: 'cheque-front', title: `Review Front ${isScan ? 'Scan' : 'Capture'}`, isScan, isSlip: false });
     } else if (step === 'cheque-back') {
-      // Open edit modal for back; after save, move to review
-      setEditState({ file, target: 'cheque-back', title: 'Edit Cheque Back' });
+      setEditState({ file, target: 'cheque-back', title: `Review Back ${isScan ? 'Scan' : 'Capture'}`, isScan, isSlip: false });
     }
   };
 
@@ -206,8 +299,14 @@ export function MobileScanPage() {
     try {
       const group = session?.slipGroups?.find(g => g.slipEntryId === activeSlipId);
       const order = (group?.slipItems?.length ?? 0) + 1;
-      await uploadMobileSlipItem(id, { slipEntryId: activeSlipId, scanOrder: order, image: file });
+      await uploadMobileSlipItem(id, { 
+        slipEntryId: activeSlipId, 
+        scanOrder: order, 
+        image: file,
+        imageOriginal: slipFileOriginal ?? undefined
+      });
       toast.success('Slip image saved');
+      setSlipFileOriginal(null);
       if (id > 0) {
         const fresh = await getScanSession(id);
         setSession(fresh);
@@ -232,14 +331,16 @@ export function MobileScanPage() {
         chqSeq: seq,
         imageFront: frontFile ?? undefined,
         imageBack: backFile ?? undefined,
+        imageFrontOriginal: frontFileOriginal ?? undefined,
+        imageBackOriginal: backFileOriginal ?? undefined,
         chqNo: micr.chqNo || undefined,
         scanMICR1: micr.micr1 || undefined,
         scanMICR2: micr.micr2 || undefined,
         scanMICR3: micr.micr3 || undefined,
       });
       toast.success(`Cheque #${seq} saved`);
-      setFrontFile(null); setFrontPreview(null);
-      setBackFile(null); setBackPreview(null);
+      setFrontFile(null); setFrontPreview(null); setFrontFileOriginal(null);
+      setBackFile(null); setBackPreview(null); setBackFileOriginal(null);
       setMicr({ chqNo: '', micr1: '', micr2: '', micr3: '' });
       if (id > 0) {
         const fresh = await getScanSession(id);
@@ -258,7 +359,7 @@ export function MobileScanPage() {
     try {
       await completeScan(id);
       toast.success('Scanning completed');
-      navigate('/');
+      navigate('/all-batches');
     } catch (e: any) {
       toast.error(e?.response?.data?.message ?? 'Failed to complete');
     } finally {
@@ -266,21 +367,39 @@ export function MobileScanPage() {
     }
   };
 
-  // â”€â”€ Render helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // -- Render helpers ------------------------------------------------------------
 
   if (loading) return (
-    <div style={{ padding: 32, textAlign: 'center', color: 'var(--fg-muted)' }}>Loading capture sessionâ€¦</div>
+    <div style={{ padding: 32, textAlign: 'center', color: 'var(--fg-muted)' }}>Loading capture session...</div>
   );
   if (!session) return (
     <div style={{ padding: 32, textAlign: 'center', color: 'var(--danger)' }}>Session not found</div>
   );
 
   const withSlip = session.withSlip ?? false;
+  
+  const isLockedByOther = session.scanLockedBy && session.scanLockedBy !== user?.userId;
+
+  if (isLockedByOther) {
+    return (
+      <div style={{ padding: 40, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '80vh', gap: 24 }}>
+        <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'var(--bg-subtle)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <span className="material-symbols-outlined" style={{ fontSize: 32, color: 'var(--danger)' }}>lock</span>
+        </div>
+        <div>
+          <h2 style={{ margin: '0 0 8px', fontSize: 20, fontWeight: 700 }}>Batch Locked</h2>
+          <p style={{ color: 'var(--fg-muted)', maxWidth: 280, fontSize: 13, lineHeight: 1.5 }}>
+            This batch is currently being scanned by another user (User ID: {session.scanLockedBy}).
+          </p>
+        </div>
+        <button onClick={() => navigate('/all-batches')} className="btn-primary" style={{ width: 'auto', padding: '10px 20px' }}>Back to Batches</button>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingBottom: 32 }}>
 
-      {/* â”€â”€ Header card â”€â”€ */}
       <div style={card}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
           <div>
@@ -305,7 +424,6 @@ export function MobileScanPage() {
         </div>
       </div>
 
-      {/* â”€â”€ Active slip indicator â”€â”€ */}
       {withSlip && activeSlipNo && (
         <div style={{ ...card, background: 'var(--bg-raised)', border: '1px solid var(--border-strong)', padding: 12 }}>
           {(() => {
@@ -325,7 +443,7 @@ export function MobileScanPage() {
                     <div>Client: {activeGroup.clientName} ({activeGroup.clientCode || "\u2014"})</div>
                     <div>Pickup: {activeGroup.pickupPoint || "\u2014"}</div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
-                      <span>Cheques: {activeGroup.cheques?.length || 0} / {activeGroup.totalInstruments} expected</span>
+                      <span>Cheques: {activeGroup.cheques?.length || 0} / {activeGroup.totalInstruments}</span>
                       <span>Slip Imgs: {activeGroup.slipItems?.length || 0}</span>
                     </div>
                   </div>
@@ -336,10 +454,8 @@ export function MobileScanPage() {
         </div>
       )}
 
-      {/* â”€â”€ Control Actions â”€â”€ */}
       <div style={{ ...card, padding: 16 }}>
         {frontFile || backFile ? (
-            /* Reviewing Cheques */
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                 <span className="material-symbols-outlined" style={{ fontSize: 20, color: 'var(--success)' }}>check_circle</span>
@@ -349,7 +465,6 @@ export function MobileScanPage() {
                 </div>
               </div>
 
-              {/* Thumbnails */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                 <div>
                   <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--fg-muted)', marginBottom: 4 }}>FRONT</div>
@@ -385,46 +500,20 @@ export function MobileScanPage() {
                 </div>
               </div>
 
-              {/* MICR */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                {[
-                  { key: 'chqNo', label: 'Cheque No', max: 6 },
-                  { key: 'micr1', label: 'MICR 1', max: 9 },
-                  { key: 'micr2', label: 'MICR 2', max: 6 },
-                  { key: 'micr3', label: 'MICR 3', max: 3 },
-                ].map(f => (
-                  <div key={f.key}>
-                    <label style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--fg-muted)', display: 'block', marginBottom: 4 }}>{f.label}</label>
-                    <input
-                      value={micr[f.key as keyof typeof micr]}
-                      onChange={e => setMicr(m => ({ ...m, [f.key]: e.target.value }))}
-                      maxLength={f.max}
-                      style={{
-                        width: '100%', boxSizing: 'border-box', padding: '8px 10px',
-                        background: 'var(--bg-input)', border: '1px solid var(--border-strong)',
-                        borderRadius: 'var(--r-md)', fontSize: 'var(--text-sm)',
-                        fontFamily: 'var(--font-mono)', color: 'var(--fg)', outline: 'none',
-                      }}
-                    />
-                  </div>
-                ))}
-              </div>
-
-              {/* Save / next actions */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 4 }}>
-                <PrimaryBtn icon="save" label={busy ? 'Savingâ€¦' : 'Save Cheque'} onClick={saveCheque} disabled={busy || (!frontFile && !backFile)} />
+                <PrimaryBtn icon="save" label={busy ? 'Saving...' : 'Save Cheque'} onClick={saveCheque} disabled={busy || (!frontFile && !backFile)} />
                 <OutlineBtn icon="delete" label="Discard & Retake" onClick={() => {
                   setFrontFile(null); setFrontPreview(null); setBackFile(null); setBackPreview(null); setStep('cheque-front'); openCamera('cheque');
                 }} />
               </div>
             </div>
         ) : (
-            /* Unified Action Buttons */
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <>
-                {!activeSlipId ? (
+                {!activeSlipId && !allSlipsDone && (
                    <PrimaryBtn icon="add_circle" label="New Slip Entry" onClick={() => setShowSlipForm(true)} />
-                ) : (
+                )}
+                {activeSlipId && (
                    <>
                      {(() => {
                        const activeGroup = session?.slipGroups?.find(g => g.slipEntryId === activeSlipId);
@@ -437,14 +526,47 @@ export function MobileScanPage() {
                              <>
                                <PrimaryBtn icon="camera_alt" label={`Capture Slip Image (${slipItemsCount + 1})`} onClick={() => { setStep('slip-capture'); openCamera('slip'); }} />
                                {slipItemsCount > 0 && (
-                                 <OutlineBtn icon="check_circle" label="Complete Slip Capture" onClick={() => setStep('cheque-front')} />
+                                 <OutlineBtn icon="check_circle" label="Complete Slip Capture" onClick={async () => {
+                                   if (!activeSlipId) return;
+                                   setBusy(true);
+                                   try {
+                                     await completeSlipPhase(id, activeSlipId);
+                                     const fresh = await getScanSession(id);
+                                     setSession(fresh);
+                                     setStep('cheque-front');
+                                     toast.success('Slip capture completed');
+                                   } catch (e: any) {
+                                     toast.error(e?.response?.data?.message ?? 'Failed to complete slip phase');
+                                   } finally {
+                                     setBusy(false);
+                                   }
+                                 }} />
                                )}
                              </>
                            )}
                            {step.startsWith('cheque') && (
                              <>
-                               <PrimaryBtn icon="credit_card" label={`Capture Cheques (${capturedChqs} / ${expectedChqs} expected)`} onClick={() => { setStep('cheque-front'); setFrontFile(null); setFrontPreview(null); setBackFile(null); setBackPreview(null); openCamera('cheque'); }} />
-                               <OutlineBtn icon="done_all" label="Complete Cheque Capture" onClick={() => { setActiveSlipId(null); setStep('slip-entry'); }} />
+                               <PrimaryBtn icon="credit_card" label={`Capture Cheques (${capturedChqs} / ${expectedChqs})`} onClick={() => { setStep('cheque-front'); setFrontFile(null); setFrontPreview(null); setBackFile(null); setBackPreview(null); openCamera('cheque'); }} disabled={capturedChqs >= expectedChqs} />
+                               <OutlineBtn icon="done_all" label="Complete Cheque Capture" onClick={async () => {
+                                 if (!activeSlipId) return;
+                                 if (capturedChqs !== expectedChqs) {
+                                   toast.error(`Cannot complete: Scanned ${capturedChqs} of ${expectedChqs} expected cheques. Please scan all instruments.`);
+                                   return;
+                                 }
+                                 setBusy(true);
+                                 try {
+                                   await completeChequePhase(id, activeSlipId);
+                                   const fresh = await getScanSession(id);
+                                   setSession(fresh);
+                                   setActiveSlipId(null);
+                                   setStep('slip-entry');
+                                   toast.success('Cheque capture completed');
+                                 } catch (e: any) {
+                                   toast.error(e?.response?.data?.message ?? 'Failed to complete cheque phase');
+                                 } finally {
+                                   setBusy(false);
+                                 }
+                               }} />
                              </>
                            )}
                          </>
@@ -452,10 +574,15 @@ export function MobileScanPage() {
                      })()}
                    </>
                 )}
-                {!activeSlipId && canCompleteBatch && (
+                {!activeSlipId && (
                   <>
                     <div style={{ borderTop: '1px solid var(--border)', margin: '4px 0' }} />
-                    <DangerBtn icon="task_alt" label={busy ? 'Completing...' : 'Complete Batch'} onClick={handleComplete} disabled={busy} />
+                    <DangerBtn 
+                      icon="task_alt" 
+                      label={busy ? 'Completing...' : 'Complete Batch'} 
+                      onClick={handleComplete} 
+                      disabled={busy || !canCompleteBatch} 
+                    />
                   </>
                 )}
               </>
@@ -463,7 +590,6 @@ export function MobileScanPage() {
         )}
       </div>
 
-      {/* â”€â”€ Scanned items â€” mobile vertical accordion â”€â”€ */}
       {session.slipGroups && session.slipGroups.length > 0 && (
         <div style={{ marginTop: 'auto', paddingTop: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', marginBottom: 8 }}>
@@ -486,7 +612,6 @@ export function MobileScanPage() {
 
               return (
                 <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  {/* Group header */}
                   <div
                     onClick={() => {
                       setActiveSlipId(group.slipEntryId);
@@ -528,11 +653,9 @@ export function MobileScanPage() {
                     </span>
                   </div>
 
-                  {/* Expanded content */}
                   {isExpanded && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingLeft: 12, borderLeft: '2px solid var(--border-subtle)', marginLeft: 8, marginBottom: 8, marginTop: 2 }}>
                       
-                      {/* Slip images */}
                       {withSlip && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                           <div
@@ -555,7 +678,6 @@ export function MobileScanPage() {
                         </div>
                       )}
 
-                      {/* Cheque images */}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                         <div
                           onClick={() => setExpandedGroups(prev => ({ ...prev, [`${group.slipEntryId}-cheques`]: !prev[`${group.slipEntryId}-cheques`] }))}
@@ -595,7 +717,6 @@ export function MobileScanPage() {
         </div>
       )}
 
-      {/* â”€â”€ Fullscreen Image Viewer â”€â”€ */}
       {fsImage && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: '#000', display: 'flex', flexDirection: 'column' }}>
            <div style={{ padding: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -610,7 +731,6 @@ export function MobileScanPage() {
         </div>
       )}
 
-      {/* â”€â”€ Modals â”€â”€ */}
       {showSlipForm && (
         <SlipFormModal
           batchId={id}
@@ -633,11 +753,18 @@ export function MobileScanPage() {
         <ImageEditModalMobile
           file={editState.file}
           title={editState.title}
+          initialCropFull={editState.isScan}
+          isSlip={editState.isSlip}
           onClose={() => {
-            // If user cancels edit, discard the capture and go back to controls
-            if (editState.target === 'slip') { setSlipFile(null); setSlipPreview(null); }
-            else if (editState.target === 'cheque-front') { setFrontFile(null); setFrontPreview(null); }
-            else { setBackFile(null); setBackPreview(null); }
+            if (editState.target === 'slip') { 
+              setSlipFile(null); setSlipPreview(null); setSlipFileOriginal(null); 
+            }
+            else if (editState.target === 'cheque-front') { 
+              setFrontFile(null); setFrontPreview(null); setFrontFileOriginal(null); 
+            }
+            else { 
+              setBackFile(null); setBackPreview(null); setBackFileOriginal(null); 
+            }
             setEditState(null);
           }}
           onSave={(file, previewUrl) => {
@@ -680,7 +807,7 @@ export function MobileScanPage() {
   );
 }
 
-// â”€â”€ Small Components â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Small Components ----------------------------------------------------------
 
 function StepPanel({ icon, title, subtitle, accent, children }: {
   icon: string; title: string; subtitle: string; accent: string; children: React.ReactNode;

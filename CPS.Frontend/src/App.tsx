@@ -26,6 +26,7 @@ import { UserManagementPage } from './pages/UserManagementPage';
 import { MastersPage } from './pages/MasterUploadPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { UnauthorizedPage } from './pages/UnauthorizedPage';
+import { SessionTerminatedPage } from './pages/SessionTerminatedPage';
 
 function AppRoutes() {
   const { setUser, clearUser } = useAuthStore();
@@ -51,6 +52,7 @@ function AppRoutes() {
     <Routes>
       {/* Public */}
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/session-terminated" element={<SessionTerminatedPage />} />
       <Route path="/unauthorized" element={<UnauthorizedPage />} />
 
       {/* Protected — require any operational role (Excludes ImageViewer) */}
@@ -59,7 +61,7 @@ function AppRoutes() {
           <Route path="/" element={<DashboardPage />} />
           <Route path="/all-batches" element={<AllBatchesPage />} />
           <Route path="/rr" element={<RRListPage />} />
-          <Route path="/rr/:batchId" element={<RRPage />} />
+          <Route path="/rr/:batchNo" element={<RRPage />} />
 
           {/* Scanner / Admin / Developer */}
           <Route element={<ProtectedRoute roles={['Scanner', 'Mobile Scanner', 'Admin', 'Developer']} />}>

@@ -27,10 +27,36 @@ apiClient.interceptors.response.use(
       const isAuthMeRequest = requestUrl.includes('/auth/me');
       const isOnLoginPage = currentPath === '/login';
 
-      // Avoid hard reload loops when bootstrapping auth on login page.
-      if (!isAuthMeRequest && !isOnLoginPage && !isAuthRedirectInProgress) {
+      let message = '';
+      if (typeof error.response?.data === 'string') {
+        try {
+          const parsed = JSON.parse(error.response.data);
+          message = parsed.message || parsed.Message || error.response.data;
+        } catch {
+          message = error.response.data;
+        }
+      } else {
+        message = error.response?.data?.message || error.response?.data?.Message || '';
+      }
+
+      const isSessionConflict = error.response?.headers['x-session-conflict'] === 'true' ||
+                                message.toLowerCase().includes('device') ||
+                                message.toLowerCase().includes('another device');
+
+      // 1. Priority: Session conflict redirect
+      if (isSessionConflict) {
+        if (!isAuthRedirectInProgress && !isOnLoginPage) {
+          isAuthRedirectInProgress = true;
+          window.location.href = '/login?reason=session_terminated';
+          return Promise.reject(error);
+        }
+      }
+
+      // 2. Fallback: General 401 redirect to login (if not already on login page)
+      if (!isOnLoginPage && !isAuthRedirectInProgress) {
         isAuthRedirectInProgress = true;
-        window.location.replace('/login');
+        window.location.href = '/login';
+        return Promise.reject(error);
       }
     }
     return Promise.reject(error);

@@ -29,7 +29,9 @@ interface Props {
   mockScanEnabled: boolean;
   completing: boolean;
   frontFile: File | null;
+  frontFileOriginal: File | null;
   backFile: File | null;
+  backFileOriginal: File | null;
   frontPreview: string | null;
   backPreview: string | null;
   showTable: boolean;
@@ -546,7 +548,7 @@ export function ScanControlPanel({
                     onStartFeed={() => { scanner.handleStartFeed('Cheque'); }}
                     onStopFeed={scanner.handleRangerStopAndCapture}
                     disabled={scanner.isBusy || (activeGroup && activeGroup.cheques.length >= activeGroup.totalInstruments)}
-                    title={activeGroup && activeGroup.cheques.length >= activeGroup.totalInstruments ? 'Expected cheque count already reached' : undefined}
+                    title={activeGroup && activeGroup.cheques.length >= activeGroup.totalInstruments ? 'Instrument count already reached' : undefined}
                   />
                   {activeGroup && (
                     <button

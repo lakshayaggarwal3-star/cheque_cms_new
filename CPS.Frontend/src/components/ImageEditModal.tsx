@@ -13,10 +13,11 @@ interface ImageEditModalProps {
   file: File | null;
   title: string;
   onClose: () => void;
-  onSave: (file: File, previewUrl: string) => void;
+  onSave: (file: File, previewUrl: string, originalFile?: File) => void;
+  isSlip?: boolean;
 }
 
-export function ImageEditModal({ file, title, onClose, onSave }: ImageEditModalProps) {
+export function ImageEditModal({ file, title, onClose, onSave, isSlip = false }: ImageEditModalProps) {
   if (!file) return null;
-  return <ImageCropEditor file={file} title={title} onClose={onClose} onSave={onSave} mode="desktop" />;
+  return <ImageCropEditor file={file} title={title} onClose={onClose} onSave={onSave} mode="desktop" isSlip={isSlip} />;
 }

@@ -8,7 +8,7 @@
 
 import { create } from 'zustand';
 
-export type ToastType = 'success' | 'error' | 'warning';
+export type ToastType = 'success' | 'error' | 'warning' | 'info';
 
 interface Toast {
   id: string;
@@ -43,4 +43,5 @@ export const toast = {
   success: (msg: string) => useToastStore.getState().addToast('success', msg),
   error: (msg: string) => useToastStore.getState().addToast('error', msg),
   warning: (msg: string) => useToastStore.getState().addToast('warning', msg),
+  info: (msg: string) => useToastStore.getState().addToast('info', msg),
 };

@@ -8,30 +8,31 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 
+
 interface CameraCapturProProps {
   mode: 'slip' | 'cheque';
   side?: 'front' | 'back';
-  onCapture: (file: File, position: 'front' | 'back') => void;
+  onCapture: (file: File, position: 'front' | 'back', isScan: boolean) => void;
   onClose: () => void;
 }
 
 type CameraState = 'starting' | 'live' | 'error' | 'gallery';
 
 export function CameraCapturePro({ mode, side = 'front', onCapture, onClose }: CameraCapturProProps) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+   const videoRef   = useRef<HTMLVideoElement>(null);
+  const canvasRef  = useRef<HTMLCanvasElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
+  const streamRef  = useRef<MediaStream | null>(null);
 
-  const [cameraState, setCameraState] = useState<CameraState>('starting');
-  const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
+  const [cameraState,    setCameraState]    = useState<CameraState>('starting');
+  const [cameras,        setCameras]        = useState<MediaDeviceInfo[]>([]);
   const [activeCameraId, setActiveCameraId] = useState<string>('');
-  const [useFront, setUseFront] = useState(false);
-  const [brightness, setBrightness] = useState(100);
-  const [zoom, setZoom] = useState(1);
-  const [position, setPosition] = useState<'front' | 'back'>(side);
-  const [showSettings, setShowSettings] = useState(false);
-  const [capturing, setCapturing] = useState(false);
+  const [useFront,       setUseFront]       = useState(false);
+  const [brightness,     setBrightness]     = useState(100);
+  const [zoom,           setZoom]           = useState(1);
+  const [position,       setPosition]       = useState<'front' | 'back'>(side);
+  const [showSettings,   setShowSettings]   = useState(false);
+  const [capturing,      setCapturing]      = useState(false);
 
   // Pinch zoom tracking
   const pinchRef = useRef<{ startDist: number; startZoom: number } | null>(null);
@@ -76,10 +77,6 @@ export function CameraCapturePro({ mode, side = 'front', onCapture, onClose }: C
     return stopStream;
   }, [startCamera, stopStream]);
 
-  useEffect(() => {
-    return () => stopStream();
-  }, [stopStream]);
-
   // Switch camera
   const switchCamera = async (deviceId: string) => {
     setActiveCameraId(deviceId);
@@ -95,34 +92,37 @@ export function CameraCapturePro({ mode, side = 'front', onCapture, onClose }: C
     await startCamera(undefined, next ? 'user' : 'environment');
   };
 
-  // Capture frame from video
-  const capturePhoto = () => {
-    if (!videoRef.current || !canvasRef.current || capturing) return;
+  // Capture
+  const capturePhoto = async () => {
+    if (!videoRef.current || capturing) return;
     setCapturing(true);
+
     const video = videoRef.current;
-    const canvas = canvasRef.current;
+    const w = video.videoWidth;
+    const h = video.videoHeight;
 
-    canvas.width = video.videoWidth || 1280;
-    canvas.height = video.videoHeight || 720;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    const fc = document.createElement('canvas');
+    fc.width = w; fc.height = h;
+    const fcCtx = fc.getContext('2d');
+    if (!fcCtx) { setCapturing(false); return; }
+    
+    fcCtx.filter = `brightness(${brightness}%)`;
+    fcCtx.drawImage(video, 0, 0, w, h);
 
-    ctx.filter = `brightness(${brightness}%)`;
-    ctx.drawImage(video, 0, 0);
-
-    canvas.toBlob(blob => {
+    fc.toBlob(blob => {
       setCapturing(false);
       if (!blob) return;
       const file = new File([blob], `capture-${Date.now()}.jpg`, { type: 'image/jpeg' });
-      onCapture(file, position);
-    }, 'image/jpeg', 0.92);
+      // Always call with isScan = true to trigger the editor's auto-detect
+      onCapture(file, position, true);
+    }, 'image/jpeg', 0.95);
   };
 
   // Gallery fallback
   const openGallery = () => galleryRef.current?.click();
   const onGalleryFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
-    if (f) onCapture(f, position);
+    if (f) onCapture(f, position, true);
     e.target.value = '';
   };
 
@@ -130,14 +130,14 @@ export function CameraCapturePro({ mode, side = 'front', onCapture, onClose }: C
   const onTouchStart = (e: React.TouchEvent) => {
     if (e.touches.length === 2) {
       e.preventDefault();
-      const dist = getTouchDist(e.touches);
+      const dist = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY);
       pinchRef.current = { startDist: dist, startZoom: zoom };
     }
   };
   const onTouchMove = (e: React.TouchEvent) => {
     if (e.touches.length === 2 && pinchRef.current) {
       e.preventDefault();
-      const dist = getTouchDist(e.touches);
+      const dist = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY);
       const ratio = dist / pinchRef.current.startDist;
       const next = Math.min(3, Math.max(1, pinchRef.current.startZoom * ratio));
       setZoom(next);
@@ -146,6 +146,8 @@ export function CameraCapturePro({ mode, side = 'front', onCapture, onClose }: C
   const onTouchEnd = () => { pinchRef.current = null; };
 
   const frameAspect = mode === 'slip' ? '210 / 297' : '85.6 / 54';
+  const btnStyle = { background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', padding: 8, display: 'flex' };
+  const centerFlex = { display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' };
 
   return (
     <div style={{
@@ -163,17 +165,22 @@ export function CameraCapturePro({ mode, side = 'front', onCapture, onClose }: C
         </button>
 
         <div style={{ color: '#fff', fontWeight: 600, fontSize: 15, textAlign: 'center' }}>
-          {mode === 'slip' ? 'Scan Slip' : `Scan Cheque — ${position === 'front' ? 'Front' : 'Back'}`}
+          {mode === 'slip' ? 'Capture Slip' : `Capture Cheque — ${position === 'front' ? 'Front' : 'Back'}`}
         </div>
 
-        <button onClick={() => setShowSettings(s => !s)} style={btnStyle}>
-          <span className="material-symbols-outlined" style={{ fontSize: 22 }}>tune</span>
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={() => setShowSettings(s => !s)} style={btnStyle}>
+            <span className="material-symbols-outlined" style={{ fontSize: 22 }}>tune</span>
+          </button>
+        </div>
       </div>
 
       {/* ── CAMERA AREA ── */}
       <div
-        style={{ flex: 1, position: 'relative', overflow: 'hidden', background: '#111' }}
+        style={{ 
+          flex: 1, position: 'relative', overflow: 'hidden', background: '#000',
+          display: 'flex', alignItems: 'center', justifyContent: 'center'
+        }}
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
@@ -185,14 +192,14 @@ export function CameraCapturePro({ mode, side = 'front', onCapture, onClose }: C
           playsInline
           muted
           style={{
-            position: 'absolute', inset: 0,
             width: '100%', height: '100%',
-            objectFit: 'cover',
+            objectFit: 'cover', // Fills the container to remove "back space"
             transform: `scale(${zoom})`,
             filter: `brightness(${brightness}%)`,
             display: cameraState === 'live' ? 'block' : 'none',
           }}
         />
+
 
         {/* Starting spinner */}
         {cameraState === 'starting' && (
@@ -235,9 +242,7 @@ export function CameraCapturePro({ mode, side = 'front', onCapture, onClose }: C
             <div style={{
               aspectRatio: frameAspect,
               maxWidth: '85%', maxHeight: '80%',
-              border: '2px solid rgba(255,255,255,0.4)',
               borderRadius: 12,
-              boxShadow: '0 0 0 9999px rgba(0,0,0,0.4)',
               position: 'relative',
             }}>
               {/* Corner markers only */}
@@ -260,8 +265,8 @@ export function CameraCapturePro({ mode, side = 'front', onCapture, onClose }: C
       <div style={{
         background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)',
         padding: '16px 24px 28px',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        flexShrink: 0, gap: 16,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        flexShrink: 0, gap: 32,
       }}>
         {/* Gallery button */}
         <button onClick={openGallery} style={{ ...btnStyle, width: 48, height: 48 }}>
@@ -283,9 +288,9 @@ export function CameraCapturePro({ mode, side = 'front', onCapture, onClose }: C
           }}
         />
 
-        {/* Flip camera */}
+        {/* Flip switch */}
         <button onClick={flipCamera} style={{ ...btnStyle, width: 48, height: 48 }}>
-          <span className="material-symbols-outlined" style={{ fontSize: 24 }}>flip_camera_android</span>
+          <span className="material-symbols-outlined" style={{ fontSize: 24 }}>flip_camera_ios</span>
         </button>
       </div>
 
@@ -366,16 +371,6 @@ export function CameraCapturePro({ mode, side = 'front', onCapture, onClose }: C
     </div>
   );
 }
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function getTouchDist(touches: React.TouchList) {
-  return Math.hypot(
-    touches[1].clientX - touches[0].clientX,
-    touches[1].clientY - touches[0].clientY
-  );
-}
-
 function SettingRow({ icon, label, children }: { icon: string; label: string; children: React.ReactNode }) {
   return (
     <div style={{ marginBottom: 20 }}>
@@ -387,17 +382,3 @@ function SettingRow({ icon, label, children }: { icon: string; label: string; ch
     </div>
   );
 }
-
-const btnStyle: React.CSSProperties = {
-  width: 44, height: 44, borderRadius: '50%',
-  background: 'rgba(255,255,255,0.12)',
-  border: '1px solid rgba(255,255,255,0.15)',
-  color: '#fff', cursor: 'pointer',
-  display: 'flex', alignItems: 'center', justifyContent: 'center',
-  backdropFilter: 'blur(4px)', flexShrink: 0,
-};
-
-const centerFlex: React.CSSProperties = {
-  position: 'absolute', inset: 0,
-  display: 'flex', alignItems: 'center', justifyContent: 'center',
-};

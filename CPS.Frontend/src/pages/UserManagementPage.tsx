@@ -9,7 +9,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
 import {
-  getUsers, createUser, updateUser, resetPassword, unlockUser, activateUser, deactivateUser,
+  getUsers, createUser, updateUser, resetPassword, unlockUser, activateUser, deactivateUser, deleteUser,
   CreateUserRequest, UpdateUserRequest,
 } from '../services/userService';
 import { getLocations } from '../services/locationService';
@@ -156,6 +156,7 @@ export function UserManagementPage() {
         toast.success('User created successfully');
       } else if (mode === 'edit' && selected) {
         const req: UpdateUserRequest = {
+          employeeID:       data.employeeID,
           username:         data.username,
           email:            data.email || undefined,
           defaultLocationID: data.defaultLocationID ? parseInt(data.defaultLocationID) : undefined,
@@ -210,6 +211,17 @@ export function UserManagementPage() {
       await load();
     } catch {
       toast.error('Failed to update user status');
+    }
+  };
+
+  const handleDelete = async (u: UserDto) => {
+    if (!window.confirm(`Are you sure you want to delete user ${u.username}? This action cannot be undone.`)) return;
+    try {
+      await deleteUser(u.userID);
+      toast.success('User deleted');
+      await load();
+    } catch {
+      toast.error('Failed to delete user');
     }
   };
 
@@ -315,6 +327,7 @@ export function UserManagementPage() {
                         <button onClick={() => handleToggleActive(u)} className="opacity-40 hover:opacity-100 font-semibold text-xs transition-opacity">
                           {u.isActive ? 'Disable' : 'Enable'}
                         </button>
+                        <button onClick={() => handleDelete(u)} className="text-rose-500 hover:text-rose-400 font-semibold text-xs opacity-0 group-hover:opacity-100 transition-opacity">Delete</button>
                       </div>
                     </td>
                   </tr>
@@ -343,8 +356,12 @@ export function UserManagementPage() {
 
       {/* ── Modals (Using CPS Design System) ── */}
       {(mode === 'create' || mode === 'edit') && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
-          <div className="bg-[var(--bg-raised)] border border-[var(--border)] rounded-3xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-hidden flex flex-col shadow-blue-500/5">
+        <div className="modal-overlay-container" style={{ 
+          position: 'fixed', inset: 0, background: 'black/80', backdropFilter: 'blur(4px)', 
+          display: 'flex', alignItems: 'center', justifyItems: 'center', zIndex: 1000, 
+          padding: 16, animation: 'fadeIn 0.2s ease-out', overflowY: 'auto' 
+        }}>
+          <div className="bg-[var(--bg-raised)] border border-[var(--border)] rounded-3xl shadow-2xl w-full max-w-xl max-h-none overflow-hidden flex flex-col shadow-blue-500/5">
             <div className="px-8 py-6 border-b border-[var(--border)] flex items-center justify-between bg-[var(--bg-subtle)]">
               <div>
                 <h2 className="text-lg font-bold uppercase tracking-tight">
@@ -364,8 +381,7 @@ export function UserManagementPage() {
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold uppercase opacity-50 px-1">Employee ID</label>
                   <input
-                    {...userForm.register('employeeID', { required: mode === 'create' })}
-                    disabled={mode === 'edit'}
+                    {...userForm.register('employeeID', { required: true })}
                     placeholder="EMP-XXXX"
                     className="w-full bg-[var(--bg-subtle)] border border-[var(--border)] rounded-xl px-4 py-3 text-sm focus:border-blue-500 outline-none transition-all disabled:opacity-40 uppercase font-mono"
                   />
@@ -456,7 +472,11 @@ export function UserManagementPage() {
 
       {/* Role Warning Modal (z-60) */}
       {showRoleWarning && (
-        <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[60] p-4">
+        <div className="modal-overlay-container" style={{ 
+          position: 'fixed', inset: 0, background: 'black/90', backdropFilter: 'blur(6px)', 
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1010, 
+          padding: 16, overflowY: 'auto' 
+        }}>
           <div className="bg-[var(--bg-raised)] border border-amber-500/30 rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
             <div className="p-8 text-center space-y-4">
               <div className="w-16 h-16 bg-amber-500/10 text-amber-500 rounded-full flex items-center justify-center mx-auto mb-2">
@@ -481,7 +501,11 @@ export function UserManagementPage() {
 
       {/* Reset Password Modal */}
       {mode === 'reset-pw' && selected && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="modal-overlay-container" style={{ 
+          position: 'fixed', inset: 0, background: 'black/80', backdropFilter: 'blur(4px)', 
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, 
+          padding: 16, overflowY: 'auto' 
+        }}>
           <div className="bg-[var(--bg-raised)] border border-[var(--border)] rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden">
              <div className="p-8 space-y-6">
                 <div className="text-center">

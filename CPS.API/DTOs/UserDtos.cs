@@ -21,6 +21,7 @@ public class CreateUserRequest
 
 public class UpdateUserRequest
 {
+    public string EmployeeID { get; set; } = string.Empty;
     public string Username { get; set; } = string.Empty;
     public string? Email { get; set; }
     public int? DefaultLocationID { get; set; }

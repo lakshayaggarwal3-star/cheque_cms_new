@@ -63,8 +63,11 @@ public class BatchService : IBatchService
 
         var scannerMappingId = request.ScannerMappingID > 0 ? request.ScannerMappingID : (int?)scanner.ScannerMappingID;
         var seqNo = await _batchRepo.GetNextSequenceAsync(request.BatchDate, request.LocationID, scannerMappingId);
-        var datePart = request.BatchDate.ToString("yyyyMMdd");
-        var batchNo = $"{scanner.ScannerID.Trim()}{datePart}{seqNo:D5}";
+        
+        var rawScannerId = scanner.ScannerID.Trim();
+        var scannerPart = rawScannerId.Length == 3 ? (rawScannerId + rawScannerId) : rawScannerId;
+        var datePart = request.BatchDate.ToString("yyMMdd");
+        var batchNo = $"{scannerPart}{datePart}{seqNo:D4}";
         
         string? summRefNo = null;
         string? pif = null;

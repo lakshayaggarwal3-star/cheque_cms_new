@@ -13,6 +13,7 @@ import { getBatchList } from '../services/batchService';
 import { useAuthStore } from '../store/authStore';
 import { BatchDto, BatchStatus, BatchStatusLabels } from '../types';
 import { toast } from '../store/toastStore';
+import { QueueTabs } from '../components/QueueTabs';
 
 // ── primitives ────────────────────────────────────────────────────────────────
 
@@ -124,6 +125,7 @@ export function RRListPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0, height: '100%' }}>
+      <QueueTabs />
       {/* Table card */}
       <div style={{
         background: 'var(--bg-raised)', border: '1px solid var(--border)',
@@ -236,7 +238,7 @@ export function RRListPage() {
                         </td>
                         <td style={{ padding: '14px 20px', textAlign: 'right' }}>
                           <button
-                            onClick={() => navigate(`/rr/${b.batchID}`)}
+                            onClick={() => navigate(`/rr/${b.batchNo}`)}
                             style={{
                               display: 'inline-flex', alignItems: 'center', gap: 6,
                               padding: '6px 12px', height: 30,
@@ -287,7 +289,7 @@ export function RRListPage() {
                           <span className="batch-card-value" style={{ fontFamily: 'var(--font-mono)' }}>{fmtAmount(b.totalAmount)}</span>
                         </div>
                       </div>
-                      <button className="batch-card-action" onClick={() => navigate(`/rr/${b.batchID}`)}>
+                      <button className="batch-card-action" onClick={() => navigate(`/rr/${b.batchNo}`)}>
                         Repair
                         <Icon name="arrow_forward" size={16} />
                       </button>

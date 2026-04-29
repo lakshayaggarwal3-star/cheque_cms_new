@@ -12,6 +12,7 @@ import { getBatchList } from '../services/batchService';
 import { useAuthStore } from '../store/authStore';
 import { BatchDto, BatchStatus, BatchStatusLabels } from '../types';
 import { toast } from '../store/toastStore';
+import { QueueTabs } from '../components/QueueTabs';
 
 function Icon({ name, size = 20, weight = 400, style }: {
   name: string; size?: number; weight?: number; style?: React.CSSProperties;
@@ -74,7 +75,7 @@ function getAction(b: BatchDto): { label: string; path: string } | null {
     case BatchStatus.Created:            return { label: 'Start',    path: `/scan/${b.batchNo}` };
     case BatchStatus.ScanningInProgress:
     case BatchStatus.ScanningPending:    return { label: 'Continue', path: `/scan/${b.batchNo}` };
-    case BatchStatus.RRPending:          return { label: 'Repair',   path: `/rr/${b.batchID}` };
+    case BatchStatus.RRPending:          return { label: 'Repair',   path: `/rr/${b.batchNo}` };
     default:                             return null;
   }
 }
@@ -126,6 +127,7 @@ export function AllBatchesPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0, height: '100%' }}>
+      <QueueTabs />
       {/* Table card */}
       <div style={{
         background: 'var(--bg-raised)', border: '1px solid var(--border)',

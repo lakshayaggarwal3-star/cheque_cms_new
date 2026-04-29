@@ -1,45 +1,42 @@
-// =============================================================================
-// File        : RRPage.tsx
-// Project     : CPS — Cheque Processing System
-// Module      : RR (Reject Repair)
-// Description : Reject-Repair screen with image viewer, MICR edit, approve, and complete.
-// Created     : 2026-04-14
-// =============================================================================
-
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getRRItems, saveRRCorrection, completeRR } from '../services/rrService';
+import { getBatchByNumber } from '../services/batchService';
 import { toast } from '../store/toastStore';
 import { getChequeImageUrl } from '../utils/imageUtils';
-import { RRItemDto, RRState } from '../types';
+import { RRItemDto, RRState, BatchDto } from '../types';
 import { Icon, Pill } from '../components/scan';
 import { RRViewport } from './rr/RRViewport';
 
 export function RRPage() {
-  const { batchId } = useParams<{ batchId: string }>();
+  const { batchNo } = useParams<{ batchNo: string }>();
   const navigate = useNavigate();
+  const [batch, setBatch] = useState<BatchDto | null>(null);
   const [items, setItems] = useState<RRItemDto[]>([]);
   const [current, setCurrent] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [micr, setMicr] = useState({ chqNo: '', micr1: '', micr2: '', micr3: '' });
+  const [micrLayout, setMicrLayout] = useState<'bottom' | 'side'>('side');
   const firstInputRef = useRef<HTMLInputElement | null>(null);
 
-  const id = Number(batchId);
-
   const loadItems = useCallback(async () => {
-    if (!Number.isFinite(id) || id <= 0) {
-      setLoadError('Invalid RR batch. Open RR from Dashboard for a valid batch.');
+    if (!batchNo) {
+      setLoadError('Invalid RR batch number.');
       setLoading(false);
       return;
     }
 
     try {
       setLoadError(null);
-      const data = await getRRItems(id);
+      const bDetails = await getBatchByNumber(batchNo);
+      setBatch(bDetails);
+
+      const data = await getRRItems(bDetails.batchID);
       setItems(data);
       if (data.length > 0) {
+        // Initially, land on the first pending item, or the first item if all are done
         const firstPendingIndex = data.findIndex(d => d.rrState === RRState.NeedsReview);
         const targetIndex = firstPendingIndex >= 0 ? firstPendingIndex : 0;
         const first = data[targetIndex];
@@ -51,15 +48,58 @@ export function RRPage() {
           micr3: first.rrmicr3 ?? first.scanMICR3 ?? '',
         });
       }
-    } catch {
-      setLoadError('Unable to load RR items for this batch.');
+    } catch (err: any) {
+      setLoadError(err?.response?.data?.message ?? 'Unable to load RR items.');
       toast.error('Failed to load RR items');
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [batchNo]);
 
   useEffect(() => { loadItems(); }, [loadItems]);
+
+  // -- Inactivity Lock Logic --
+  const [lastActivity, setLastActivity] = useState(Date.now());
+  const INACTIVITY_LIMIT = 5 * 60 * 1000;
+  const WARNING_LIMIT = 4.5 * 60 * 1000;
+  const [hasWarned, setHasWarned] = useState(false);
+
+  useEffect(() => {
+    const updateActivity = () => { setLastActivity(Date.now()); setHasWarned(false); };
+    window.addEventListener('mousedown', updateActivity);
+    window.addEventListener('scroll', updateActivity);
+    window.addEventListener('keydown', updateActivity);
+    return () => {
+      window.removeEventListener('mousedown', updateActivity);
+      window.removeEventListener('scroll', updateActivity);
+      window.removeEventListener('keydown', updateActivity);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (loading || !batch?.batchID) return;
+    const timer = setInterval(() => {
+      const elapsed = Date.now() - lastActivity;
+      if (elapsed > INACTIVITY_LIMIT) {
+        handleAutoRelease();
+      } else if (elapsed > WARNING_LIMIT && !hasWarned) {
+        setHasWarned(true);
+        toast.info('Session expiring soon due to inactivity...');
+      }
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [batch?.batchID, loading, lastActivity, hasWarned]);
+
+  const handleAutoRelease = async () => {
+    if (!batch?.batchID) return;
+    try {
+      const { releaseScanLock } = await import('../services/scanService');
+      await releaseScanLock(batch.batchID);
+      toast.warning('Session released due to inactivity');
+    } finally {
+      navigate('/all-batches');
+    }
+  };
 
   useEffect(() => {
     if (!loading && items.length > 0) {
@@ -75,46 +115,49 @@ export function RRPage() {
 
   const item = items[current];
   const pendingItems = items.filter(i => i.rrState === RRState.NeedsReview);
+  const completedCount = items.filter(i => i.rrState !== RRState.NeedsReview).length;
+  const totalCount = items.length;
   const isLastPending = pendingItems.length <= 1;
-  const currentSlipItems = item
-    ? items.filter(i => i.slipEntryId === item.slipEntryId)
-    : [];
-  const currentSlipPosition = item
-    ? currentSlipItems.findIndex(i => i.chequeItemId === item.chequeItemId) + 1
-    : 0;
 
   const handleApproveAndNext = async () => {
-    if (!item) return;
+    if (!item || !batch) return;
     setSaving(true);
     try {
+      // Set approve: true to move the item to 'Approved' state
       await saveRRCorrection(item.chequeItemId, {
         chqNo: micr.chqNo,
-        rrChqNo: micr.chqNo, // Specifically set RRChqNo
+        rrChqNo: micr.chqNo,
         rrmicr1: micr.micr1,
         rrmicr2: micr.micr2,
         rrmicr3: micr.micr3,
-        approve: false,
+        approve: true, 
         rowVersion: item.rowVersion,
       });
-      const updated = await getRRItems(id);
+      
+      const updated = await getRRItems(batch.batchID);
       setItems(updated);
 
-      const nextPendingIndex = updated.findIndex(i => i.rrState === RRState.NeedsReview);
-      if (nextPendingIndex >= 0) {
-        const nextItem = updated[nextPendingIndex];
-        setCurrent(nextPendingIndex);
+      // Find the next item that still needs review
+      const nextPendingIndex = updated.findIndex((i, idx) => idx > current && i.rrState === RRState.NeedsReview);
+      const anyPendingIndex = updated.findIndex(i => i.rrState === RRState.NeedsReview);
+      
+      const targetIndex = nextPendingIndex >= 0 ? nextPendingIndex : (anyPendingIndex >= 0 ? anyPendingIndex : -1);
+
+      if (targetIndex >= 0) {
+        const nextItem = updated[targetIndex];
+        setCurrent(targetIndex);
         setMicr({
           chqNo: nextItem.chqNo ?? '',
           micr1: nextItem.rrmicr1 ?? nextItem.scanMICR1 ?? '',
           micr2: nextItem.rrmicr2 ?? nextItem.scanMICR2 ?? '',
           micr3: nextItem.rrmicr3 ?? nextItem.scanMICR3 ?? '',
         });
-        toast.success('Saved. Moving to next item.');
+        toast.success('Approved. Moving to next.');
       } else {
-        toast.success('All items reviewed.');
+        toast.success('Batch review complete. You can still revisit items or click Complete RR.');
       }
     } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? 'Failed to save');
+      toast.error(err?.response?.data?.message ?? 'Failed to approve item');
     } finally {
       setSaving(false);
     }
@@ -124,7 +167,11 @@ export function RRPage() {
     if (e.key === 'Enter') {
       e.preventDefault();
       if (nextId) {
-        document.getElementById(nextId)?.focus();
+        const nextEl = document.getElementById(nextId);
+        if (nextEl) {
+          nextEl.focus();
+          (nextEl as any).select?.();
+        }
       } else {
         handleApproveAndNext();
       }
@@ -132,19 +179,28 @@ export function RRPage() {
   };
 
   const handleComplete = async () => {
+    if (!batch) return;
     try {
-      await completeRR(id);
+      await completeRR(batch.batchID);
       toast.success('RR completed successfully');
-      navigate('/');
+      navigate('/all-batches');
     } catch (err: any) {
       toast.error(err?.response?.data?.message ?? 'Cannot complete RR');
     }
   };
 
+  useEffect(() => {
+    return () => {
+      if (batch?.batchID) {
+        import('../services/scanService').then(m => m.releaseScanLock(batch.batchID)).catch(() => {});
+      }
+    };
+  }, [batch?.batchID]);
+
   if (loading) {
     return (
-      <div style={{ padding: 40, textAlign: 'center', color: 'var(--fg-faint)', fontSize: 'var(--text-sm)' }}>
-        Loading RR items...
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', color: 'var(--fg-muted)', fontSize: 'var(--text-sm)' }}>
+        Loading Reject Repair session...
       </div>
     );
   }
@@ -152,172 +208,351 @@ export function RRPage() {
   if (loadError) {
     return (
       <div style={{ padding: 60, textAlign: 'center' }}>
-        <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 700, color: 'var(--fg)', marginBottom: 8 }}>RR Page Unavailable</h2>
+        <Icon name="error" size={48} style={{ color: 'var(--danger)', marginBottom: 16 }} />
+        <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 700, color: 'var(--fg)', marginBottom: 8 }}>RR Batch Unavailable</h2>
         <p style={{ fontSize: 'var(--text-sm)', color: 'var(--fg-muted)', marginBottom: 24 }}>{loadError}</p>
-        <button onClick={() => navigate('/')} className="btn-primary">
-          Back to Dashboard
-        </button>
-      </div>
-    );
-  }
-
-  if (pendingItems.length === 0) {
-    return (
-      <div style={{ padding: 80, textAlign: 'center' }}>
-        <div style={{ fontSize: 48, marginBottom: 16 }}>✓</div>
-        <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 700, color: 'var(--fg)', marginBottom: 8 }}>All Items Reviewed</h2>
-        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--fg-muted)', marginBottom: 32 }}>No more items need repair in this batch.</p>
-        <button onClick={handleComplete} className="btn-primary" style={{ background: 'var(--success)', borderColor: 'var(--success)' }}>
-          Finalize Batch
+        <button onClick={() => navigate('/all-batches')} className="btn-primary">
+          Back to All Batches
         </button>
       </div>
     );
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      {/* Action Header */}
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--bg)', overflow: 'hidden' }}>
+      
+      {/* ── Top Header ── */}
       <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '12px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-raised)', flexShrink: 0
+        display: 'flex', alignItems: 'center', gap: 24,
+        padding: '10px 24px', borderBottom: '1px solid #1a1a1b',
+        background: '#111111', flexShrink: 0
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <h1 style={{ margin: 0, fontSize: 'var(--text-md)', fontWeight: 700, color: 'var(--fg)' }}>
-            Reject Repair
-          </h1>
-          <Pill icon="pending_actions" color="var(--warning)">
-            Pending: {pendingItems.length}
-          </Pill>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ 
+            width: 32, height: 32, borderRadius: 'var(--r-md)', background: 'var(--danger-bg)', 
+            color: 'var(--danger)', display: 'flex', alignItems: 'center', justifyContent: 'center' 
+          }}>
+            <Icon name="build" size={18} />
+          </div>
+          <div>
+            <h1 style={{ margin: 0, fontSize: 'var(--text-md)', fontWeight: 700, color: '#fff', lineHeight: 1.2 }}>
+              Reject & Repair
+            </h1>
+            <div style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 600 }}>
+              {completedCount} of {totalCount} completed
+            </div>
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={handleComplete} className="btn-primary" style={{ height: 32, padding: '0 14px', fontSize: 'var(--text-xs)', background: 'var(--success)', borderColor: 'var(--success)' }}>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, overflow: 'hidden' }}>
+          <Pill icon="tag" mono style={{ background: 'rgba(255,255,255,0.05)', color: '#ccc', border: '1px solid rgba(255,255,255,0.08)' }}>Batch: {batch?.batchNo}</Pill>
+          <Pill icon="receipt_long" style={{ background: 'rgba(255,255,255,0.05)', color: '#ccc', border: '1px solid rgba(255,255,255,0.08)' }}>Ref: {batch?.summRefNo || '—'}</Pill>
+          <Pill icon="grid_view" style={{ background: 'rgba(255,255,255,0.05)', color: '#ccc', border: '1px solid rgba(255,255,255,0.08)' }}>Cluster: {batch?.clusterCode || '—'}</Pill>
+          <Pill icon="location_on" style={{ background: 'rgba(255,255,255,0.05)', color: '#ccc', border: '1px solid rgba(255,255,255,0.08)' }}>{batch?.locationCode}</Pill>
+          <Pill icon="category" style={{ background: 'rgba(255,255,255,0.05)', color: '#ccc', border: '1px solid rgba(255,255,255,0.08)' }}>{batch?.clearingType}</Pill>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button 
+            onClick={() => setMicrLayout(l => l === 'bottom' ? 'side' : 'bottom')}
+            className="btn-secondary"
+            style={{ height: 32, padding: '0 12px', fontSize: 'var(--text-xs)', gap: 6, background: '#222', borderColor: '#333', color: '#fff' }}
+          >
+            <Icon name={micrLayout === 'side' ? 'view_sidebar' : 'view_headline'} size={14} />
+            {micrLayout === 'side' ? 'Side Layout' : 'Bottom Layout'}
+          </button>
+          
+          <button 
+            onClick={handleComplete} 
+            disabled={pendingItems.length > 0}
+            className="btn-primary" 
+            style={{ 
+              height: 32, padding: '0 16px', fontSize: 'var(--text-xs)', 
+              background: pendingItems.length > 0 ? '#222' : 'var(--success)', 
+              borderColor: pendingItems.length > 0 ? '#333' : 'var(--success)',
+              color: pendingItems.length > 0 ? '#666' : '#fff'
+            }}
+          >
             <Icon name="verified" size={14} />
             Complete RR
           </button>
         </div>
       </div>
 
-      {item && (
+      {/* ── Secondary Header (Unified Dark Style) ── */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 12,
+        padding: '8px 24px', borderBottom: '1px solid #1a1a1b',
+        background: '#111111', flexShrink: 0, overflowX: 'auto', scrollbarWidth: 'none'
+      }}>
+        <div style={{ color: '#555', fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.1em', marginRight: 4 }}>
+          SLIP CONTEXT
+        </div>
+        <Pill icon="receipt_long" mono style={{ background: 'rgba(255,255,255,0.03)', color: 'var(--accent)', border: '1px solid rgba(255,255,255,0.06)' }}>
+          Slip: {item?.slipNo || '—'}
+        </Pill>
+        <Pill icon="payments" style={{ background: 'rgba(255,255,255,0.03)', color: '#fff', border: '1px solid rgba(255,255,255,0.06)' }}>
+          Amt: ₹{item?.slipAmount?.toLocaleString('en-IN') ?? '—'}
+        </Pill>
+        <Pill icon="person" style={{ background: 'rgba(255,255,255,0.03)', color: '#fff', border: '1px solid rgba(255,255,255,0.06)' }}>
+          {item?.clientName || '—'}
+        </Pill>
+        <Pill icon="pin" style={{ background: 'rgba(255,255,255,0.03)', color: '#fff', border: '1px solid rgba(255,255,255,0.06)' }}>
+          Seq: {item?.chqSeq}
+        </Pill>
+      </div>
+
+      {/* ── Main Layout ── */}
+      <div style={{ 
+        flex: 1, display: 'grid', 
+        gridTemplateColumns: `260px 1fr${micrLayout === 'side' ? ' 340px' : ''}`, 
+        minHeight: 0, overflow: 'hidden' 
+      }}>
+        
+        {/* Sidebar: Sequences */}
         <div style={{ 
-          flex: 1, display: 'grid', gridTemplateColumns: '1fr 380px', 
-          gap: 0, overflow: 'hidden', background: 'var(--bg)' 
+          borderRight: '1px solid var(--border)', background: 'var(--bg-raised)', 
+          display: 'flex', flexDirection: 'column', overflow: 'hidden' 
         }}>
-          {/* Main Viewport */}
-          <div style={{ padding: 16, display: 'flex', flexDirection: 'column', minWidth: 0, overflowY: 'auto' }}>
-            <RRViewport 
-              previewFront={getChequeImageUrl(item, 'front')}
-              previewBack={getChequeImageUrl(item, 'back')}
-              filename={`${item.imageName}CF${item.fileExtension?.split(',')[0] || '.jpg'}`}
-              itemTitle={`Cheque Seq #${item.chqSeq}`}
-            />
+          <div style={{ padding: '12px 16px', fontSize: 10, fontWeight: 700, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+            Queue Sequences
           </div>
-
-          {/* Right Sidebar: MICR + Slip info */}
-          {/* Right Sidebar: MICR + Slip info */}
-          <div style={{ 
-            borderLeft: '1px solid var(--border)', background: 'var(--bg-raised)', 
-            padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 12, overflow: 'hidden' 
-          }}>
-            {/* Raw Scan Values */}
-            <div className="card" style={{ padding: 12, background: 'var(--bg-subtle)' }}>
-              <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--fg-faint)', textTransform: 'uppercase', marginBottom: 8, letterSpacing: '.05em' }}>
-                Captured Scan MICR
-              </div>
-              
-              {/* Added: Complete Raw MICR String */}
-              <div style={{ 
-                fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--accent)', 
-                background: 'rgba(0,0,0,0.05)', padding: '4px 8px', borderRadius: 4,
-                marginBottom: 10, wordBreak: 'break-all', border: '1px solid var(--border-subtle)'
-              }}>
-                {item.scanMICRRaw || item.micrRaw || 'No Raw Data'}
-              </div>
-
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--fg-muted)', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  <span style={{ fontSize: 9, opacity: 0.6 }}>SCAN CHQ</span>
-                  <span style={{ color: 'var(--fg)', fontWeight: 600 }}>{item.scanChqNo || '—'}</span>
-                  {item.rrChqNo && item.rrChqNo !== item.scanChqNo && (
-                    <span style={{ fontSize: 9, color: 'var(--success)', fontWeight: 700, marginTop: 2 }}>RR: {item.rrChqNo}</span>
-                  )}
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  <span style={{ fontSize: 9, opacity: 0.6 }}>MICR1</span>
-                  <span style={{ color: 'var(--fg)', fontWeight: 600 }}>{item.scanMICR1 ?? '—'}</span>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  <span style={{ fontSize: 9, opacity: 0.6 }}>MICR2</span>
-                  <span style={{ color: 'var(--fg)', fontWeight: 600 }}>{item.scanMICR2 ?? '—'}</span>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  <span style={{ fontSize: 9, opacity: 0.6 }}>MICR3</span>
-                  <span style={{ color: 'var(--fg)', fontWeight: 600 }}>{item.scanMICR3 ?? '—'}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Repair Inputs */}
-            <div className="card" style={{ padding: 16, flexShrink: 0 }}>
-              <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--fg-faint)', textTransform: 'uppercase', marginBottom: 12, letterSpacing: '.05em' }}>
-                Repair / Correct Values
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 12px' }}>
-                {[
-                  { label: 'Cheque No (6)', key: 'chqNo', maxLen: 6, icon: 'tag', id: 'rr_chqNo', nextId: 'rr_micr1' },
-                  { label: 'MICR1 (9)', key: 'micr1', maxLen: 9, icon: 'numbers', id: 'rr_micr1', nextId: 'rr_micr2' },
-                  { label: 'MICR2 (6)', key: 'micr2', maxLen: 6, icon: 'apartment', id: 'rr_micr2', nextId: 'rr_micr3' },
-                  { label: 'MICR3 (2)', key: 'micr3', maxLen: 2, icon: 'category', id: 'rr_micr3', nextId: '' },
-                ].map(({ label, key, maxLen, icon, id: inputId, nextId }) => (
-                  <div key={key}>
-                    <label style={{ display: 'block', fontSize: 10, fontWeight: 500, color: 'var(--fg-muted)', marginBottom: 4 }}>
-                      {label}
-                    </label>
-                    <div style={{ position: 'relative' }}>
-                      <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--fg-faint)' }}>
-                        <Icon name={icon} size={12} />
-                      </span>
-                      <input
-                        id={inputId}
-                        ref={key === 'chqNo' ? firstInputRef : null}
-                        value={micr[key as keyof typeof micr]}
-                        onChange={(e) => setMicr(m => ({ ...m, [key]: e.target.value }))}
-                        onKeyDown={(e) => handleKeyDown(e, nextId)}
-                        maxLength={maxLen}
-                        className="input-field"
-                        style={{ paddingLeft: 26, paddingRight: 8, height: 32, fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)' }}
-                      />
+          <div style={{ flex: 1, overflowY: 'auto', padding: '0 8px 16px' }}>
+            {items.map((it, idx) => {
+              const isSelected = idx === current;
+              const isDone = it.rrState !== RRState.NeedsReview;
+              return (
+                <button
+                  key={it.chequeItemId}
+                  onClick={() => {
+                    setCurrent(idx);
+                    setMicr({
+                      chqNo: it.chqNo ?? '',
+                      micr1: it.rrmicr1 ?? it.scanMICR1 ?? '',
+                      micr2: it.rrmicr2 ?? it.scanMICR2 ?? '',
+                      micr3: it.rrmicr3 ?? it.scanMICR3 ?? '',
+                    });
+                  }}
+                  style={{
+                    width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '10px 12px', margin: '4px 0', borderRadius: 'var(--r-md)',
+                    border: isSelected ? '1px solid var(--accent-300)' : '1px solid transparent',
+                    background: isSelected ? 'var(--accent-50)' : 'transparent',
+                    cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s ease',
+                    boxShadow: isSelected ? '0 2px 8px rgba(0,0,0,0.05)' : 'none'
+                  }}
+                >
+                  <div style={{ 
+                    width: 24, height: 24, borderRadius: '50%', 
+                    background: isDone ? 'var(--success-bg)' : (isSelected ? 'var(--accent-100)' : 'var(--bg-subtle)'),
+                    color: isDone ? 'var(--success)' : (isSelected ? 'var(--accent-700)' : 'var(--fg-muted)'),
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700,
+                    flexShrink: 0
+                  }}>
+                    {isDone ? <Icon name="check" size={14} /> : idx + 1}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: isSelected ? 'var(--accent-900)' : 'var(--fg)' }}>Item #{idx + 1}</span>
+                      <span style={{ fontSize: 9, color: 'var(--fg-muted)', fontWeight: 600 }}>Seq {it.chqSeq}</span>
+                    </div>
+                    <div style={{ fontSize: 9, color: 'var(--fg-faint)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 500 }}>
+                      {it.chqNo ? `Chq: ${it.chqNo}` : 'MICR ERR'} • Slip {it.slipNo}
                     </div>
                   </div>
-                ))}
-              </div>
-
-              <button
-                onClick={handleApproveAndNext}
-                disabled={saving}
-                className="btn-primary"
-                style={{ width: '100%', height: 38, marginTop: 16, fontSize: 'var(--text-xs)', gap: 6 }}
-              >
-                <Icon name="check_circle" size={16} />
-                {saving ? 'Saving...' : (isLastPending ? 'Approve & Finish' : 'Approve & Next')}
-              </button>
-            </div>
-
-            {/* Slip Context */}
-            {item.slipNo && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--fg-faint)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
-                  Slip Context
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                  <Pill icon="receipt" title="Slip Number" style={{ padding: '1px 6px', fontSize: 10 }}>No: {item.slipNo}</Pill>
-                  <Pill icon="payments" title="Slip Amount" style={{ padding: '1px 6px', fontSize: 10 }}>₹ {item.slipAmount?.toLocaleString('en-IN') ?? '—'}</Pill>
-                  <Pill icon="person" title="Client" style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', padding: '1px 6px', fontSize: 10 }}>{item.clientName || '—'}</Pill>
-                  <Pill icon="pin" title="Item position" style={{ padding: '1px 6px', fontSize: 10 }}>{currentSlipPosition} / {currentSlipItems.length}</Pill>
-                </div>
-              </div>
-            )}
+                </button>
+              );
+            })}
           </div>
         </div>
+
+        {/* Center: Image + Bottom MICR if configured */}
+        <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden', background: '#111' }}>
+          <div style={{ flex: 1, padding: 16, display: 'flex', flexDirection: 'column' }}>
+            {item && (
+              <RRViewport 
+                previewFront={getChequeImageUrl(item, 'front')}
+                previewBack={getChequeImageUrl(item, 'back')}
+                filename={`${item.imageName || 'CHQ_SEQ_' + item.chqSeq}CF${item.fileExtension?.split(',')[0] || '.jpg'}`}
+                itemTitle={`Sequence #${item.chqSeq}`}
+              />
+            )}
+          </div>
+          {micrLayout === 'bottom' && (
+            <div style={{ borderTop: '1px solid #1a1a1b', background: 'var(--bg-raised)', padding: '12px 16px' }}>
+              <MICRPanel 
+                item={item} micr={micr} setMicr={setMicr} 
+                saving={saving} onSave={handleApproveAndNext} 
+                isLast={isLastPending} firstInputRef={firstInputRef}
+                onKeyDown={handleKeyDown}
+                layout="bottom"
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Right: MICR if configured */}
+        {micrLayout === 'side' && (
+          <div style={{ borderLeft: '1px solid var(--border)', background: 'var(--bg-raised)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+            <div style={{ padding: 16 }}>
+              <MICRPanel 
+                item={item} micr={micr} setMicr={setMicr} 
+                saving={saving} onSave={handleApproveAndNext} 
+                isLast={isLastPending} firstInputRef={firstInputRef}
+                onKeyDown={handleKeyDown}
+                layout="side"
+              />
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Sub-component: MICR Entry Panel ──
+
+function MICRPanel({ 
+  item, micr, setMicr, saving, onSave, isLast, firstInputRef, onKeyDown, layout 
+}: { 
+  item: RRItemDto, micr: any, setMicr: any, saving: boolean, onSave: any, isLast: boolean, 
+  firstInputRef: any, onKeyDown: any, layout: 'side' | 'bottom'
+}) {
+  const isCompact = true;
+  const isMobileBatch = !item.scanMICRRaw && !item.scanChqNo && !item.scanMICR1;
+
+  const handleInputChange = (key: string, val: string, maxLen: number, nextId: string) => {
+    setMicr((prev: any) => ({ ...prev, [key]: val }));
+    if (val.length === maxLen && nextId) {
+      setTimeout(() => {
+        const nextEl = document.getElementById(nextId);
+        if (nextEl) {
+          nextEl.focus();
+          (nextEl as any).select?.();
+        }
+      }, 10);
+    }
+  };
+
+  const inputs = [
+    { label: 'Cheque No', key: 'chqNo', maxLen: 6, icon: 'tag', id: 'rr_chqNo', nextId: 'rr_micr1' },
+    { label: 'MICR 1', key: 'micr1', maxLen: 9, icon: 'numbers', id: 'rr_micr1', nextId: 'rr_micr2' },
+    { label: 'MICR 2', key: 'micr2', maxLen: 6, icon: 'apartment', id: 'rr_micr2', nextId: 'rr_micr3' },
+    { label: 'MICR 3', key: 'micr3', maxLen: 2, icon: 'category', id: 'rr_micr3', nextId: '' },
+  ];
+
+  const repairSection = (
+    <div>
+      <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--fg-faint)', textTransform: 'uppercase', marginBottom: 8, letterSpacing: '.05em' }}>
+        {item.rrState === RRState.NeedsReview ? 'Repair / Correction' : 'Re-verify Details'}
+      </div>
+      <div style={{ 
+        display: 'grid', 
+        gridTemplateColumns: layout === 'bottom' ? 'repeat(4, 1fr) 140px' : '1fr', 
+        gap: 10, alignItems: 'end'
+      }}>
+        {inputs.map(({ label, key, maxLen, icon, id: inputId, nextId }) => (
+          <div key={key}>
+            <label style={{ display: 'block', fontSize: 9, fontWeight: 600, color: 'var(--fg-muted)', marginBottom: 4 }}>
+              {label}
+            </label>
+            <div style={{ position: 'relative' }}>
+              <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--fg-faint)' }}>
+                <Icon name={icon} size={12} />
+              </span>
+              <input
+                id={inputId}
+                ref={key === 'chqNo' ? firstInputRef : null}
+                value={micr[key as keyof typeof micr]}
+                onChange={(e) => handleInputChange(key, e.target.value, maxLen, nextId)}
+                onKeyDown={(e) => onKeyDown(e, nextId)}
+                maxLength={maxLen}
+                autoComplete="off"
+                className="input-field"
+                style={{ 
+                  paddingLeft: 28, paddingRight: 6, height: 34, 
+                  fontFamily: 'var(--font-mono)', fontSize: '13px', fontWeight: 600,
+                  borderColor: 'var(--border-strong)'
+                }}
+              />
+            </div>
+          </div>
+        ))}
+
+        <button
+          onClick={onSave}
+          disabled={saving}
+          className="btn-primary"
+          style={{ 
+            height: 34, fontSize: 'var(--text-xs)', gap: 6, 
+            boxShadow: '0 2px 8px rgba(99, 102, 241, 0.15)',
+            marginTop: layout === 'bottom' ? 0 : 6
+          }}
+        >
+          <Icon name="verified" size={14} />
+          {saving ? 'Saving...' : (item.rrState === RRState.NeedsReview ? (isLast ? 'Approve' : 'Approve & Next') : 'Update')}
+        </button>
+      </div>
+    </div>
+  );
+
+  const scannedDetails = (
+    <div style={{ 
+      background: isMobileBatch ? 'rgba(99, 102, 241, 0.02)' : 'rgba(0,0,0,0.03)', 
+      border: '1px solid var(--border)', 
+      borderRadius: 'var(--r-md)', padding: isCompact ? '10px 14px' : 16, 
+      boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.01)',
+      minHeight: layout === 'bottom' ? 90 : 120
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent-700)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+          Scanned MICR Details
+        </div>
+        {isMobileBatch && (
+          <div style={{ fontSize: 8, fontWeight: 700, color: 'var(--accent)', background: 'var(--accent-100)', padding: '2px 6px', borderRadius: 4 }}>
+            MOBILE CAPTURE
+          </div>
+        )}
+      </div>
+      
+      <div style={{ 
+        fontFamily: 'var(--font-mono)', fontSize: 13, color: isMobileBatch ? 'var(--fg-faint)' : 'var(--fg)', 
+        fontWeight: 700, background: 'var(--bg)', padding: '6px 10px', 
+        borderRadius: 'var(--r-sm)', border: '1px solid var(--border-strong)',
+        marginBottom: 10, textAlign: 'center', letterSpacing: '0.05em',
+        minHeight: 28, display: 'flex', alignItems: 'center', justifyContent: 'center'
+      }}>
+        {item.scanMICRRaw || item.micrRaw || (isMobileBatch ? 'NO MICR DATA' : 'XXXXXXXXXXXX')}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+        {[
+          { label: 'SCAN CHQ', val: item.scanChqNo },
+          { label: 'MICR 1', val: item.scanMICR1 },
+          { label: 'MICR 2', val: item.scanMICR2 },
+          { label: 'MICR 3', val: item.scanMICR3 },
+        ].map(s => (
+          <div key={s.label} style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 8, color: 'var(--fg-muted)', fontWeight: 600 }}>{s.label}</div>
+            <div style={{ fontSize: 11, color: s.val ? 'var(--fg)' : 'var(--fg-faint)', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>{s.val || '—'}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {layout === 'side' ? (
+        <>
+          {scannedDetails}
+          {repairSection}
+        </>
+      ) : (
+        <>
+          {repairSection}
+          {scannedDetails}
+        </>
       )}
     </div>
   );

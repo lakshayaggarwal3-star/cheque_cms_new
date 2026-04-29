@@ -125,10 +125,12 @@ export function ScanPage() {
       setViewerType(null);
       await session_hooks.loadSession();
     },
-    onClearCameraFiles: clearCameraFiles,
-    frontFile,
-    backFile,
-    openImageEditor,
+    onClearCameraFiles: state.clearCameraFiles,
+    frontFile: state.frontFile,
+    frontFileOriginal: state.frontFileOriginal,
+    backFile: state.backFile,
+    backFileOriginal: state.backFileOriginal,
+    openImageEditor: state.openImageEditor,
   });
 
   // ── Session logic ───────────────────────────────────────────────────────────
@@ -149,6 +151,58 @@ export function ScanPage() {
     return session_hooks.cleanup;
   }, [batchNo]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // -- Inactivity Lock Logic --
+  const [lastActivity, setLastActivity] = useState(Date.now());
+  const INACTIVITY_LIMIT = 5 * 60 * 1000;
+  const WARNING_LIMIT = 4.5 * 60 * 1000;
+  const [hasWarned, setHasWarned] = useState(false);
+
+  useEffect(() => {
+    const updateActivity = () => { setLastActivity(Date.now()); setHasWarned(false); };
+    window.addEventListener('mousedown', updateActivity);
+    window.addEventListener('scroll', updateActivity);
+    window.addEventListener('keydown', updateActivity);
+    return () => {
+      window.removeEventListener('mousedown', updateActivity);
+      window.removeEventListener('scroll', updateActivity);
+      window.removeEventListener('keydown', updateActivity);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (loading || !id) return;
+    const timer = setInterval(() => {
+      const elapsed = Date.now() - lastActivity;
+      if (elapsed > INACTIVITY_LIMIT) {
+        handleAutoRelease();
+      } else if (elapsed > WARNING_LIMIT && !hasWarned) {
+        setHasWarned(true);
+        toast.info('Session expiring soon due to inactivity...');
+      }
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [id, loading, lastActivity, hasWarned]);
+
+  const handleAutoRelease = async () => {
+    if (!id) return;
+    try {
+      const { releaseScanLock } = await import('../services/scanService');
+      await releaseScanLock(id);
+      toast.warning('Session released due to inactivity');
+    } finally {
+      navigate('/all-batches');
+    }
+  };
+
+  // -- Release lock on unmount --
+  useEffect(() => {
+    return () => {
+      if (id) {
+        import('../services/scanService').then(m => m.releaseScanLock(id)).catch(() => {});
+      }
+    };
+  }, [id]);
+
   // ── Derived values ──────────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -167,6 +221,31 @@ export function ScanPage() {
 
   const withSlip = session.withSlip ?? false;
   const activeGroup = session.slipGroups.find(g => g.slipEntryId === activeSlipEntryId);
+
+  // -- Lock Enforcement --
+  const isLockedByOther = session.scanLockedBy && session.scanLockedBy !== user?.userId;
+
+  if (isLockedByOther) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '80vh', gap: 24, textAlign: 'center', padding: 24 }}>
+        <div style={{ width: 80, height: 80, borderRadius: '50%', background: 'var(--bg-subtle)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <span className="material-symbols-outlined" style={{ fontSize: 40, color: 'var(--danger)' }}>lock</span>
+        </div>
+        <div>
+          <h2 style={{ margin: '0 0 8px', fontSize: 24, fontWeight: 700 }}>Batch Locked</h2>
+          <p style={{ color: 'var(--fg-muted)', maxWidth: 400, fontSize: 14, lineHeight: 1.5 }}>
+            This batch is currently being processed by another user (User ID: {session.scanLockedBy}).
+            To ensure data integrity, only one user can scan a batch at a time.
+          </p>
+        </div>
+        <button onClick={() => navigate('/all-batches')} className="btn-primary" style={{ padding: '10px 24px' }}>
+          <Icon name="arrow_back" size={18} />
+          Return to Batches
+        </button>
+      </div>
+    );
+  }
+
   const slipItemsForActive = activeGroup?.slipItems ?? [];
   const isCurrentSlipItemDone = withSlip && slipItemsForActive.length > 0;
   const canMoveToChequeScan = !withSlip || isCurrentSlipItemDone;
@@ -370,8 +449,10 @@ export function ScanPage() {
             isDeveloper={user?.isDeveloper}
             mockScanEnabled={mockScanEnabled}
             completing={completing}
-            frontFile={frontFile}
-            backFile={backFile}
+            frontFile={state.frontFile}
+            frontFileOriginal={state.frontFileOriginal}
+            backFile={state.backFile}
+            backFileOriginal={state.backFileOriginal}
             frontPreview={frontPreview}
             backPreview={backPreview}
             showTable={showTable}
@@ -664,9 +745,10 @@ export function ScanPage() {
         <ImageEditModal
           file={editorState.file}
           title={editorState.title}
+          isSlip={editorState.isSlip}
           onClose={() => setEditorState(null)}
-          onSave={(file, previewUrl) => {
-            applyEditedImage(editorState.target, file, previewUrl);
+          onSave={(file, previewUrl, originalFile) => {
+            state.applyEditedImage(editorState.target, file, previewUrl, originalFile);
             setEditorState(null);
             toast.success('Edited image saved');
           }}
@@ -689,7 +771,7 @@ export function ScanPage() {
               toast.success('Slip scanning completed. Ready for next slip.');
             } else if (type === 'batch') {
               // Finalize the entire batch explicitly
-              await scanner.handleCompleteScan(() => navigate('/'));
+              await scanner.handleCompleteScan(() => navigate('/all-batches'));
             }
           }}
         />

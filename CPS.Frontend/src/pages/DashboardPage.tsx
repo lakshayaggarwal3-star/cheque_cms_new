@@ -347,7 +347,6 @@ export function DashboardPage() {
       <div id="batches-table" style={{
         background: 'var(--bg-raised)', border: '1px solid var(--border)',
         borderRadius: 'var(--r-lg)', boxShadow: 'var(--shadow-xs)',
-        overflow: 'hidden',
       }}>
         {/* Header bar */}
         <div className="table-header-bar">

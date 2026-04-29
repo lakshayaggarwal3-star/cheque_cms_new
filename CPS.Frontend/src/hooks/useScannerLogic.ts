@@ -40,7 +40,9 @@ interface UseScannerLogicProps {
   onCaptureSuccess: () => Promise<void>;
   onClearCameraFiles: () => void;
   frontFile: File | null;
+  frontFileOriginal: File | null;
   backFile: File | null;
+  backFileOriginal: File | null;
   openImageEditor: (file: File, target: EditableImageTarget) => void;
   rangerMicrEnabled?: boolean;
   rangerEndorsementEnabled?: boolean;
@@ -60,7 +62,9 @@ export function useScannerLogic({
   onCaptureSuccess,
   onClearCameraFiles,
   frontFile,
+  frontFileOriginal,
   backFile,
+  backFileOriginal,
   openImageEditor,
   rangerMicrEnabled = true,
   rangerEndorsementEnabled = false,
@@ -308,7 +312,13 @@ export function useScannerLogic({
     if (isDeveloper && mockScanEnabled && frontFile) {
       setIsBusy(true);
       try {
-        const result = await uploadMobileSlipItem(batchId, { slipEntryId: activeSlipEntryId, scanOrder: nextSlipItemOrder, image: frontFile, scannerType: 'Scanner' });
+        const result = await uploadMobileSlipItem(batchId, { 
+          slipEntryId: activeSlipEntryId, 
+          scanOrder: nextSlipItemOrder, 
+          image: frontFile, 
+          imageOriginal: frontFileOriginal ?? undefined,
+          scannerType: 'Scanner' 
+        });
         onClearCameraFiles();
         setCurrentSlipItem(result);
         await onCaptureSuccess();
@@ -334,7 +344,7 @@ export function useScannerLogic({
       const ext = scanResult.format === 'PNG' ? 'png' : 'jpg';
       const file = base64ToFile(`data:${mimeType};base64,${scanResult.image_base64}`, `slip-scan.${ext}`);
       if (!file) throw new Error('Invalid image data from scanner');
-      const result = await uploadMobileSlipItem(batchId, { slipEntryId: activeSlipEntryId, scanOrder: nextSlipItemOrder, image: file });
+      const result = await uploadMobileSlipItem(batchId, { slipEntryId: activeSlipEntryId, scanOrder: nextSlipItemOrder, image: file, imageOriginal: file });
       setCurrentSlipItem(result);
       await onCaptureSuccess();
       toast.success('Slip image captured');
@@ -355,7 +365,15 @@ export function useScannerLogic({
     try {
       let result: ChequeItemDto;
       if (isDeveloper && mockScanEnabled && (frontFile || backFile)) {
-        result = await uploadMobileCheque(batchId, { slipEntryId: activeSlipEntryId, chqSeq: nextChqSeq, imageFront: frontFile ?? undefined, imageBack: backFile ?? undefined, scannerType: 'Scanner' });
+        result = await uploadMobileCheque(batchId, { 
+          slipEntryId: activeSlipEntryId, 
+          chqSeq: nextChqSeq, 
+          imageFront: frontFile ?? undefined, 
+          imageBack: backFile ?? undefined, 
+          imageFrontOriginal: frontFileOriginal ?? undefined,
+          imageBackOriginal: backFileOriginal ?? undefined,
+          scannerType: 'Scanner' 
+        });
         onClearCameraFiles();
       } else if (isDeveloper && mockScanEnabled) {
         result = await captureCheque(batchId, { slipEntryId: activeSlipEntryId, scannerType: 'Cheque' });

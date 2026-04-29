@@ -301,7 +301,7 @@ export function ScanViewport({
 
             {/* Counts */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-              <Pill icon="input" title="Expected cheques">Exp: {(activeGroup as any).totalInstruments}</Pill>
+              <Pill icon="input" title="Total cheques">Total: {(activeGroup as any).totalInstruments}</Pill>
               <Pill
                 icon="check_circle"
                 title="Scanned cheques"

@@ -29,6 +29,13 @@ export function LoginPage() {
     defaultValues: { loginId: 'DEV001', password: 'Dev@1234' },
   });
 
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('reason') === 'session_terminated') {
+      setError('Session Terminated: A new login was detected on another device.');
+    }
+  }, []);
+
   const onSubmit = async (data: LoginForm) => {
     setError('');
     setIsSubmitting(true);
@@ -82,10 +89,12 @@ export function LoginPage() {
 
   return (
     <div style={{
-      minHeight: '100vh',
+      minHeight: '100dvh',
+      height: '100dvh',
       background: 'var(--bg)', color: 'var(--fg)',
       fontFamily: 'var(--font-sans)',
       position: 'relative', overflow: 'hidden',
+      display: 'flex', flexDirection: 'column',
     }}>
       {/* Radial gradient overlays */}
       <div style={{
@@ -100,8 +109,45 @@ export function LoginPage() {
       }} />
 
       {/* Center container */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', padding: '24px 16px' }}>
+      <div style={{ 
+        flex: 1,
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center', 
+        padding: '16px',
+        overflow: 'hidden'
+      }}>
         <div style={{ width: '100%', maxWidth: 420, position: 'relative', zIndex: 1 }}>
+
+          {/* Session Terminated Notice */}
+          {error.includes('logged out') && (
+            <div style={{
+              background: 'var(--bg-raised)', border: '1px solid var(--accent-200)',
+              borderRadius: 14, padding: '16px 20px', marginBottom: 20,
+              display: 'flex', gap: 14, alignItems: 'center',
+              boxShadow: '0 4px 20px rgba(217, 119, 87, 0.1)',
+              animation: 'slideDown 0.4s ease-out',
+            }}>
+              <style>{`
+                @keyframes slideDown {
+                  from { transform: translateY(-10px); opacity: 0; }
+                  to { transform: translateY(0); opacity: 1; }
+                }
+              `}</style>
+              <div style={{
+                width: 40, height: 40, borderRadius: '50%', background: 'rgba(217,119,87,0.1)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+              }}>
+                <span className="material-symbols-outlined" style={{ color: 'var(--accent-600)', fontSize: 22 }}>devices</span>
+              </div>
+              <div style={{ flex: 1 }}>
+                <h4 style={{ margin: 0, fontSize: 13, fontWeight: 700, color: 'var(--fg)' }}>Session Terminated</h4>
+                <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--fg-muted)', lineHeight: 1.4 }}>
+                  {error}
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Logo + App name */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'center', marginBottom: 32 }}>
@@ -125,11 +171,8 @@ export function LoginPage() {
           }}>
             <div style={{ marginBottom: 24 }}>
               <h1 style={{ margin: 0, fontSize: 24, fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--fg)' }}>
-                Welcome back
+                Welcome
               </h1>
-              <p style={{ margin: '6px 0 0', fontSize: 13, color: 'var(--fg-muted)' }}>
-                Sign in with your SCB employee credentials.
-              </p>
             </div>
 
             <form onSubmit={handleSubmit(onSubmit)} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -214,8 +257,8 @@ export function LoginPage() {
                 </span>
               </div>
 
-              {/* API error */}
-              {error && (
+              {/* API error (only if not the session terminated notice above) */}
+              {error && !error.includes('logged out') && (
                 <div style={{ borderRadius: 8, padding: '10px 12px', display: 'flex', gap: 10, alignItems: 'flex-start', background: 'var(--danger-bg)', border: '1px solid var(--danger)' }}>
                   <span className="material-symbols-outlined" style={{ fontSize: 18, marginTop: 1, color: 'var(--danger)', flexShrink: 0 }}>warning</span>
                   <p style={{ margin: 0, fontSize: 13, color: 'var(--danger)' }}>{error}</p>
@@ -244,21 +287,7 @@ export function LoginPage() {
               </button>
             </form>
 
-            {/* Divider + Demo + Force login */}
-            <div style={{
-              marginTop: 24, paddingTop: 20,
-              borderTop: '1px solid var(--border-subtle)',
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            }}>
-              <span style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 6, color: 'var(--fg-subtle)' }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 14, lineHeight: 1 }}>info</span>
-                Demo: DEV001 / Dev@1234
-              </span>
-              <span onClick={() => setShowForceLoginModal(true)}
-                style={{ fontSize: 11, color: 'var(--accent-700)', cursor: 'pointer', textDecoration: 'none' }}>
-                Simulate force login →
-              </span>
-            </div>
+
           </div>
 
           {/* Footer */}
@@ -268,13 +297,64 @@ export function LoginPage() {
         </div>
       </div>
 
+      {/* Session Terminated Modal */}
+      {error.includes('Session Terminated') && (
+        <div
+          className="modal-overlay-container"
+          style={{
+            position: 'fixed', inset: 0, background: 'rgb(31 30 29 / 60%)',
+            backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center',
+            justifyContent: 'center', padding: 16, zIndex: 100,
+            animation: 'fadeIn 0.3s ease-out',
+            overflowY: 'auto',
+          }}
+          onClick={() => setError('')}
+        >
+          <style>{`
+            @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+            @keyframes scaleIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+          `}</style>
+          <div
+            style={{
+              maxWidth: 400, width: '100%', borderRadius: 20, padding: 32,
+              background: 'var(--bg-raised)', border: '1px solid var(--border)',
+              boxShadow: '0 20px 50px rgba(0,0,0,0.3)',
+              textAlign: 'center',
+              animation: 'scaleIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{
+              width: 64, height: 64, borderRadius: '50%', background: 'rgba(217,119,87,0.1)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px',
+            }}>
+              <span className="material-symbols-outlined" style={{ color: 'var(--accent-600)', fontSize: 32 }}>devices</span>
+            </div>
+            <h3 style={{ margin: '0 0 12px', fontSize: 20, fontWeight: 700, color: 'var(--fg)' }}>Session Terminated</h3>
+            <p style={{ margin: '0 0 24px', fontSize: 14, color: 'var(--fg-muted)', lineHeight: 1.6 }}>
+              {error}
+            </p>
+            <button
+              onClick={() => setError('')}
+              style={{
+                width: '100%', padding: '12px', background: 'var(--accent-500)',
+                color: '#fff', border: 'none', borderRadius: 12,
+                fontSize: 14, fontWeight: 600, cursor: 'pointer',
+              }}
+            >Got it</button>
+          </div>
+        </div>
+      )}
+
       {/* Force Login Modal */}
       {showForceLoginModal && (
         <div
+          className="modal-overlay-container"
           style={{
             position: 'fixed', inset: 0, background: 'rgb(31 30 29 / 40%)',
             backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center',
             justifyContent: 'center', padding: 16, zIndex: 50,
+            overflowY: 'auto',
           }}
           onClick={() => setShowForceLoginModal(false)}
         >

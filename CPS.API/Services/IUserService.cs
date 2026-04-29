@@ -20,4 +20,5 @@ public interface IUserService
     Task SetStatusAsync(int userId, bool isActive, int updatedBy);
     Task ResetPasswordAsync(int userId, ResetPasswordRequest request, int updatedBy);
     Task UnlockAsync(int userId, int updatedBy);
+    Task DeleteAsync(int userId, int deletedBy);
 }

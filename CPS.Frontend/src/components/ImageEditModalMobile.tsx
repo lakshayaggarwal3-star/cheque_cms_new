@@ -13,10 +13,12 @@ interface ImageEditModalMobileProps {
   file: File | null;
   title: string;
   onClose: () => void;
-  onSave: (file: File, previewUrl: string) => void;
+  onSave: (file: File, previewUrl: string, originalFile?: File) => void;
+  initialCropFull?: boolean;
+  isSlip?: boolean;
 }
 
-export function ImageEditModalMobile({ file, title, onClose, onSave }: ImageEditModalMobileProps) {
+export function ImageEditModalMobile({ file, title, onClose, onSave, initialCropFull, isSlip = false }: ImageEditModalMobileProps) {
   if (!file) return null;
-  return <ImageCropEditor file={file} title={title} onClose={onClose} onSave={onSave} mode="mobile" />;
+  return <ImageCropEditor file={file} title={title} onClose={onClose} onSave={onSave} mode="mobile" initialCropFull={initialCropFull} isSlip={isSlip} />;
 }

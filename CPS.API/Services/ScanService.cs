@@ -175,6 +175,12 @@ public class ScanService : IScanService
         var subFolder = "Slip";
 
         var imagePath = await SaveMobileImageAsync(batch.BatchNo, request.Image, fileName, rootFolder, subFolder);
+        
+        // Save Original if provided
+        if (request.ImageOriginal != null)
+        {
+            await SaveMobileImageAsync(batch.BatchNo, request.ImageOriginal, fileName + "_O", rootFolder, subFolder);
+        }
 
         return await SaveSlipItemAsync(new SaveSlipItemRequest
         {
@@ -335,6 +341,16 @@ public class ScanService : IScanService
             var backResult = await ProcessAndSaveCtsChequeAsync(batch.BatchNo, request.ImageBack, baseFileName + "CR", rootFolder, subFolder);
             backPath = backResult.JpgPath;
             backTiffPath = backResult.TifPath;
+        }
+
+        // 3. Save Original images if provided
+        if (request.ImageFrontOriginal != null)
+        {
+            await SaveMobileImageAsync(batch.BatchNo, request.ImageFrontOriginal, baseFileName + "CF_O", rootFolder, subFolder);
+        }
+        if (request.ImageBackOriginal != null && request.ImageBack != null)
+        {
+            await SaveMobileImageAsync(batch.BatchNo, request.ImageBackOriginal, baseFileName + "CR_O", rootFolder, subFolder);
         }
 
         return await SaveChequeItemAsync(new SaveChequeItemRequest
