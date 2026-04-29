@@ -68,13 +68,15 @@ export interface ScanPageState {
   setFrontPreview: (v: string | null) => void;
   backPreview: string | null;
   setBackPreview: (v: string | null) => void;
+  frontBBox: string | null;
+  backBBox: string | null;
   clearCameraFiles: () => void;
 
   // Image editor
   editorState: { file: File; target: EditableImageTarget; title: string; isSlip: boolean } | null;
   setEditorState: (v: { file: File; target: EditableImageTarget; title: string; isSlip: boolean } | null) => void;
   openImageEditor: (file: File, target: EditableImageTarget) => void;
-  applyEditedImage: (target: EditableImageTarget, file: File, previewUrl: string, originalFile?: File) => void;
+  applyEditedImage: (target: string, file: File, previewUrl: string, originalFile?: File, corners?: any[]) => void;
 
   // Cheque viewer
   flipped: boolean;
@@ -156,12 +158,14 @@ export function useScanPageState(): ScanPageState {
   const [backFileOriginal, setBackFileOriginal] = useState<File | null>(null);
   const [frontPreview, setFrontPreview] = useState<string | null>(null);
   const [backPreview, setBackPreview] = useState<string | null>(null);
+  const [frontBBox, setFrontBBox] = useState<string | null>(null);
+  const [backBBox, setBackBBox] = useState<string | null>(null);
 
   const clearCameraFiles = useCallback(() => {
     if (frontPreview) URL.revokeObjectURL(frontPreview);
     if (backPreview) URL.revokeObjectURL(backPreview);
-    setFrontFile(null); setFrontFileOriginal(null);
-    setBackFile(null); setBackFileOriginal(null);
+    setFrontFile(null); setFrontFileOriginal(null); setFrontBBox(null);
+    setBackFile(null); setBackFileOriginal(null); setBackBBox(null);
     setFrontPreview(null); setBackPreview(null);
   }, [frontPreview, backPreview]);
 
@@ -180,17 +184,22 @@ export function useScanPageState(): ScanPageState {
     setEditorState({ file, target, title: titleMap[target], isSlip });
   };
 
-  const applyEditedImage = (target: EditableImageTarget, file: File, previewUrl: string, originalFile?: File) => {
-    if (target === 'slip-front' || target === 'cheque-front') {
+  const applyEditedImage = useCallback((target: string, file: File, preview: string, original?: File, corners?: any[]) => {
+    const bbox = corners ? JSON.stringify(corners) : null;
+    if (target === 'cheque-front' || target === 'slip-front') {
       if (frontPreview) URL.revokeObjectURL(frontPreview);
-      setFrontFile(file); setFrontPreview(previewUrl);
-      if (originalFile) setFrontFileOriginal(originalFile);
-      return;
+      setFrontFile(file);
+      setFrontPreview(preview);
+      if (original) setFrontFileOriginal(original);
+      if (bbox) setFrontBBox(bbox);
+    } else {
+      if (backPreview) URL.revokeObjectURL(backPreview);
+      setBackFile(file);
+      setBackPreview(preview);
+      if (original) setBackFileOriginal(original);
+      if (bbox) setBackBBox(bbox);
     }
-    if (backPreview) URL.revokeObjectURL(backPreview);
-    setBackFile(file); setBackPreview(previewUrl);
-    if (originalFile) setBackFileOriginal(originalFile);
-  };
+  }, [frontPreview, backPreview]);
 
   // Cheque viewer
   const [flipped, setFlipped] = useState(false);
@@ -276,6 +285,8 @@ export function useScanPageState(): ScanPageState {
     backFileOriginal, setBackFileOriginal,
     frontPreview, setFrontPreview,
     backPreview, setBackPreview,
+    frontBBox,
+    backBBox,
     clearCameraFiles,
     editorState, setEditorState,
     openImageEditor, applyEditedImage,

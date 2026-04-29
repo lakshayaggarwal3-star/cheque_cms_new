@@ -45,6 +45,7 @@ export async function uploadMobileSlipItem(batchId: number, data: {
   scanOrder: number;
   image: File;
   imageOriginal?: File;
+  bbox?: string;
   scannerType?: string;
 }): Promise<SlipItemDto> {
   const formData = new FormData();
@@ -52,6 +53,7 @@ export async function uploadMobileSlipItem(batchId: number, data: {
   formData.append('scanOrder', String(data.scanOrder));
   formData.append('image', data.image);
   if (data.imageOriginal) formData.append('imageOriginal', data.imageOriginal);
+  if (data.bbox) formData.append('bbox', data.bbox);
   if (data.scannerType) formData.append('scannerType', data.scannerType);
 
   const res = await apiClient.post(`/scan/${batchId}/slip-item/upload-mobile`, formData, {
@@ -128,6 +130,8 @@ export async function uploadMobileCheque(batchId: number, data: {
   scanMICR1?: string;
   scanMICR2?: string;
   scanMICR3?: string;
+  bboxFront?: string;
+  bboxBack?: string;
   scannerType?: string;
 }): Promise<ChequeItemDto> {
   const formData = new FormData();
@@ -139,6 +143,8 @@ export async function uploadMobileCheque(batchId: number, data: {
   if (data.imageBackOriginal) formData.append('imageBackOriginal', data.imageBackOriginal);
   if (data.imageFrontTiff) formData.append('imageFrontTiff', data.imageFrontTiff);
   if (data.imageBackTiff) formData.append('imageBackTiff', data.imageBackTiff);
+  if (data.bboxFront) formData.append('bboxFront', data.bboxFront);
+  if (data.bboxBack) formData.append('bboxBack', data.bboxBack);
   if (data.micrRaw) formData.append('micrRaw', data.micrRaw);
   if (data.scanMICRRaw) formData.append('scanMICRRaw', data.scanMICRRaw);
   if (data.chqNo) formData.append('chqNo', data.chqNo);

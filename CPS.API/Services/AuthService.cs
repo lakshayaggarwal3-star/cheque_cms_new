@@ -13,6 +13,7 @@ using CPS.API.DTOs;
 using CPS.API.Exceptions;
 using CPS.API.Models;
 using CPS.API.Repositories;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.IdentityModel.Tokens;
 
 namespace CPS.API.Services;
@@ -22,12 +23,14 @@ public class AuthService : IAuthService
     private readonly IUserRepository _users;
     private readonly IConfiguration _config;
     private readonly ILogger<AuthService> _logger;
+    private readonly IMemoryCache _cache;
 
-    public AuthService(IUserRepository users, IConfiguration config, ILogger<AuthService> logger)
+    public AuthService(IUserRepository users, IConfiguration config, ILogger<AuthService> logger, IMemoryCache cache)
     {
         _users = users;
         _config = config;
         _logger = logger;
+        _cache = cache;
     }
 
     public async Task<LoginResponse> LoginAsync(LoginRequest request)
@@ -69,6 +72,9 @@ public class AuthService : IAuthService
         user.UpdatedAt = DateTime.UtcNow;
         await _users.UpdateAsync(user);
 
+        // Clear session cache to enforce immediate lockout on other devices
+        _cache.Remove($"session_token_{user.UserID}");
+
         var today = DateOnly.FromDateTime(DateTime.Today);
         var location = await _users.GetCurrentLocationAsync(user.UserID, today);
 
@@ -100,6 +106,9 @@ public class AuthService : IAuthService
         user.SessionToken = null;
         user.UpdatedAt = DateTime.UtcNow;
         await _users.UpdateAsync(user);
+
+        // Invalidate cache immediately
+        _cache.Remove($"session_token_{userId}");
     }
 
     public async Task ChangePasswordAsync(int userId, ChangePasswordRequest request)

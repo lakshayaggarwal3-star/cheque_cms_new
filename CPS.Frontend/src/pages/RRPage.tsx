@@ -76,6 +76,17 @@ export function RRPage() {
     };
   }, []);
 
+  const handleAutoRelease = useCallback(async () => {
+    if (!batch?.batchID) return;
+    try {
+      const { releaseScanLock } = await import('../services/scanService');
+      await releaseScanLock(batch.batchID);
+      toast.warning('Session released due to inactivity');
+    } finally {
+      navigate('/all-batches');
+    }
+  }, [batch?.batchID, navigate]);
+
   useEffect(() => {
     if (loading || !batch?.batchID) return;
     const timer = setInterval(() => {
@@ -88,18 +99,7 @@ export function RRPage() {
       }
     }, 5000);
     return () => clearInterval(timer);
-  }, [batch?.batchID, loading, lastActivity, hasWarned]);
-
-  const handleAutoRelease = async () => {
-    if (!batch?.batchID) return;
-    try {
-      const { releaseScanLock } = await import('../services/scanService');
-      await releaseScanLock(batch.batchID);
-      toast.warning('Session released due to inactivity');
-    } finally {
-      navigate('/all-batches');
-    }
-  };
+  }, [batch?.batchID, loading, lastActivity, hasWarned, handleAutoRelease]);
 
   useEffect(() => {
     if (!loading && items.length > 0) {

@@ -130,8 +130,7 @@ function NavItem({ icon, label, active, expanded, onClick, path }: {
   }
 
   return (
-    <a
-      href="#"
+    <div
       title={expanded ? '' : label}
       onClick={(e) => { e.preventDefault(); onClick?.(); }}
       onMouseEnter={() => setHover(true)}
@@ -139,7 +138,7 @@ function NavItem({ icon, label, active, expanded, onClick, path }: {
       style={navStyle}
     >
       {inner}
-    </a>
+    </div>
   );
 }
 

@@ -11,14 +11,13 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as XLSX from 'xlsx';
 import {
-  applyMasterRows, getClientMasterData, getLocationMasterData, getTemplateUrl, previewMaster,
+  getClientMasterData, getLocationMasterData, getTemplateUrl,
   updateClientRecord, getGlobalClients, MasterType, MasterPreviewDto, 
   ClientMasterDto, GlobalClientDto, updateGlobalClient, createGlobalClient, 
   deleteGlobalClient, linkClientsToGlobal, updateLocationRecord,
   getInternalBankData, getCaptureRuleData,
   clearMaster, uploadMaster, getJobStatus, cancelJob, deleteJob, getUserJobs, JobStatusDto
 } from '../services/masterUploadService';
-import apiClient from '../services/api';
 import { toast } from '../store/toastStore';
 import { Icon } from '../components/scan';
 import ScbMasterTab from './ScbMasterTab';
@@ -106,7 +105,6 @@ export function MastersPage() {
   // Background Job State
   const [activeJobId, setActiveJobId] = useState<number | null>(null);
   const [jobStatus, setJobStatus] = useState<JobStatusDto | null>(null);
-  const pollingRef = useRef<NodeJS.Timeout | null>(null);
   
   // Advanced Filter State
   const [isAdvancedSearch, setIsAdvancedSearch] = useState(false);

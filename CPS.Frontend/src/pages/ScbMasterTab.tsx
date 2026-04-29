@@ -23,7 +23,6 @@ interface ScbMasterStatus {
 
 export default function ScbMasterTab() {
   const [statuses, setStatuses] = useState<ScbMasterStatus[]>([]);
-  const [loading, setLoading] = useState(true);
   
   // Data Viewer state
   const [selectedSection, setSelectedSection] = useState<string | null>(null);
@@ -42,8 +41,6 @@ export default function ScbMasterTab() {
       }
     } catch (err) {
       console.error('Failed to fetch SCB Master status', err);
-    } finally {
-      setLoading(false);
     }
   };
 

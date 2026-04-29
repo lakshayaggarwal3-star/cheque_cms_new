@@ -23,8 +23,8 @@ interface ImageCropEditorProps {
   file: File;
   title: string;
   onClose: () => void;
-  /** processed = grayscale TIFF; originalFile is the raw capture (cheque only) */
-  onSave: (file: File, previewUrl: string, originalFile?: File) => void;
+  /** processed = grayscale TIFF; originalFile is the raw capture (cheque only); corners = BBox */
+  onSave: (file: File, previewUrl: string, originalFile?: File, corners?: Point[]) => void;
   mode?: 'desktop' | 'mobile';
   initialCropFull?: boolean;
   /** true for cheque: onSave also receives the untouched original capture */
@@ -347,17 +347,57 @@ export function ImageCropEditor({ file, title, onClose, onSave, mode = 'desktop'
         }, 'image/jpeg', 0.9);
         return; // Exit early as toBlob is async
       } else {
-        // For cheques: Convert to Grayscale & Apply Adaptive Enhancement (CLAHE)
+        // For cheques: High-Pass Background Removal
+        // Exact match to Python image_proce.py:
+        //   gray  = cvtColor(BGR2GRAY).astype(float32)
+        //   bg    = GaussianBlur(gray, sigmaX=80, sigmaY=80)
+        //   hp    = clip(gray - bg + 220, 0, 255).astype(uint8)
+        //   final = addWeighted(hp, 1.4, GaussianBlur(hp,3x3), -0.4, 0)
         grayMat = new cv.Mat();
         cv.cvtColor(warpMat, grayMat, cv.COLOR_RGBA2GRAY);
 
-        // Apply CLAHE to fix uneven lighting and shadows
-        equalizedMat = new cv.Mat();
-        const clahe = new cv.CLAHE(2.0, new cv.Size(8, 8));
-        clahe.apply(grayMat, equalizedMat);
-        clahe.delete();
+        // Background estimation — Gaussian blur sigma=80, matching Python.
+        // Directly applying sigma=80 on a large image (e.g. 1600×700) needs a
+        // ~481px kernel which is slow in browser. Instead: downsample to ≤300px,
+        // apply sigma proportionally (sigma_small = 80 * scale), upsample back.
+        // Effective sigma at original resolution = sigma_small / scale = 80. ✓
+        const BLUR_RES  = 300;
+        const blurScale = Math.min(1.0, BLUR_RES / Math.max(dw, dh));
+        const bw        = Math.max(1, Math.round(dw * blurScale));
+        const bh        = Math.max(1, Math.round(dh * blurScale));
+        const sigmaSmall = Math.max(5, Math.round(80 * blurScale));
 
-        finalMat = equalizedMat;
+        const smallGray = new cv.Mat();
+        cv.resize(grayMat, smallGray, new cv.Size(bw, bh), 0, 0, cv.INTER_AREA);
+        const blurSmallMat = new cv.Mat();
+        cv.GaussianBlur(smallGray, blurSmallMat, new cv.Size(0, 0), sigmaSmall, sigmaSmall);
+        equalizedMat = new cv.Mat();
+        cv.resize(blurSmallMat, equalizedMat, new cv.Size(dw, dh), 0, 0, cv.INTER_LINEAR);
+        smallGray.delete(); blurSmallMat.delete();
+
+        // Subtract background, add offset 220, clip to 0-255 — matches Python:
+        //   hp = np.clip(gray - blur_bg + 220, 0, 255).astype(np.uint8)
+        //   paper:          diff ≈  0   + 220 → 220  (light)
+        //   security print: diff ≈ -15  + 220 → 205  (near-white, suppressed)
+        //   ink / text:     diff ≈ -160 + 220 →  60  (dark)
+        const grayF  = new cv.Mat();
+        const bgF    = new cv.Mat();
+        const diffF  = new cv.Mat();
+        const normU8 = new cv.Mat();
+        const blurSm = new cv.Mat();
+        grayMat.convertTo(grayF, cv.CV_32F);
+        equalizedMat.convertTo(bgF, cv.CV_32F);
+        cv.subtract(grayF, bgF, diffF);
+        diffF.convertTo(normU8, cv.CV_8U, 1.0, 220); // saturate_cast(diff + 220)
+
+        // Unsharp mask — matches Python:
+        //   blur_sharp   = GaussianBlur(hp, (3,3), 0)
+        //   scanner_gray = addWeighted(hp, 1.4, blur_sharp, -0.4, 0)
+        cv.GaussianBlur(normU8, blurSm, new cv.Size(3, 3), 0, 0);
+        finalMat = new cv.Mat();
+        cv.addWeighted(normU8, 1.4, blurSm, -0.4, 0, finalMat);
+
+        grayF.delete(); bgF.delete(); diffF.delete(); normU8.delete(); blurSm.delete();
 
         // Encode as uncompressed 8-bit grayscale TIFF
         const w = finalMat.cols, h = finalMat.rows;
@@ -379,7 +419,7 @@ export function ImageCropEditor({ file, title, onClose, onSave, mode = 'desktop'
         // Original untouched capture — rename with _O suffix
         const ext = file.name.substring(file.name.lastIndexOf('.'));
         const originalRenamed = new File([file], `${baseName}_O${ext}`, { type: file.type });
-        onSave(tiffFile, previewUrl, saveOriginal ? originalRenamed : undefined);
+        onSave(tiffFile, previewUrl, saveOriginal ? originalRenamed : undefined, corners);
       }
     } catch (e) {
       console.error('ImageCropEditor save failed', e);
