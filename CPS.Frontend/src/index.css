@@ -183,6 +183,9 @@
     grid-template-columns: repeat(2, 1fr); 
     gap: 10px; 
   }
+  .hide-mobile {
+    display: none !important;
+  }
 }
 
 .module-skeleton {

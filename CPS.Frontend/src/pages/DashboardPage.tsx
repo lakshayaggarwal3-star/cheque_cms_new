@@ -344,7 +344,7 @@ export function DashboardPage() {
       </div>
 
       {/* Batch table card */}
-      <div id="batches-table" style={{
+      <div id="batches-table" className="hide-mobile" style={{
         background: 'var(--bg-raised)', border: '1px solid var(--border)',
         borderRadius: 'var(--r-lg)', boxShadow: 'var(--shadow-xs)',
       }}>

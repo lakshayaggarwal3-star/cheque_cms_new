@@ -43,6 +43,9 @@ public class AuthService : IAuthService
             throw new ValidationException("Invalid credentials.");
         }
 
+        _logger.LogInformation("Login request received. User: {LoginId}, ForceLogin flag: {ForceLogin}", request.LoginId, request.ForceLogin);
+
+
         if (!user.IsActive)
             throw new ValidationException("Account is inactive. Contact admin.");
 

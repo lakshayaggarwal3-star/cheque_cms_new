@@ -594,7 +594,15 @@ export default function YOLODetector() {
             WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',marginBottom:3}}>
             ⬡ YOLO Seg · NMS-Export Format
           </h1>
-          <p style={{color:'#2d3858',fontSize:'.76rem'}}>
+          <div style={{marginTop: 8}}>
+            <a href="/segmenter" style={{color: '#4facfe', fontSize: '0.8rem', textDecoration: 'none', border: '1px solid #4facfe44', padding: '4px 12px', borderRadius: '100px', marginRight: 8}}>
+               All-Class Segmenter ➔
+            </a>
+            <a href="/editor" style={{color: '#a78bfa', fontSize: '0.8rem', textDecoration: 'none', border: '1px solid #a78bfa44', padding: '4px 12px', borderRadius: '100px'}}>
+               Editor & Camera ➔
+            </a>
+          </div>
+          <p style={{color:'#2d3858',fontSize:'.76rem', marginTop: 12}}>
             Model output: [1,300,38] — NMS already applied in model
           </p>
         </div>

@@ -8,6 +8,7 @@
 // =============================================================================
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { toast } from '../store/toastStore';
 
 declare const cv: any;
 
@@ -16,8 +17,30 @@ const tflite = (window as any).tflite;
 if (tflite) tflite.setWasmPath('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-tflite/dist/');
 
 const MODEL_SIZE = 640;
+const NUM_COEFFS = 32;
+
+const classNames = [
+  'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat', 'traffic light',
+  'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse', 'sheep', 'cow',
+  'elephant', 'bear', 'zebra', 'giraffe', 'backpack', 'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee',
+  'skis', 'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard',
+  'tennis racket', 'bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple',
+  'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair', 'couch',
+  'potted plant', 'bed', 'dining table', 'toilet', 'tv', 'laptop', 'mouse', 'remote', 'keyboard', 'cell phone',
+  'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 'Document', 'clock', 'vase', 'scissors', 'teddy bear',
+  'hair drier', 'toothbrush'
+];
 
 interface Point { x: number; y: number; }
+interface Detection {
+  id: number;
+  bbox: [number, number, number, number];
+  bboxModel: [number, number, number, number];
+  class: number;
+  className: string;
+  score: number;
+  coeffs: number[];
+}
 
 interface ImageCropEditorProps {
   file: File;
@@ -32,6 +55,8 @@ interface ImageCropEditorProps {
   /** true for slips: skip grayscale/TIFF and save as high-quality JPG */
   isSlip?: boolean;
 }
+
+const sigmoid = (x: number) => 1 / (1 + Math.exp(-x));
 
 export function ImageCropEditor({ file, title, onClose, onSave, mode = 'desktop', saveOriginal = false, isSlip = false }: ImageCropEditorProps) {
   const [imgUrl, setImgUrl] = useState<string | null>(null);
@@ -49,11 +74,22 @@ export function ImageCropEditor({ file, title, onClose, onSave, mode = 'desktop'
   const [rotation, setRotation] = useState(0);
   const [saving, setSaving] = useState(false);
   const [dragging, setDragging] = useState<number>(-1);
+  const [draggingSide, setDraggingSide] = useState<number>(-1);
+  const [dragStart, setDragStart] = useState<Point | null>(null);
+  const [initialCorners, setInitialCorners] = useState<Point[] | null>(null);
 
+  const lastTapRef = useRef<number>(0);
+  const lastTapPosRef = useRef<{ x: number, y: number } | null>(null);
+  const wasDraggingRef = useRef<boolean>(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const [model, setModel] = useState<any>(null);
 
-   const [detectRun, setDetectRun] = useState(false);
+  const [detections, setDetections] = useState<Detection[]>([]);
+  const [protosData, setProtosData] = useState<Float32Array | null>(null);
+  const [protosShape, setProtosShape] = useState<number[] | null>(null);
+  const [selectedDetId, setSelectedDetId] = useState<number | null>(null);
+
+  const [detectRun, setDetectRun] = useState(false);
   const [detecting, setDetecting] = useState(false);
 
   // Model init
@@ -61,7 +97,7 @@ export function ImageCropEditor({ file, title, onClose, onSave, mode = 'desktop'
     const loadModel = async () => {
       if (!tflite) return;
       try {
-        const fileName = 'yolo.tflite';
+        const fileName = 'yolo26n-seg_float16.tflite';
         const publicUrl = process.env.PUBLIC_URL || '';
         // Try multiple paths
         const paths = [
@@ -99,7 +135,7 @@ export function ImageCropEditor({ file, title, onClose, onSave, mode = 'desktop'
       }
     };
     loadModel();
-  }, [imgNatural.w]);
+  }, []);
 
   useEffect(() => {
     const url = URL.createObjectURL(file);
@@ -116,9 +152,13 @@ export function ImageCropEditor({ file, title, onClose, onSave, mode = 'desktop'
   useEffect(() => {
     if (!imgNatural.w || !model || detectRun) return;
 
+    let isActive = true;
+
     const runDetect = async () => {
       try {
-        setDetecting(true);
+        if (isActive) setDetecting(true);
+        console.log('[AI] Starting inference for:', imgUrl);
+        
         const img = new Image();
         img.src = imgUrl!;
         await img.decode();
@@ -143,96 +183,238 @@ export function ImageCropEditor({ file, title, onClose, onSave, mode = 'desktop'
         const preds = await model.predict(input);
         tf.dispose(input);
 
-
-        const detTensor = Object.values(preds).find((t: any) => (t.shape || t.dims).length === 3) as any;
-        if (detTensor) {
-          const raw = detTensor.dataSync();
-          const N = detTensor.shape[1];
-          const C = detTensor.shape[2];
-          
-          let bestDet = null;
-          let maxScore = 0;
-
-          for (let i = 0; i < N; i++) {
-            const score = raw[i * C + 4];
-            const cls = Math.round(raw[i * C + 5]);
-            
-
-            const isDocumentClass = (cls === 73 || cls === 67 || cls === 65);
-            
-            // Check for Geometric Heuristics (is it a big centered object?)
-            const centerX = (raw[i * C + 0] + raw[i * C + 2]) / 2;
-            const centerY = (raw[i * C + 1] + raw[i * C + 3]) / 2;
-            const width = Math.abs(raw[i * C + 2] - raw[i * C + 0]);
-            const height = Math.abs(raw[i * C + 3] - raw[i * C + 1]);
-            const area = (width * height) / (MODEL_SIZE * MODEL_SIZE);
-            
-            const isCentral = Math.abs(centerX - MODEL_SIZE/2) < 150 && Math.abs(centerY - MODEL_SIZE/2) < 150;
-            const isLarge = area > 0.05; // > 5% of image area
-            const isWide = (width / height) > 1.1; // Wider than tall (likely a cheque/book)
-
-            // Snapping Logic
-            let isCandidate = false;
-            if (isDocumentClass && score > 0.1) {
-              isCandidate = true;
-            } else if (cls !== 0 && score > 0.2 && isCentral && isLarge && isWide) {
-              // Heuristic: If not a person, and it's large/central/wide, it's likely our document
-              isCandidate = true;
-            }
-            
-            if (isCandidate) {
-              // Priority: If we find a Book (73), we definitely want that. 
-              // Otherwise, we take the highest score candidate.
-              const isBetter = (cls === 73 && bestDet?.cls !== 73) || (score > maxScore);
-              
-              if (isBetter) {
-                maxScore = score;
-                let x1 = raw[i * C + 0], y1 = raw[i * C + 1], x2 = raw[i * C + 2], y2 = raw[i * C + 3];
-                if (x1 <= 1 && x2 <= 1) {
-                  x1 *= MODEL_SIZE; y1 *= MODEL_SIZE; x2 *= MODEL_SIZE; y2 *= MODEL_SIZE;
-                }
-                bestDet = { x1, y1, x2, y2, cls };
-              }
-            }
-          }
-
-          if (bestDet) {
-            const nx1 = Math.max(0, Math.min(1, (bestDet.x1 - padW) / (scale * w)));
-            const ny1 = Math.max(0, Math.min(1, (bestDet.y1 - padH) / (scale * h)));
-            const nx2 = Math.max(0, Math.min(1, (bestDet.x2 - padW) / (scale * w)));
-            const ny2 = Math.max(0, Math.min(1, (bestDet.y2 - padH) / (scale * h)));
-
-            setCorners([
-              { x: nx1, y: ny1 },
-              { x: nx2, y: ny1 },
-              { x: nx2, y: ny2 },
-              { x: nx1, y: ny2 }
-            ]);
-          } else {
-            // Fallback: If no document detected, default to a centered rectangle (70% width, 60% height)
-            setCorners([
-              { x: 0.15, y: 0.20 },
-              { x: 0.85, y: 0.20 },
-              { x: 0.85, y: 0.80 },
-              { x: 0.15, y: 0.80 }
-            ]);
-          }
-        } else {
-          console.error('YOLO: Could not find detection tensor in model output.');
+        if (!isActive) {
+          Object.values(preds).forEach((t: any) => t?.dispose?.());
+          return;
         }
-        
-        Object.values(preds).forEach((t: any) => t.dispose());
 
+        // ── Parse Detections ──
+        const allOut = preds instanceof tf.Tensor ? { out: preds } : preds;
+        let detTensor: any = null;
+        let protoTensor: any = null;
+
+        for (const k of Object.keys(allOut)) {
+          const t = allOut[k];
+          const s = t.shape ?? t.dims;
+          if (s && s.length === 3) detTensor = t;
+          if (s && s.length === 4) protoTensor = t;
+        }
+
+        // Fallback for some TFLite environments
+        if (!protoTensor && Object.values(allOut).length > 1) {
+          protoTensor = Object.values(allOut).find((t: any) => (t.shape || t.dims)?.length === 4);
+        }
+
+        if (!detTensor) throw new Error('Detection tensor missing');
+
+        const shape = detTensor.shape ?? detTensor.dims;
+        const raw = detTensor.dataSync();
+        const N = shape[1], C = shape[2];
+        const at = (n: number, c: number) => raw[n * C + c];
+
+        const dets: Detection[] = [];
+        for (let i = 0; i < N; i++) {
+          const score = at(i, 4);
+          if (score < 0.1) continue; // Lowered to be extremely sensitive
+
+          let mx1 = at(i, 0), my1 = at(i, 1), mx2 = at(i, 2), my2 = at(i, 3);
+          if (mx1 <= 1) { mx1 *= MODEL_SIZE; my1 *= MODEL_SIZE; mx2 *= MODEL_SIZE; my2 *= MODEL_SIZE; }
+
+          const classId = Math.round(at(i, 5));
+          const coeffs = [];
+          for (let c = 6; c < 6 + NUM_COEFFS; c++) coeffs.push(at(i,c));
+
+          const ix1 = Math.max(0, (mx1 - padW) / scale);
+          const iy1 = Math.max(0, (my1 - padH) / scale);
+          const ix2 = Math.min(w, (mx2 - padW) / scale);
+          const iy2 = Math.min(h, (my2 - padH) / scale);
+
+          dets.push({
+            id: i,
+            bbox: [ix1, iy1, ix2, iy2],
+            bboxModel: [mx1, my1, mx2, my2],
+            class: classId,
+            className: classNames[classId] || 'Item',
+            score,
+            coeffs
+          });
+        }
+
+        if (isActive) {
+          setDetections(dets);
+          
+          if (dets.length > 0) {
+            const summary = dets.map(d => `${d.className} (${Math.round(d.score * 100)}%)`).join(', ');
+            console.log(`[AI] Found ${dets.length} objects: ${summary}`);
+          } else {
+            console.log('[AI] No objects detected in this image.');
+          }
+
+          if (protoTensor) {
+            setProtosData(protoTensor.dataSync ? protoTensor.dataSync() : protoTensor.data);
+            setProtosShape(protoTensor.shape ?? protoTensor.dims);
+          }
+
+          const priorityMap: Record<string, number> = {
+            'Document': 10, 'book': 9, 'remote': 8, 'tv': 7, 'laptop': 6, 'mouse': 5, 'cell phone': 4, 'person': 3, 'chair': 2
+          };
+
+          const candidates = dets
+            .filter(d => priorityMap[d.className] !== undefined && d.score > 0.1)
+            .sort((a, b) => (priorityMap[b.className] || 0) - (priorityMap[a.className] || 0));
+
+          const bestCandidate = candidates[0];
+          if (bestCandidate) {
+            console.log(`[AI] Auto-snapping to the best candidate: ${bestCandidate.className} (${Math.round(bestCandidate.score * 100)}%)`);
+            setSelectedDetId(bestCandidate.id);
+          } else {
+            console.log('[AI] No suitable document-like object found for auto-snapping.');
+          }
+        }
+
+        Object.values(preds).forEach((t: any) => t?.dispose?.());
       } catch (e) {
-        console.warn('Auto-detect failed', e);
+        if (isActive) console.warn('YOLO-seg failed', e);
       } finally {
-        setDetecting(false);
-        setDetectRun(true);
+        if (isActive) {
+          setDetecting(false);
+          setDetectRun(true);
+        }
       }
     };
 
     runDetect();
-  }, [imgNatural, imgUrl, detectRun, model]);
+
+    return () => {
+      isActive = false;
+    };
+  }, [imgNatural.w, imgUrl, model, detectRun]);
+
+  // Reset detection state when image changes
+  useEffect(() => {
+    console.log('[Editor] Image changed, resetting state');
+    setDetectRun(false);
+    setDetections([]);
+    setSelectedDetId(null);
+    setProtosData(null);
+  }, [imgUrl]);
+
+  // Corner extraction from mask
+  useEffect(() => {
+    if (selectedDetId === null || !imgNatural.w) return;
+    
+    const det = detections.find(d => d.id === selectedDetId);
+    if (!det) return;
+
+    // Safety fallback: If protos aren't ready yet, use BBox immediately
+    if (!protosData || !protosShape) {
+      console.log('[Editor] Protos not ready, using BBox fallback for handles');
+      const [ix1, iy1, ix2, iy2] = det.bbox;
+      setCorners([
+        { x: ix1 / imgNatural.w, y: iy1 / imgNatural.h },
+        { x: ix2 / imgNatural.w, y: iy1 / imgNatural.h },
+        { x: ix2 / imgNatural.w, y: iy2 / imgNatural.h },
+        { x: ix1 / imgNatural.w, y: iy2 / imgNatural.h }
+      ]);
+      return;
+    }
+
+    console.log('[Editor] Extracting corners for:', det.className, '(ID:', det.id, ')');
+
+    try {
+      const [mx1, my1, mx2, my2] = det.bboxModel;
+      const pH = protosShape[1], pW = protosShape[2], pC = protosShape[3];
+      const ratioW = pW / MODEL_SIZE, ratioH = pH / MODEL_SIZE;
+      
+      const cpx1 = Math.floor(mx1 * ratioW), cpy1 = Math.floor(my1 * ratioH);
+      const cpx2 = Math.ceil(mx2 * ratioW),  cpy2 = Math.ceil(my2 * ratioH);
+      const cw = cpx2 - cpx1, ch = cpy2 - cpy1;
+      if (cw < 1 || ch < 1) return;
+      
+      // Generate mask for the bbox area
+      const mask = new Uint8Array(ch * cw);
+      for (let r = 0; r < ch; r++) {
+        for (let c = 0; c < cw; c++) {
+          let v = 0;
+          const rowBase = (cpy1 + r) * pW * pC + (cpx1 + c) * pC;
+          for (let k = 0; k < 32; k++) v += det.coeffs[k] * protosData[rowBase + k];
+          mask[r * cw + c] = sigmoid(v) > 0.5 ? 255 : 0;
+        }
+      }
+
+      // Find corners using OpenCV
+      const cv = (window as any).cv;
+      if (!cv || !cv.matFromArray) {
+        console.warn('[Editor] OpenCV not loaded yet! Retrying in 500ms...');
+        setTimeout(() => {
+          setProtosData(prev => prev ? new Float32Array(prev) : null);
+        }, 500);
+        return;
+      }
+
+      const src = cv.matFromArray(ch, cw, cv.CV_8UC1, mask);
+      const contours = new cv.MatVector();
+      const hierarchy = new cv.Mat();
+      cv.findContours(src, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+      if (contours.size() > 0) {
+        let maxArea = 0, maxIdx = -1;
+        for (let i = 0; i < contours.size(); i++) {
+          const area = cv.contourArea(contours.get(i));
+          if (area > maxArea) { maxArea = area; maxIdx = i; }
+        }
+
+        if (maxIdx !== -1) {
+          const cnt = contours.get(maxIdx);
+          const peri = cv.arcLength(cnt, true);
+          const approx = new cv.Mat();
+          cv.approxPolyDP(cnt, approx, 0.02 * peri, true);
+          if (approx.rows === 4) {
+            console.log('[Editor] Found 4 corners!');
+            const pts: Point[] = [];
+            const w = imgNatural.w, h = imgNatural.h;
+            const scale = Math.min(MODEL_SIZE / w, MODEL_SIZE / h);
+            const padW = (MODEL_SIZE - w * scale) / 2;
+            const padH = (MODEL_SIZE - h * scale) / 2;
+            const pH = protosShape[1], pW = protosShape[2];
+
+            for (let i = 0; i < 4; i++) {
+              const px = cpx1 + approx.data32S[i * 2];
+              const py = cpy1 + approx.data32S[i * 2 + 1];
+              
+              const mx = (px / pW) * MODEL_SIZE;
+              const my = (py / pH) * MODEL_SIZE;
+              
+              const ix = (mx - padW) / scale;
+              const iy = (my - padH) / scale;
+
+              pts.push({ x: ix / w, y: iy / h });
+            }
+            
+            pts.sort((a, b) => a.y - b.y);
+            const top = pts.slice(0, 2).sort((a, b) => a.x - b.x);
+            const bot = pts.slice(2, 4).sort((a, b) => b.x - a.x);
+            setCorners([top[0], top[1], bot[0], bot[1]]);
+          } else {
+            console.warn(`[Editor] approxPolyDP returned ${approx.rows} points. Falling back to BBox.`);
+            const [ix1, iy1, ix2, iy2] = det.bbox;
+            setCorners([
+              { x: ix1 / imgNatural.w, y: iy1 / imgNatural.h },
+              { x: ix2 / imgNatural.w, y: iy1 / imgNatural.h },
+              { x: ix2 / imgNatural.w, y: iy2 / imgNatural.h },
+              { x: ix1 / imgNatural.w, y: iy2 / imgNatural.h }
+            ]);
+          }
+          approx.delete();
+        }
+        contours.delete();
+        hierarchy.delete();
+        src.delete();
+      }
+    } catch (e) {
+      console.error('[Editor] Corner extraction failed', e);
+    }
+  }, [selectedDetId, protosData, protosShape, imgNatural.w, detections]);
 
   const calcLayout = useCallback(() => {
     const el = containerRef.current;
@@ -253,36 +435,142 @@ export function ImageCropEditor({ file, title, onClose, onSave, mode = 'desktop'
   }, [calcLayout]);
 
   const getCanvasPos = useCallback((clientX: number, clientY: number) => {
-    if (!containerRef.current) return { x: 0, y: 0 };
+    if (!containerRef.current) return { x: 0, y: 0, mx: 0, my: 0 };
     const r = containerRef.current.getBoundingClientRect();
     const lx = clientX - r.left - containerRect.imgX;
     const ly = clientY - r.top - containerRect.imgY;
-    return { x: lx / containerRect.imgW, y: ly / containerRect.imgH };
-  }, [containerRect]);
+    
+    const nx = lx / containerRect.imgW;
+    const ny = ly / containerRect.imgH;
+
+    // Convert normalized image pos back to MODEL_SIZE space for detection matching
+    const w = imgNatural.w, h = imgNatural.h;
+    const scale = Math.min(MODEL_SIZE / w, MODEL_SIZE / h);
+    const padW = (MODEL_SIZE - w * scale) / 2;
+    const padH = (MODEL_SIZE - h * scale) / 2;
+
+    const mx = nx * (scale * w) + padW;
+    const my = ny * (scale * h) + padH;
+
+    return { x: nx, y: ny, mx, my };
+  }, [containerRect, imgNatural]);
+
+  const handleCanvasClick = (e: React.MouseEvent | React.TouchEvent) => {
+    // If we were just dragging a handle, don't snap
+    if (wasDraggingRef.current || dragging >= 0 || draggingSide >= 0 || detections.length === 0) {
+      wasDraggingRef.current = false;
+      return;
+    }
+    
+    const clientX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
+    const pos = getCanvasPos(clientX, clientY);
+
+    // Find best detection containing the click point (ALLOW ALL CLASSES)
+    const matches = detections.filter(d => {
+      const px = pos.x * imgNatural.w;
+      const py = pos.y * imgNatural.h;
+      return px >= d.bbox[0] && px <= d.bbox[2] && py >= d.bbox[1] && py <= d.bbox[3];
+    });
+
+    if (matches.length > 0) {
+      const match = matches.sort((a, b) => {
+        const areaA = (a.bbox[2] - a.bbox[0]) * (a.bbox[3] - a.bbox[1]);
+        const areaB = (b.bbox[2] - b.bbox[0]) * (b.bbox[3] - b.bbox[1]);
+        return areaA - areaB;
+      })[0];
+      
+      setSelectedDetId(match.id);
+      toast.info('Document selected');
+    }
+  };
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    const now = Date.now();
+    const touch = e.touches[0];
+    const pos = { x: touch.clientX, y: touch.clientY };
+    const DOUBLE_TAP_DELAY = 500; // Increased to be more forgiving
+    const MAX_DISTANCE = 30; // pixels
+    
+    const lastPos = lastTapPosRef.current;
+    const dist = lastPos ? Math.sqrt(Math.pow(pos.x - lastPos.x, 2) + Math.pow(pos.y - lastPos.y, 2)) : Infinity;
+
+    if (now - lastTapRef.current < DOUBLE_TAP_DELAY && dist < MAX_DISTANCE) {
+      handleCanvasClick(e);
+      lastTapRef.current = 0;
+      lastTapPosRef.current = null;
+    } else {
+      lastTapRef.current = now;
+      lastTapPosRef.current = pos;
+    }
+  };
 
   const onStart = (idx: number) => {
     setDragging(idx);
   };
 
-  const onMove = useCallback((clientX: number, clientY: number) => {
-    if (dragging < 0) return;
-    const pos = getCanvasPos(clientX, clientY);
-    setCorners(prev => {
-      const next = [...prev];
-      next[dragging] = { 
-        x: Math.max(0, Math.min(1, pos.x)), 
-        y: Math.max(0, Math.min(1, pos.y)) 
-      };
-      return next;
-    });
-  }, [dragging, getCanvasPos]);
+  const onStartSide = (idx: number, clientX: number, clientY: number) => {
+    setDraggingSide(idx);
+    setDragStart(getCanvasPos(clientX, clientY));
+    setInitialCorners([...corners]);
+  };
 
-  const onEnd = () => setDragging(-1);
+  const onMove = useCallback((clientX: number, clientY: number) => {
+    if (dragging < 0 && draggingSide < 0) return;
+    const pos = getCanvasPos(clientX, clientY);
+
+    if (dragging >= 0) {
+      setCorners(prev => {
+        const next = [...prev];
+        next[dragging] = { 
+          x: Math.max(0, Math.min(1, pos.x)), 
+          y: Math.max(0, Math.min(1, pos.y)) 
+        };
+        return next;
+      });
+    } else if (draggingSide >= 0 && dragStart && initialCorners) {
+      const dx = pos.x - dragStart.x;
+      const dy = pos.y - dragStart.y;
+      
+      setCorners(() => {
+        const next = [...initialCorners];
+        const pairs: [number, number][] = [[0, 1], [1, 2], [2, 3], [3, 0]];
+        const [p1, p2] = pairs[draggingSide];
+        
+        next[p1] = { 
+          x: Math.max(0, Math.min(1, initialCorners[p1].x + dx)), 
+          y: Math.max(0, Math.min(1, initialCorners[p1].y + dy)) 
+        };
+        next[p2] = { 
+          x: Math.max(0, Math.min(1, initialCorners[p2].x + dx)), 
+          y: Math.max(0, Math.min(1, initialCorners[p2].y + dy)) 
+        };
+        return next;
+      });
+    }
+  }, [dragging, draggingSide, dragStart, initialCorners, getCanvasPos]);
+
+  const onEnd = () => {
+    if (dragging >= 0 || draggingSide >= 0) {
+      wasDraggingRef.current = true;
+      // Small timeout to prevent the immediate click event from firing a snap
+      setTimeout(() => { wasDraggingRef.current = false; }, 200);
+    }
+    setDragging(-1);
+    setDraggingSide(-1);
+    setDragStart(null);
+    setInitialCorners(null);
+  };
 
   useEffect(() => {
     const mm = (e: MouseEvent) => onMove(e.clientX, e.clientY);
     const mu = () => onEnd();
-    const tm = (e: TouchEvent) => { if (dragging >= 0) { e.preventDefault(); onMove(e.touches[0].clientX, e.touches[0].clientY); } };
+    const tm = (e: TouchEvent) => { 
+      if (dragging >= 0 || draggingSide >= 0) { 
+        e.preventDefault(); 
+        onMove(e.touches[0].clientX, e.touches[0].clientY); 
+      } 
+    };
     const tu = () => onEnd();
 
     window.addEventListener('mousemove', mm);
@@ -302,84 +590,79 @@ export function ImageCropEditor({ file, title, onClose, onSave, mode = 'desktop'
     setBrightness(100); setGrayscale(0); setRotation(0);
   };
 
-  const handleSave = async () => {
+  const handleSave = () => {
     if (!imgUrl) return;
     setSaving(true);
-    let sp: any = null, dp: any = null, M: any = null, srcMat: any = null;
-    let warpMat: any = null, grayMat: any = null, equalizedMat: any = null, finalMat: any = null;
-    try {
-      const img = await loadImg(imgUrl);
-      const srcCanvas = document.createElement('canvas');
-      srcCanvas.width = img.naturalWidth; srcCanvas.height = img.naturalHeight;
-      srcCanvas.getContext('2d')!.drawImage(img, 0, 0);
+    // Yield to browser so the "saving..." spinner renders before heavy CPU work begins
+    setTimeout(async () => {
+      let sp: any = null, dp: any = null, M: any = null, srcMat: any = null;
+      let warpMat: any = null, grayMat: any = null, equalizedMat: any = null, finalMat: any = null;
+      const cleanup = () => {
+        [sp, dp, M, srcMat, warpMat, grayMat, equalizedMat, finalMat].forEach(m => { try { m?.delete(); } catch (_) {} });
+        sp = dp = M = srcMat = warpMat = grayMat = equalizedMat = finalMat = null;
+      };
+      try {
+        const img = await loadImg(imgUrl);
+        const srcCanvas = document.createElement('canvas');
+        srcCanvas.width = img.naturalWidth; srcCanvas.height = img.naturalHeight;
+        srcCanvas.getContext('2d')!.drawImage(img, 0, 0);
 
-      // ── Step 1: perspective warp ────────────────────────────────────────
-      const pts = corners.map(p => ({ x: p.x * img.naturalWidth, y: p.y * img.naturalHeight }));
-      const dw = Math.round(Math.max(
-        Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y),
-        Math.hypot(pts[2].x - pts[3].x, pts[2].y - pts[3].y),
-      ));
-      const dh = Math.round(Math.max(
-        Math.hypot(pts[3].x - pts[0].x, pts[3].y - pts[0].y),
-        Math.hypot(pts[2].x - pts[1].x, pts[2].y - pts[1].y),
-      ));
-      sp = cv.matFromArray(4,1,cv.CV_32FC2,[pts[0].x,pts[0].y,pts[1].x,pts[1].y,pts[2].x,pts[2].y,pts[3].x,pts[3].y]);
-      dp = cv.matFromArray(4,1,cv.CV_32FC2,[0,0,dw,0,dw,dh,0,dh]);
-      M = cv.getPerspectiveTransform(sp, dp);
-      srcMat = cv.imread(srcCanvas);
-      warpMat = new cv.Mat();
-      cv.warpPerspective(srcMat, warpMat, M, new cv.Size(dw, dh));
+        // ── Step 1: perspective warp ────────────────────────────────────────
+        const pts = corners.map(p => ({ x: p.x * img.naturalWidth, y: p.y * img.naturalHeight }));
+        const dw = Math.round(Math.max(
+          Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y),
+          Math.hypot(pts[2].x - pts[3].x, pts[2].y - pts[3].y),
+        ));
+        const dh = Math.round(Math.max(
+          Math.hypot(pts[3].x - pts[0].x, pts[3].y - pts[0].y),
+          Math.hypot(pts[2].x - pts[1].x, pts[2].y - pts[1].y),
+        ));
+        sp = cv.matFromArray(4,1,cv.CV_32FC2,[pts[0].x,pts[0].y,pts[1].x,pts[1].y,pts[2].x,pts[2].y,pts[3].x,pts[3].y]);
+        dp = cv.matFromArray(4,1,cv.CV_32FC2,[0,0,dw,0,dw,dh,0,dh]);
+        M = cv.getPerspectiveTransform(sp, dp);
+        srcMat = cv.imread(srcCanvas);
+        warpMat = new cv.Mat();
+        cv.warpPerspective(srcMat, warpMat, M, new cv.Size(dw, dh));
 
-      // ── Step 2: encode final output ─────────────────────────────────────
-      const baseName = file.name.replace(/\.[^.]+$/, '');
-      
-      if (isSlip) {
-        // For slips: save as high-quality JPEG (Original Color)
-        const canvas = document.createElement('canvas');
-        cv.imshow(canvas, warpMat);
-        canvas.toBlob((blob) => {
-          if (blob) {
-            const jpgFile = new File([blob], `${baseName}.jpg`, { type: 'image/jpeg' });
-            const previewUrl = canvas.toDataURL('image/jpeg', 0.9);
-            onSave(jpgFile, previewUrl);
-          }
-          setSaving(false);
-        }, 'image/jpeg', 0.9);
-        return; // Exit early as toBlob is async
-      } else {
-        // For cheques: High-Pass Background Removal
-        // Exact match to Python image_proce.py:
-        //   gray  = cvtColor(BGR2GRAY).astype(float32)
-        //   bg    = GaussianBlur(gray, sigmaX=80, sigmaY=80)
-        //   hp    = clip(gray - bg + 220, 0, 255).astype(uint8)
-        //   final = addWeighted(hp, 1.4, GaussianBlur(hp,3x3), -0.4, 0)
+        // ── Step 2: encode final output ─────────────────────────────────────
+        const baseName = file.name.replace(/\.[^.]+$/, '');
+
+        if (isSlip) {
+          // Slips: save as high-quality JPEG (colour preserved)
+          const canvas = document.createElement('canvas');
+          cv.imshow(canvas, warpMat);
+          cleanup(); // free mats before toBlob (async)
+          canvas.toBlob((blob) => {
+            if (blob) {
+              const jpgFile = new File([blob], `${baseName}.jpg`, { type: 'image/jpeg' });
+              const previewUrl = canvas.toDataURL('image/jpeg', 0.9);
+              onSave(jpgFile, previewUrl);
+            }
+            setSaving(false);
+          }, 'image/jpeg', 0.9);
+          return; // toBlob is async — setSaving(false) called inside callback
+        }
+
+        // Cheques: High-Pass Background Removal (matches Python image_proce.py)
         grayMat = new cv.Mat();
         cv.cvtColor(warpMat, grayMat, cv.COLOR_RGBA2GRAY);
 
-        // Background estimation — Gaussian blur sigma=80, matching Python.
-        // Directly applying sigma=80 on a large image (e.g. 1600×700) needs a
-        // ~481px kernel which is slow in browser. Instead: downsample to ≤300px,
-        // apply sigma proportionally (sigma_small = 80 * scale), upsample back.
-        // Effective sigma at original resolution = sigma_small / scale = 80. ✓
-        const BLUR_RES  = 300;
-        const blurScale = Math.min(1.0, BLUR_RES / Math.max(dw, dh));
-        const bw        = Math.max(1, Math.round(dw * blurScale));
-        const bh        = Math.max(1, Math.round(dh * blurScale));
+        // Downscale → blur → upscale for fast sigma-80 background estimation
+        const BLUR_RES   = 300;
+        const blurScale  = Math.min(1.0, BLUR_RES / Math.max(dw, dh));
+        const bw         = Math.max(1, Math.round(dw * blurScale));
+        const bh         = Math.max(1, Math.round(dh * blurScale));
         const sigmaSmall = Math.max(5, Math.round(80 * blurScale));
 
-        const smallGray = new cv.Mat();
-        cv.resize(grayMat, smallGray, new cv.Size(bw, bh), 0, 0, cv.INTER_AREA);
+        const smallGray    = new cv.Mat();
         const blurSmallMat = new cv.Mat();
+        cv.resize(grayMat, smallGray, new cv.Size(bw, bh), 0, 0, cv.INTER_AREA);
         cv.GaussianBlur(smallGray, blurSmallMat, new cv.Size(0, 0), sigmaSmall, sigmaSmall);
         equalizedMat = new cv.Mat();
         cv.resize(blurSmallMat, equalizedMat, new cv.Size(dw, dh), 0, 0, cv.INTER_LINEAR);
         smallGray.delete(); blurSmallMat.delete();
 
-        // Subtract background, add offset 220, clip to 0-255 — matches Python:
-        //   hp = np.clip(gray - blur_bg + 220, 0, 255).astype(np.uint8)
-        //   paper:          diff ≈  0   + 220 → 220  (light)
-        //   security print: diff ≈ -15  + 220 → 205  (near-white, suppressed)
-        //   ink / text:     diff ≈ -160 + 220 →  60  (dark)
+        // hp = clip(gray − bg + 220, 0, 255)
         const grayF  = new cv.Mat();
         const bgF    = new cv.Mat();
         const diffF  = new cv.Mat();
@@ -388,18 +671,16 @@ export function ImageCropEditor({ file, title, onClose, onSave, mode = 'desktop'
         grayMat.convertTo(grayF, cv.CV_32F);
         equalizedMat.convertTo(bgF, cv.CV_32F);
         cv.subtract(grayF, bgF, diffF);
-        diffF.convertTo(normU8, cv.CV_8U, 1.0, 220); // saturate_cast(diff + 220)
+        diffF.convertTo(normU8, cv.CV_8U, 1.0, 220);
+        grayF.delete(); bgF.delete(); diffF.delete();
 
-        // Unsharp mask — matches Python:
-        //   blur_sharp   = GaussianBlur(hp, (3,3), 0)
-        //   scanner_gray = addWeighted(hp, 1.4, blur_sharp, -0.4, 0)
+        // Unsharp mask
         cv.GaussianBlur(normU8, blurSm, new cv.Size(3, 3), 0, 0);
         finalMat = new cv.Mat();
         cv.addWeighted(normU8, 1.4, blurSm, -0.4, 0, finalMat);
+        normU8.delete(); blurSm.delete();
 
-        grayF.delete(); bgF.delete(); diffF.delete(); normU8.delete(); blurSm.delete();
-
-        // Encode as uncompressed 8-bit grayscale TIFF
+        // Encode grayscale TIFF
         const w = finalMat.cols, h = finalMat.rows;
         const step = finalMat.step[0] as number;
         const pixels = new Uint8Array(w * h);
@@ -407,27 +688,29 @@ export function ImageCropEditor({ file, title, onClose, onSave, mode = 'desktop'
           for (let col = 0; col < w; col++)
             pixels[row * w + col] = finalMat.data[row * step + col];
 
-        const tiffBuf  = encodeGrayscaleTIFF(pixels, w, h);
-        const tiffBlob = new Blob([tiffBuf], { type: 'image/tiff' });
-        const tiffFile = new File([tiffBlob], `${baseName}.tif`, { type: 'image/tiff' });
+        const tiffFile = new File(
+          [new Blob([encodeGrayscaleTIFF(pixels, w, h)], { type: 'image/tiff' })],
+          `${baseName}.tif`, { type: 'image/tiff' }
+        );
 
-        // JPEG preview — browsers cannot render TIFF inline
+        // JPEG preview for inline display
         const previewCanvas = document.createElement('canvas');
         cv.imshow(previewCanvas, finalMat);
         const previewUrl = previewCanvas.toDataURL('image/jpeg', 0.88);
 
-        // Original untouched capture — rename with _O suffix
+        // Original capture renamed with _O suffix
         const ext = file.name.substring(file.name.lastIndexOf('.'));
         const originalRenamed = new File([file], `${baseName}_O${ext}`, { type: file.type });
+
+        cleanup(); // free all mats before calling onSave
         onSave(tiffFile, previewUrl, saveOriginal ? originalRenamed : undefined, corners);
+      } catch (e) {
+        console.error('ImageCropEditor save failed', e);
+      } finally {
+        cleanup(); // no-op if already cleaned; guards against error paths
+        setSaving(false);
       }
-    } catch (e) {
-      console.error('ImageCropEditor save failed', e);
-    } finally {
-      [sp, dp, M, srcMat, warpMat, grayMat, equalizedMat].forEach(m => { try { m?.delete(); } catch (_) {} });
-      if (finalMat && finalMat !== grayMat) { try { finalMat.delete(); } catch (_) {} }
-      setSaving(false);
-    }
+    }, 0);
   };
 
   const isTouch = mode === 'mobile';
@@ -437,7 +720,8 @@ export function ImageCropEditor({ file, title, onClose, onSave, mode = 'desktop'
       position: 'fixed', inset: 0, zIndex: 80,
       background: '#000',
       display: 'flex', flexDirection: 'column',
-      overscrollBehaviorX: 'none', // Disable swipe navigation
+      overscrollBehaviorX: 'none',
+      userSelect: 'none', // Prevent text selection while dragging
     }}>
       {/* -- Header -- */}
       <div style={{
@@ -447,27 +731,33 @@ export function ImageCropEditor({ file, title, onClose, onSave, mode = 'desktop'
         borderBottom: '1px solid var(--border)',
       }}>
         <button onClick={onClose} style={hdrBtn}>
-          <span className="material-symbols-outlined" style={{ fontSize: 20 }}>close</span>
+          <span className="material-symbols-outlined" style={{ fontSize: 20, userSelect: 'none' }}>close</span>
         </button>
         <span style={{ color: 'var(--fg)', fontWeight: 600, fontSize: 15 }}>{title}</span>
         <div style={{ width: 36 }} />
       </div>
 
       {/* -- Editor Area -- */}
-      <div ref={containerRef} style={{ flex: 1, position: 'relative', overflow: 'hidden', background: '#111', touchAction: 'none' }}>
+      <div 
+        ref={containerRef} 
+        onDoubleClick={!isTouch ? handleCanvasClick : undefined}
+        onTouchStart={isTouch ? onTouchStart : undefined}
+        style={{ flex: 1, position: 'relative', overflow: 'hidden', background: '#111', touchAction: 'none' }}
+      >
         {imgUrl && (
           <img
             src={imgUrl}
-            alt="edit"
-            draggable={false}
+            onLoad={e => {
+              const img = e.currentTarget;
+              setImgNatural({ w: img.naturalWidth, h: img.naturalHeight });
+            }}
             style={{
               position: 'absolute',
-              left: containerRect.imgX, top: containerRect.imgY,
-              width: containerRect.imgW, height: containerRect.imgH,
+              left: containerRect.imgX,
+              top: containerRect.imgY,
+              width: containerRect.imgW,
+              height: containerRect.imgH,
               objectFit: 'contain',
-              filter: `brightness(${brightness}%) grayscale(${grayscale}%)`,
-              transform: rotation ? `rotate(${rotation}deg)` : undefined,
-              pointerEvents: 'none', userSelect: 'none',
             }}
           />
         )}
@@ -511,7 +801,34 @@ export function ImageCropEditor({ file, title, onClose, onSave, mode = 'desktop'
           />
         </svg>
 
-        {/* Handles */}
+        {/* Midpoint Handles (Side dragging) */}
+        {[0, 1, 2, 3].map(i => {
+          const p1 = corners[i], p2 = corners[(i + 1) % 4];
+          const midX = (p1.x + p2.x) / 2;
+          const midY = (p1.y + p2.y) / 2;
+          return (
+            <div
+              key={`side-${i}`}
+              onMouseDown={!isTouch ? (e) => onStartSide(i, e.clientX, e.clientY) : undefined}
+              onTouchStart={isTouch ? (e) => onStartSide(i, e.touches[0].clientX, e.touches[0].clientY) : undefined}
+              style={{
+                position: 'absolute',
+                left: containerRect.imgX + midX * containerRect.imgW - 15,
+                top: containerRect.imgY + midY * containerRect.imgH - 15,
+                width: 30, height: 30,
+                borderRadius: '50%',
+                background: draggingSide === i ? 'rgba(251, 191, 36, 0.4)' : 'rgba(0, 229, 255, 0.1)',
+                border: '1px dashed #00e5ff',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: i % 2 === 0 ? 'ns-resize' : 'ew-resize', zIndex: 9
+              }}
+            >
+              <div style={{ width: 4, height: 4, borderRadius: '50%', background: '#00e5ff' }} />
+            </div>
+          );
+        })}
+
+        {/* Corner Handles */}
         {corners.map((p, i) => (
           <div
             key={i}
@@ -519,18 +836,21 @@ export function ImageCropEditor({ file, title, onClose, onSave, mode = 'desktop'
             onTouchStart={isTouch ? () => onStart(i) : undefined}
             style={{
               position: 'absolute',
-              left: containerRect.imgX + p.x * containerRect.imgW - 20,
-              top: containerRect.imgY + p.y * containerRect.imgH - 20,
-              width: 40, height: 40,
+              left: containerRect.imgX + p.x * containerRect.imgW - 22,
+              top: containerRect.imgY + p.y * containerRect.imgH - 22,
+              width: 44, height: 44,
               borderRadius: '50%',
-              background: dragging === i ? '#fbbf24' : '#00e5ff',
-              border: '2px solid #fff',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+              background: dragging === i ? 'rgba(251, 191, 36, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+              border: `2px solid ${dragging === i ? '#fbbf24' : '#00e5ff'}`,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               cursor: 'move', zIndex: 10, touchAction: 'none'
             }}
           >
-            <span style={{ fontSize: 10, fontWeight: 800, color: '#000' }}>{['TL', 'TR', 'BR', 'BL'][i]}</span>
+            {/* Target Crosshair */}
+            <div style={{ position: 'absolute', width: '50%', height: 1, background: dragging === i ? '#fbbf24' : '#00e5ff', opacity: 0.5 }} />
+            <div style={{ position: 'absolute', height: '50%', width: 1, background: dragging === i ? '#fbbf24' : '#00e5ff', opacity: 0.5 }} />
+            {/* Center dot */}
+            <div style={{ width: 6, height: 6, borderRadius: '50%', background: dragging === i ? '#fbbf24' : '#00e5ff', border: '1px solid #fff' }} />
           </div>
         ))}
       </div>

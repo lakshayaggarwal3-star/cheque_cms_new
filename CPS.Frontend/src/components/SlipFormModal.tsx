@@ -221,6 +221,12 @@ export function SlipFormModal({ batchId, defaultPickupPoint, existingSlips = [],
     }
   };
 
+  const handleFocus = (e: React.FocusEvent<HTMLInputElement | HTMLSelectElement>) => {
+    setTimeout(() => {
+      e.target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }, 300);
+  };
+
   const onSubmit = async (data: SlipForm) => {
     setSubmitting(true);
     try {
@@ -309,6 +315,7 @@ export function SlipFormModal({ batchId, defaultPickupPoint, existingSlips = [],
                     firstInputRef.current = e;
                   }}
                   onKeyDown={(e) => handleRequiredNext(e, 'depositSlipNo', 'clientSearchInput')}
+                  onFocus={handleFocus}
                   className="input-field"
                 />
                 {errors.depositSlipNo && (
@@ -385,9 +392,10 @@ export function SlipFormModal({ batchId, defaultPickupPoint, existingSlips = [],
                         }
                       }
                     }}
-                    onFocus={() => {
+                    onFocus={(e) => {
                       setShowClientDropdown(true);
                       setSelectedIndex(0);
+                      handleFocus(e);
                     }}
                     onBlur={() => setTimeout(() => setShowClientDropdown(false), 200)}
                     id="clientSearchInput"
@@ -473,6 +481,7 @@ export function SlipFormModal({ batchId, defaultPickupPoint, existingSlips = [],
                   id="pickupPointSelect"
                   {...register('pickupPoint', { required: 'Selection required' })}
                   onKeyDown={(e) => handleRequiredNext(e, 'pickupPoint', 'totalInstrumentsInput')}
+                  onFocus={handleFocus}
                   className="input-field"
                   disabled={!watch('clientCode')}
                   style={{ cursor: watch('clientCode') ? 'pointer' : 'not-allowed', opacity: watch('clientCode') ? 1 : 0.6 }}
@@ -510,6 +519,7 @@ export function SlipFormModal({ batchId, defaultPickupPoint, existingSlips = [],
                   id="totalInstrumentsInput"
                   {...register('totalInstruments', { required: 'Required', min: { value: 1, message: 'Must be > 0' } })}
                   onKeyDown={(e) => handleRequiredNext(e, 'totalInstruments', 'slipAmountInput')}
+                  onFocus={handleFocus}
                   type="number" min="1"
                   className="input-field"
                 />
@@ -533,6 +543,7 @@ export function SlipFormModal({ batchId, defaultPickupPoint, existingSlips = [],
                     id="slipAmountInput"
                     {...register('slipAmount', { required: 'Required', min: { value: 0.001, message: 'Must be > 0' } })}
                     onKeyDown={(e) => handleRequiredNext(e, 'slipAmount', 'remarksInput')}
+                    onFocus={handleFocus}
                     type="number" step="0.001" min="0"
                     className="input-field"
                     style={{ paddingLeft: 26 }}
@@ -551,6 +562,7 @@ export function SlipFormModal({ batchId, defaultPickupPoint, existingSlips = [],
                 <input
                   id="remarksInput"
                   {...register('remarks')}
+                  onFocus={handleFocus}
                   placeholder="Optional"
                   className="input-field"
                 />

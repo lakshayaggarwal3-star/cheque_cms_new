@@ -112,7 +112,8 @@ export function MobileScanPage() {
   const WARNING_LIMIT = 4.5 * 60 * 1000; // 4.5 minutes in ms (show toast warning)
   const [hasWarned, setHasWarned] = useState(false);
 
-  const allSlipsDone = (session?.slipGroups?.length ?? 0) === (session?.totalSlipEntries ?? 0);
+  const totalExpectedSlips = batchDetails?.totalSlips || session?.totalSlipEntries || 0;
+  const allSlipsDone = (session?.slipGroups?.length ?? 0) >= totalExpectedSlips;
   const allChequesDone = session?.slipGroups?.length ? session.slipGroups.every(g => (g.cheques?.length ?? 0) === g.totalInstruments) : false;
   const canCompleteBatch = allSlipsDone && allChequesDone && (session?.slipGroups?.length ?? 0) > 0;
 
@@ -272,15 +273,15 @@ export function MobileScanPage() {
         imageOriginal: original ?? undefined,
         bbox: bbox ?? undefined
       });
+      // Navigate immediately — refresh session in background so the UI isn't blocked
       toast.success('Slip image saved');
-      if (id > 0) {
-        const fresh = await getScanSession(id);
-        setSession(fresh);
-      }
       setStep('slip-done');
+      setBusy(false);
+      if (id > 0) {
+        getScanSession(id).then(fresh => setSession(fresh)).catch(() => {});
+      }
     } catch (e: any) {
       toast.error(e?.response?.data?.message ?? 'Upload failed');
-    } finally {
       setBusy(false);
     }
   };
@@ -307,17 +308,17 @@ export function MobileScanPage() {
         scanMICR3: micr.micr3 || undefined,
       });
       toast.success(`Cheque #${seq} saved`);
+      // Reset state and navigate immediately — session refresh happens in background
       setFrontFile(null); setFrontPreview(null); setFrontFileOriginal(null); setFrontBBox(null);
       setBackFile(null); setBackPreview(null); setBackFileOriginal(null); setBackBBox(null);
       setMicr({ chqNo: '', micr1: '', micr2: '', micr3: '' });
-      if (id > 0) {
-        const fresh = await getScanSession(id);
-        setSession(fresh);
-      }
       setStep('cheque-front');
+      setBusy(false);
+      if (id > 0) {
+        getScanSession(id).then(fresh => setSession(fresh)).catch(() => {});
+      }
     } catch (e: any) {
       toast.error(e?.response?.data?.message ?? 'Upload failed');
-    } finally {
       setBusy(false);
     }
   };
@@ -526,8 +527,16 @@ export function MobileScanPage() {
                                    await completeChequePhase(id, activeSlipId);
                                    const fresh = await getScanSession(id);
                                    setSession(fresh);
+                                   
                                    setActiveSlipId(null);
                                    setStep('slip-entry');
+                                   
+                                   const currentSlips = fresh.slipGroups?.length || 0;
+                                   const expectedSlips = batchDetails?.totalSlips || fresh.totalSlipEntries || 0;
+                                   if (currentSlips < expectedSlips) {
+                                     setShowSlipForm(true);
+                                   }
+                                   
                                    toast.success('Cheque capture completed');
                                  } catch (e: any) {
                                    toast.error(e?.response?.data?.message ?? 'Failed to complete cheque phase');
@@ -543,15 +552,12 @@ export function MobileScanPage() {
                    </>
                 )}
                 {!activeSlipId && (
-                  <>
-                    <div style={{ borderTop: '1px solid var(--border)', margin: '4px 0' }} />
-                    <DangerBtn 
-                      icon="task_alt" 
-                      label={busy ? 'Completing...' : 'Complete Batch'} 
-                      onClick={handleComplete} 
-                      disabled={busy || !canCompleteBatch} 
-                    />
-                  </>
+                  <DangerBtn 
+                    icon="task_alt" 
+                    label={busy ? 'Completing...' : 'Complete Batch'} 
+                    onClick={handleComplete} 
+                    disabled={busy || !canCompleteBatch} 
+                  />
                 )}
               </>
             </div>
@@ -735,11 +741,9 @@ export function MobileScanPage() {
               if (originalFile) setFrontFileOriginal(originalFile);
               if (bbox) setFrontBBox(bbox);
               setEditState(null);
-              // Auto-open camera for back after front is edited & saved
-              setTimeout(() => {
-                setStep('cheque-back');
-                openCamera('cheque');
-              }, 300);
+              // Immediately open camera for back side
+              setStep('cheque-back');
+              openCamera('cheque');
             } else {
               setBackFile(file);
               setBackPreview(previewUrl);

@@ -207,7 +207,7 @@ function Sidebar({ expanded, open, currentPath, onNav, onLogout, user, isMobile 
         borderRight: '1px solid var(--border)',
         display: 'flex', flexDirection: 'column',
         transition: 'width var(--dur) var(--ease), min-width var(--dur) var(--ease)',
-        position: 'relative', zIndex: 10,
+        position: 'relative', zIndex: 100, // Higher z-index to avoid being covered by page content
         height: isMobile ? '100dvh' : '100vh', 
         maxHeight: isMobile ? '100dvh' : '100vh',
         flexShrink: 0,
@@ -365,7 +365,10 @@ export function Layout() {
   };
 
   const handleNav = (path: string) => {
-    // <Link> handles the actual navigation; we only manage sidebar state here
+    // Explicitly navigate if the Link fails for some reason (rare but possible in heavy trees)
+    if (path && path !== location.pathname) {
+      navigate(path);
+    }
     const isAutoClosePage = AUTO_CLOSE_PATHS.some(p => path.startsWith(p));
     if (isMobile || isAutoClosePage) {
       setSidebarOpen(false);
@@ -410,7 +413,7 @@ export function Layout() {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
         {/* Always hide TopBar for no-header pages (scan detail, rr detail) even on mobile
             to give maximum screen space for capture/edit. */}
-        {!isNoHeaderPage && (
+        {(!isNoHeaderPage || isMobile) && (
           <TopBar
             onToggle={() => setSidebarOpen(o => !o)}
             title={pageInfo.title}
@@ -420,22 +423,19 @@ export function Layout() {
         )}
 
         <main 
+          key={location.key}
           style={{
             flex: 1,
             overflowX: 'hidden',
-            overflowY: isNoHeaderPage ? 'hidden' : 'auto',
+            overflowY: (isNoHeaderPage && !isMobile) ? 'hidden' : 'auto',
             display: 'flex',
             flexDirection: 'column',
             position: 'relative',
             WebkitOverflowScrolling: 'touch',
-            touchAction: isNoHeaderPage ? 'none' : 'pan-y',
+            touchAction: (isNoHeaderPage && !isMobile) ? 'none' : 'pan-y',
           }}
         >
-          {/* key={pathname} forces a clean Outlet remount whenever the route path
-              changes, ensuring ScanPage fully unmounts when navigating away.
-              Unlike key={location.key}, this does NOT remount on same-path pushes. */}
           <div
-            key={location.pathname}
             className={!isNoHeaderPage ? "page-content" : ""}
             style={{
               padding: !isNoHeaderPage ? '20px 24px 32px' : 0,

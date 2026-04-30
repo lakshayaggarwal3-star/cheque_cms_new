@@ -22,6 +22,12 @@ export function MobileScannerModal({ hasBothRoles, submitting, onClose, onSubmit
   const [modalAmount, setModalAmount] = useState('');
   const [modalErrors, setModalErrors] = useState<Record<string, string>>({});
 
+  const handleFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+    setTimeout(() => {
+      e.target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }, 300);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -82,6 +88,7 @@ export function MobileScannerModal({ hasBothRoles, submitting, onClose, onSubmit
                 setModalSumm(val);
                 setModalErrors(prev => ({ ...prev, summ: '' }));
               }}
+              onFocus={handleFocus}
               placeholder="Enter reference no"
               style={{
                 width: '100%', boxSizing: 'border-box', padding: '10px 12px',
@@ -104,6 +111,7 @@ export function MobileScannerModal({ hasBothRoles, submitting, onClose, onSubmit
                 disabled={!modalSumm.trim()}
                 value={modalSlips}
                 placeholder="Enter total slips"
+                onFocus={handleFocus}
                 onChange={e => { setModalSlips(e.target.value); setModalErrors(prev => ({ ...prev, slips: '' })); }}
                 style={{
                   width: '100%', boxSizing: 'border-box', padding: '9px 12px',
@@ -126,6 +134,7 @@ export function MobileScannerModal({ hasBothRoles, submitting, onClose, onSubmit
                 disabled={!modalSlips || parseInt(modalSlips) <= 0}
                 value={modalAmount}
                 onChange={e => { setModalAmount(e.target.value); setModalErrors(prev => ({ ...prev, amount: '' })); }}
+                onFocus={handleFocus}
                 placeholder="Enter total amount"
                 style={{
                   width: '100%', boxSizing: 'border-box', padding: '9px 12px',
