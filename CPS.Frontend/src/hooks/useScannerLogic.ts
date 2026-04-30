@@ -43,6 +43,8 @@ interface UseScannerLogicProps {
   frontFileOriginal: File | null;
   backFile: File | null;
   backFileOriginal: File | null;
+  frontBBox: string | null;
+  backBBox: string | null;
   openImageEditor: (file: File, target: EditableImageTarget) => void;
   rangerMicrEnabled?: boolean;
   rangerEndorsementEnabled?: boolean;
@@ -65,6 +67,8 @@ export function useScannerLogic({
   frontFileOriginal,
   backFile,
   backFileOriginal,
+  frontBBox,
+  backBBox,
   openImageEditor,
   rangerMicrEnabled = true,
   rangerEndorsementEnabled = false,
@@ -211,7 +215,7 @@ export function useScannerLogic({
     };
 
     runAutoRanger();
-  }, [scannerChoice, rangerState, rangerWsUrl, batchNo, nextChqSeq, rangerEndorsementEnabled, rangerEndorsementUseImageName, rangerEndorsementCustomText]);
+  }, [scannerChoice, rangerState, rangerWsUrl, batchNo, nextChqSeq, rangerEndorsementEnabled, rangerEndorsementUseImageName, rangerEndorsementCustomText, rangerEndorsementBatchName]);
 
   // ─── Helpers ──────────────────────────────────────────────────────────────
 
@@ -317,6 +321,7 @@ export function useScannerLogic({
           scanOrder: nextSlipItemOrder, 
           image: frontFile, 
           imageOriginal: frontFileOriginal ?? undefined,
+          bbox: frontBBox ?? undefined,
           scannerType: 'Scanner' 
         });
         onClearCameraFiles();
@@ -344,7 +349,7 @@ export function useScannerLogic({
       const ext = scanResult.format === 'PNG' ? 'png' : 'jpg';
       const file = base64ToFile(`data:${mimeType};base64,${scanResult.image_base64}`, `slip-scan.${ext}`);
       if (!file) throw new Error('Invalid image data from scanner');
-      const result = await uploadMobileSlipItem(batchId, { slipEntryId: activeSlipEntryId, scanOrder: nextSlipItemOrder, image: file, imageOriginal: file });
+      const result = await uploadMobileSlipItem(batchId, { slipEntryId: activeSlipEntryId, scanOrder: nextSlipItemOrder, image: file, imageOriginal: file, bbox: frontBBox ?? undefined });
       setCurrentSlipItem(result);
       await onCaptureSuccess();
       toast.success('Slip image captured');
@@ -357,7 +362,7 @@ export function useScannerLogic({
     } finally {
       setIsBusy(false);
     }
-  }, [activeSlipEntryId, isDeveloper, mockScanEnabled, frontFile, batchId, nextSlipItemOrder, onClearCameraFiles, onCaptureSuccess, flatbedStatus, selectedScannerId, flatbedResolution, flatbedMode, flatbedFormat]);
+  }, [activeSlipEntryId, isDeveloper, mockScanEnabled, frontFile, frontFileOriginal, frontBBox, batchId, nextSlipItemOrder, onClearCameraFiles, onCaptureSuccess, flatbedStatus, selectedScannerId, flatbedResolution, flatbedMode, flatbedFormat]);
 
   const handleCaptureCheque = useCallback(async () => {
     if (!activeSlipEntryId) return;
@@ -372,6 +377,8 @@ export function useScannerLogic({
           imageBack: backFile ?? undefined, 
           imageFrontOriginal: frontFileOriginal ?? undefined,
           imageBackOriginal: backFileOriginal ?? undefined,
+          bboxFront: frontBBox ?? undefined,
+          bboxBack: backBBox ?? undefined,
           scannerType: 'Scanner' 
         });
         onClearCameraFiles();
@@ -393,7 +400,7 @@ export function useScannerLogic({
     } finally {
       setIsBusy(false);
     }
-  }, [activeSlipEntryId, isDeveloper, mockScanEnabled, frontFile, backFile, batchId, nextChqSeq, onClearCameraFiles, onCaptureSuccess]);
+  }, [activeSlipEntryId, isDeveloper, mockScanEnabled, frontFile, backFile, frontFileOriginal, backFileOriginal, frontBBox, backBBox, batchId, nextChqSeq, onClearCameraFiles, onCaptureSuccess]);
 
   const handleCompleteScan = useCallback(async (onComplete: () => void) => {
     setIsBusy(true);

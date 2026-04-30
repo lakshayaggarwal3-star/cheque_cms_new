@@ -8,6 +8,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { getUserSettings } from '../services/userSettingService';
 
 type Theme = 'light' | 'dark';
 type EntryMode = 'scanner' | 'mobile';
@@ -64,3 +65,14 @@ export const useSettingsStore = create<SettingsStore>()(
     }
   )
 );
+
+export async function syncUserSettings() {
+  try {
+    const settings = await getUserSettings();
+    const store = useSettingsStore.getState();
+    if (settings['ScanMode']) store.setEntryMode(settings['ScanMode'] as any);
+    if (settings['WithSlip']) store.setWithSlipDefault(settings['WithSlip'] === 'true' ? 'with' : 'without');
+  } catch (e) {
+    // Ignore if fails
+  }
+}

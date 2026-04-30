@@ -10,6 +10,7 @@ import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { getMe } from './services/authService';
 import { useAuthStore } from './store/authStore';
+import { syncUserSettings } from './store/settingsStore';
 import { useTheme } from './hooks/useTheme';
 import { ToastProvider } from './components/ToastProvider';
 import { ProtectedRoute } from './components/ProtectedRoute';
@@ -35,7 +36,10 @@ function AppRoutes() {
 
   useEffect(() => {
     getMe()
-      .then(setUser)
+      .then((user) => {
+        setUser(user);
+        syncUserSettings(); // Sync scanner vs mobile settings from DB
+      })
       .catch(() => clearUser())
       .finally(() => setBooting(false));
   }, [setUser, clearUser]);

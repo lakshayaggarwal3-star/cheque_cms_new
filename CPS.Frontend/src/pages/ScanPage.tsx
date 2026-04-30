@@ -15,7 +15,7 @@
 // Refactored  : 2026-04-22  (split into sub-module)
 // =============================================================================
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { toast } from '../store/toastStore';
@@ -82,9 +82,9 @@ export function ScanPage() {
     id, session, batchDetails, loading,
     scanStep, setScanStep,
     activeSlipEntryId,
-    nextSlipItemOrder, nextChqSeq, setNextChqSeq,
-    setNextSlipItemOrder,
-    frontFile, backFile, frontPreview, backPreview,
+    nextSlipItemOrder, setNextSlipItemOrder, 
+    nextChqSeq, setNextChqSeq,
+    frontPreview, backPreview,
     flipped, setFlipped, zoom, setZoom,
     isFullscreen, setIsFullscreen,
     panning, hasMoved, viewerRef, viewerFsRef,
@@ -100,8 +100,8 @@ export function ScanPage() {
     confirmComplete, setConfirmComplete,
     pickupPointCode,
     editorState, setEditorState,
-    clearCameraFiles, openImageEditor, applyEditedImage,
-    toImageSrc,
+    openImageEditor,
+    frontBBox, backBBox,
   } = state;
 
   // ── Scanner logic ───────────────────────────────────────────────────────────
@@ -130,6 +130,8 @@ export function ScanPage() {
     frontFileOriginal: state.frontFileOriginal,
     backFile: state.backFile,
     backFileOriginal: state.backFileOriginal,
+    frontBBox,
+    backBBox,
     openImageEditor: state.openImageEditor,
   });
 
@@ -169,6 +171,17 @@ export function ScanPage() {
     };
   }, []);
 
+  const handleAutoRelease = useCallback(async () => {
+    if (!id) return;
+    try {
+      const { releaseScanLock } = await import('../services/scanService');
+      await releaseScanLock(id);
+      toast.warning('Session released due to inactivity');
+    } finally {
+      navigate('/all-batches');
+    }
+  }, [id, navigate]);
+
   useEffect(() => {
     if (loading || !id) return;
     const timer = setInterval(() => {
@@ -181,18 +194,7 @@ export function ScanPage() {
       }
     }, 5000);
     return () => clearInterval(timer);
-  }, [id, loading, lastActivity, hasWarned]);
-
-  const handleAutoRelease = async () => {
-    if (!id) return;
-    try {
-      const { releaseScanLock } = await import('../services/scanService');
-      await releaseScanLock(id);
-      toast.warning('Session released due to inactivity');
-    } finally {
-      navigate('/all-batches');
-    }
-  };
+  }, [id, loading, lastActivity, hasWarned, handleAutoRelease]);
 
   // -- Release lock on unmount --
   useEffect(() => {

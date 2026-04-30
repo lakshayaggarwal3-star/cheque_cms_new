@@ -39,7 +39,7 @@ public class AuthController : ControllerBase
         {
             HttpOnly = true,
             Secure = Request.IsHttps,
-            SameSite = SameSiteMode.Strict,
+            SameSite = SameSiteMode.Lax,   // Lax works on mobile; Strict can block cookies on redirects
             Expires = DateTimeOffset.UtcNow.AddHours(8)
         });
 

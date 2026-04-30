@@ -176,10 +176,10 @@ public class ScanService : IScanService
 
         var imagePath = await SaveMobileImageAsync(batch.BatchNo, request.Image, fileName, rootFolder, subFolder);
         
-        // Save Original if provided
+        // 3. Save Original image if provided
         if (request.ImageOriginal != null)
         {
-            await SaveMobileImageAsync(batch.BatchNo, request.ImageOriginal, fileName + "_O", rootFolder, subFolder);
+            await SaveMobileImageAsync(batch.BatchNo, request.ImageOriginal, fileName + "_O", rootFolder, subFolder, request.BBox);
         }
 
         return await SaveSlipItemAsync(new SaveSlipItemRequest
@@ -346,11 +346,11 @@ public class ScanService : IScanService
         // 3. Save Original images if provided
         if (request.ImageFrontOriginal != null)
         {
-            await SaveMobileImageAsync(batch.BatchNo, request.ImageFrontOriginal, baseFileName + "CF_O", rootFolder, subFolder);
+            await SaveMobileImageAsync(batch.BatchNo, request.ImageFrontOriginal, baseFileName + "CF_O", rootFolder, subFolder, request.BBoxFront);
         }
         if (request.ImageBackOriginal != null && request.ImageBack != null)
         {
-            await SaveMobileImageAsync(batch.BatchNo, request.ImageBackOriginal, baseFileName + "CR_O", rootFolder, subFolder);
+            await SaveMobileImageAsync(batch.BatchNo, request.ImageBackOriginal, baseFileName + "CR_O", rootFolder, subFolder, request.BBoxBack);
         }
 
         return await SaveChequeItemAsync(new SaveChequeItemRequest
@@ -692,7 +692,7 @@ public class ScanService : IScanService
         return (batch, isDev);
     }
 
-    private async Task<string?> SaveMobileImageAsync(string batchNo, IFormFile? file, string exactFileName, string folderName = "Scanner", string subFolder = "")
+    private async Task<string?> SaveMobileImageAsync(string batchNo, IFormFile? file, string exactFileName, string folderName = "Scanner", string subFolder = "", string? bbox = null)
     {
         if (file == null || file.Length <= 0) return null;
 
@@ -704,8 +704,30 @@ public class ScanService : IScanService
         var absolutePath = GetAbsolutePath(relativePath);
 
         Directory.CreateDirectory(Path.GetDirectoryName(absolutePath)!);
-        await using var stream = File.Create(absolutePath);
-        await file.CopyToAsync(stream);
+
+        if (!string.IsNullOrEmpty(bbox))
+        {
+            try
+            {
+                // Inject BBox into EXIF metadata
+                using var image = await Image.LoadAsync(file.OpenReadStream());
+                image.Metadata.ExifProfile ??= new SixLabors.ImageSharp.Metadata.Profiles.Exif.ExifProfile();
+                image.Metadata.ExifProfile.SetValue(SixLabors.ImageSharp.Metadata.Profiles.Exif.ExifTag.UserComment, bbox);
+                await image.SaveAsync(absolutePath);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to write BBox metadata to original image. Saving raw instead.");
+                await using var stream = File.Create(absolutePath);
+                await file.CopyToAsync(stream);
+            }
+        }
+        else
+        {
+            await using var stream = File.Create(absolutePath);
+            await file.CopyToAsync(stream);
+        }
+        
         return relativePath;
     }
 

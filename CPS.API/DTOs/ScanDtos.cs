@@ -72,6 +72,7 @@ public class MobileUploadSlipItemRequest
     public int ScanOrder { get; set; } = 1;
     public IFormFile? Image { get; set; }
     public IFormFile? ImageOriginal { get; set; }
+    public string? BBox { get; set; }
     public string ScannerType { get; set; } = "Mobile-Camera";
 }
 
@@ -101,6 +102,8 @@ public class MobileUploadChequeRequest
     public string? ScanMICR1 { get; set; }
     public string? ScanMICR2 { get; set; }
     public string? ScanMICR3 { get; set; }
+    public string? BBoxFront { get; set; }
+    public string? BBoxBack { get; set; }
     public string ScannerType { get; set; } = "Mobile-Camera";
 }
 

@@ -349,7 +349,6 @@ function ChequeRow({ cheque, group, onImageSelect, onRescan, onDelete }: {
   const frontUrl = getChequeImageUrl(cheque, 'front');
   const backUrl = getChequeImageUrl(cheque, 'back');
 
-  const micr = [cheque.scanMICR1, cheque.scanMICR2, cheque.scanMICR3].filter(Boolean).join(' / ');
 
   return (
     <tr style={{ borderBottom: '1px solid var(--border-subtle)' }} className="scan-table-row">
@@ -521,33 +520,6 @@ function ScanStatusBadge({ status }: { status: string }) {
   );
 }
 
-function RRStateBadge({ state, scanStatus }: { state: number; scanStatus: string }) {
-  if (scanStatus !== 'Captured') return <ScanStatusBadge status={scanStatus} />;
-  if (state === 0) return (
-    <span style={{
-      display: 'inline-flex', padding: '2px 6px', borderRadius: 'var(--r-full)',
-      fontSize: 10, fontWeight: 600,
-      background: 'var(--warning-bg, #fffbeb)', color: 'var(--warning, #d97706)',
-      border: '1px solid var(--warning, #d97706)',
-    }}>⚠ RR</span>
-  );
-  if (state === 1) return (
-    <span style={{
-      display: 'inline-flex', padding: '2px 6px', borderRadius: 'var(--r-full)',
-      fontSize: 10, fontWeight: 600,
-      background: 'var(--success-bg, #f0fdf4)', color: 'var(--success, #16a34a)',
-      border: '1px solid var(--success, #16a34a)',
-    }}>✓ OK</span>
-  );
-  return (
-    <span style={{
-      display: 'inline-flex', padding: '2px 6px', borderRadius: 'var(--r-full)',
-      fontSize: 10, fontWeight: 600,
-      background: 'var(--info-bg, #eff6ff)', color: 'var(--info, #2563eb)',
-      border: '1px solid var(--info, #3b82f6)',
-    }}>✓ Fixed</span>
-  );
-}
 
 // ── DeleteConfirmBanner ───────────────────────────────────────────────────────
 

@@ -11,6 +11,7 @@ import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { login } from '../services/authService';
 import { useAuthStore } from '../store/authStore';
+import { syncUserSettings } from '../store/settingsStore';
 
 interface LoginForm {
   loginId: string;
@@ -24,6 +25,14 @@ export function LoginPage() {
   const [showForceLoginModal, setShowForceLoginModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [keepSignedIn, setKeepSignedIn] = useState(true);
+  const [pendingCreds, setPendingCreds] = useState<LoginForm | null>(null);
+  const [debugLogs, setDebugLogs] = useState<string[]>([]);
+  const [showDebug, setShowDebug] = useState(false);
+
+  const log = (msg: string) => {
+    const ts = new Date().toLocaleTimeString();
+    setDebugLogs(prev => [`[${ts}] ${msg}`, ...prev].slice(0, 30));
+  };
 
   const { register, handleSubmit, getValues, formState: { errors } } = useForm<LoginForm>({
     defaultValues: { loginId: 'DEV001', password: 'Dev@1234' },
@@ -37,22 +46,31 @@ export function LoginPage() {
   }, []);
 
   const onSubmit = async (data: LoginForm) => {
+    if (showForceLoginModal) return;
+    setPendingCreds(data);
+    log(`onSubmit: loginId=${data.loginId} pwdLen=${data.password.length} force=false`);
+    
     setError('');
     setIsSubmitting(true);
     try {
       const user = await login(data.loginId, data.password, false);
+      log('Login success, navigating...');
       setUser(user);
+      syncUserSettings();
       
       const params = new URLSearchParams(window.location.search);
       const returnUrl = params.get('returnUrl');
       if (returnUrl) {
-        window.location.href = returnUrl; // Use window.location.href for external/API paths
+        window.location.href = returnUrl;
       } else {
         navigate('/');
       }
     } catch (err: any) {
       const msg = err?.response?.data?.message ?? err?.message ?? 'Login failed';
+      const status = err?.response?.status ?? 'no-status';
+      log(`Login error: status=${status} msg=${msg}`);
       if (msg.toLowerCase().includes('already logged in') || msg.toLowerCase().includes('session')) {
+        log('Showing Force Login modal');
         setShowForceLoginModal(true);
         setError('');
       } else {
@@ -65,21 +83,25 @@ export function LoginPage() {
   };
 
   const handleForceLogin = async () => {
-    const { loginId, password } = getValues();
+    const creds = pendingCreds || getValues();
+    const { loginId, password } = creds;
+    log(`handleForceLogin: loginId=${loginId} pwdLen=${password.length} hasPendingCreds=${!!pendingCreds}`);
     setIsSubmitting(true);
     try {
+      log('Sending force login request...');
       const user = await login(loginId, password, true);
+      log(`Force login success: userId=${user.userId}`);
       setUser(user);
+      syncUserSettings();
 
       const params = new URLSearchParams(window.location.search);
       const returnUrl = params.get('returnUrl');
-      if (returnUrl) {
-        window.location.href = returnUrl;
-      } else {
-        navigate('/');
-      }
+      log(`Navigating to: ${returnUrl || '/'}`);
+      window.location.href = returnUrl || '/';
     } catch (err: any) {
       const msg = err?.response?.data?.message ?? err?.message ?? 'Login failed';
+      const status = err?.response?.status ?? 'no-status';
+      log(`Force login error: status=${status} msg=${msg}`);
       setError(msg);
       setShowForceLoginModal(false);
     } finally {
@@ -90,12 +112,35 @@ export function LoginPage() {
   return (
     <div style={{
       minHeight: '100dvh',
-      height: '100dvh',
       background: 'var(--bg)', color: 'var(--fg)',
       fontFamily: 'var(--font-sans)',
-      position: 'relative', overflow: 'hidden',
+      position: 'relative', overflow: 'auto',
       display: 'flex', flexDirection: 'column',
     }}>
+      {/* ── Debug Log Panel (remove after debugging) ── */}
+      <div style={{ position: 'fixed', top: 16, right: 16, zIndex: 9999 }}>
+        <button
+          onClick={() => setShowDebug(p => !p)}
+          style={{
+            background: '#1e293b', color: '#94a3b8', border: '1px solid #334155',
+            borderRadius: 8, padding: '6px 12px', fontSize: 11, cursor: 'pointer',
+          }}
+        >🐛 Debug ({debugLogs.length})</button>
+        {showDebug && (
+          <div style={{
+            position: 'absolute', top: 36, right: 0, width: 320,
+            background: '#0f172a', border: '1px solid #334155', borderRadius: 10,
+            padding: 10, maxHeight: 300, overflowY: 'auto',
+          }}>
+            {debugLogs.length === 0
+              ? <p style={{ color: '#64748b', fontSize: 11, margin: 0 }}>No logs yet. Tap Sign In to start.</p>
+              : debugLogs.map((l, i) => (
+                  <p key={i} style={{ margin: '2px 0', fontSize: 10, color: '#94a3b8', fontFamily: 'monospace', wordBreak: 'break-all' }}>{l}</p>
+                ))
+            }
+          </div>
+        )}
+      </div>
       {/* Radial gradient overlays */}
       <div style={{
         position: 'absolute', top: '-25%', right: '-15%',
@@ -257,7 +302,7 @@ export function LoginPage() {
                 </span>
               </div>
 
-              {/* API error (only if not the session terminated notice above) */}
+              {/* API error */}
               {error && !error.includes('logged out') && (
                 <div style={{ borderRadius: 8, padding: '10px 12px', display: 'flex', gap: 10, alignItems: 'flex-start', background: 'var(--danger-bg)', border: '1px solid var(--danger)' }}>
                   <span className="material-symbols-outlined" style={{ fontSize: 18, marginTop: 1, color: 'var(--danger)', flexShrink: 0 }}>warning</span>
@@ -265,28 +310,71 @@ export function LoginPage() {
                 </div>
               )}
 
-              {/* Sign in button */}
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                style={{
-                  marginTop: 4, width: '100%',
-                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                  padding: '12px 20px', height: 44,
-                  background: 'var(--accent-500)', color: 'var(--fg-on-accent)',
-                  fontWeight: 500, fontSize: 15, borderRadius: 10,
-                  border: '1px solid var(--accent-600)',
-                  cursor: isSubmitting ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
-                  transition: 'background-color 120ms ease', opacity: isSubmitting ? 0.8 : 1,
-                }}
-                onMouseEnter={e => { if (!isSubmitting) (e.currentTarget as HTMLButtonElement).style.background = 'var(--accent-600)'; }}
-                onMouseLeave={e => { if (!isSubmitting) (e.currentTarget as HTMLButtonElement).style.background = 'var(--accent-500)'; }}
-              >
-                {isSubmitting ? 'Signing in…' : 'Sign in'}
-                {!isSubmitting && <span className="material-symbols-outlined" style={{ fontSize: 20, lineHeight: 1, fontWeight: 500 }}>arrow_forward</span>}
-              </button>
+              {/* Sign in button — always type=submit, always inside form */}
+              {!showForceLoginModal && (
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  style={{
+                    marginTop: 4, width: '100%',
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                    padding: '12px 20px', height: 48,
+                    background: 'var(--accent-500)', color: '#fff',
+                    fontWeight: 600, fontSize: 15, borderRadius: 10,
+                    border: '1px solid var(--accent-600)',
+                    cursor: isSubmitting ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
+                    opacity: isSubmitting ? 0.8 : 1,
+                  }}
+                >
+                  {isSubmitting ? 'Signing in…' : 'Sign in'}
+                  {!isSubmitting && <span className="material-symbols-outlined" style={{ fontSize: 20, lineHeight: 1 }}>arrow_forward</span>}
+                </button>
+              )}
             </form>
 
+            {/* ── Force Login section — OUTSIDE <form> so mobile browsers can't intercept the tap ── */}
+            {showForceLoginModal && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
+                {/* Info notice */}
+                <div style={{
+                  borderRadius: 10, padding: '10px 14px',
+                  background: 'rgba(217, 119, 87, 0.08)',
+                  border: '1px solid rgba(217, 119, 87, 0.4)',
+                  display: 'flex', gap: 10, alignItems: 'flex-start',
+                }}>
+                  <div style={{ flex: 1 }}>
+                    <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--fg)' }}>Account active on another device</p>
+                    <p style={{ margin: '3px 0 0', fontSize: 12, color: 'var(--fg-muted)', lineHeight: 1.4 }}>
+                      Tap the button below to terminate that session and sign in here.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { log('Reset notice tapped'); setShowForceLoginModal(false); }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-subtle)', fontSize: 20, lineHeight: 1, padding: 0, flexShrink: 0 }}
+                  >×</button>
+                </div>
+
+                {/* Force Sign In button — OUTSIDE form, pure onClick/onTouchEnd */}
+                <button
+                  type="button"
+                  disabled={isSubmitting}
+                  onClick={() => { log('Force Sign In clicked (outside form)'); handleForceLogin(); }}
+                  onTouchEnd={(e) => { e.preventDefault(); log('Force Sign In touchEnd (outside form)'); if (!isSubmitting) handleForceLogin(); }}
+                  style={{
+                    width: '100%', height: 48,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                    background: 'var(--accent-500)', color: '#fff',
+                    fontWeight: 600, fontSize: 15, borderRadius: 10,
+                    border: '1px solid var(--accent-600)',
+                    cursor: isSubmitting ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
+                    opacity: isSubmitting ? 0.8 : 1,
+                  }}
+                >
+                  {isSubmitting ? 'Signing in…' : 'Force Sign In'}
+                </button>
+              </div>
+            )}
 
           </div>
 
@@ -342,77 +430,6 @@ export function LoginPage() {
                 fontSize: 14, fontWeight: 600, cursor: 'pointer',
               }}
             >Got it</button>
-          </div>
-        </div>
-      )}
-
-      {/* Force Login Modal */}
-      {showForceLoginModal && (
-        <div
-          className="modal-overlay-container"
-          style={{
-            position: 'fixed', inset: 0, background: 'rgb(31 30 29 / 40%)',
-            backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center',
-            justifyContent: 'center', padding: 16, zIndex: 50,
-            overflowY: 'auto',
-          }}
-          onClick={() => setShowForceLoginModal(false)}
-        >
-          <div
-            style={{
-              maxWidth: 420, width: '100%', borderRadius: 14, padding: 24,
-              background: 'var(--bg-raised)', border: '1px solid var(--border)',
-              boxShadow: 'var(--shadow-md)',
-            }}
-            onClick={e => e.stopPropagation()}
-          >
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, marginBottom: 16 }}>
-              <div style={{
-                width: 40, height: 40, borderRadius: 10, flexShrink: 0,
-                background: 'var(--warning-bg)', color: 'var(--warning)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 22, lineHeight: 1 }}>warning</span>
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <h3 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: 'var(--fg)' }}>Session already active</h3>
-                <p style={{ margin: '6px 0 0', fontSize: 13, lineHeight: 1.55, color: 'var(--fg-muted)' }}>
-                  Your account is signed in on another device. Forcing login here will terminate that session; any unsaved work will be lost.
-                </p>
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => setShowForceLoginModal(false)}
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 8,
-                  padding: '9px 16px', height: 38, background: 'var(--bg-raised)',
-                  color: 'var(--fg)', border: '1px solid var(--border-strong)',
-                  borderRadius: 10, fontSize: 13, fontWeight: 500, fontFamily: 'inherit', cursor: 'pointer',
-                  transition: 'background-color 120ms ease',
-                }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'var(--bg-raised)')}
-              >Cancel</button>
-              <button
-                onClick={handleForceLogin}
-                disabled={isSubmitting}
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 8,
-                  padding: '9px 16px', height: 38,
-                  background: 'var(--accent-500)', color: 'var(--fg-on-accent)',
-                  borderRadius: 10, border: '1px solid var(--accent-600)',
-                  fontSize: 13, fontWeight: 500, fontFamily: 'inherit',
-                  cursor: isSubmitting ? 'not-allowed' : 'pointer',
-                  transition: 'background-color 120ms ease', opacity: isSubmitting ? 0.8 : 1,
-                }}
-                onMouseEnter={e => { if (!isSubmitting) (e.currentTarget as HTMLButtonElement).style.background = 'var(--accent-600)'; }}
-                onMouseLeave={e => { if (!isSubmitting) (e.currentTarget as HTMLButtonElement).style.background = 'var(--accent-500)'; }}
-              >
-                <span className="material-symbols-outlined" style={{ fontSize: 16, lineHeight: 1 }}>login</span>
-                {isSubmitting ? 'Signing in…' : 'Force sign in'}
-              </button>
-            </div>
           </div>
         </div>
       )}
