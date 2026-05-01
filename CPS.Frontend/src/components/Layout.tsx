@@ -220,7 +220,7 @@ function Sidebar({ expanded, open, currentPath, onNav, onLogout, user, isMobile 
           display: 'flex', alignItems: 'center', gap: 10,
           padding: expanded ? '16px 18px' : '16px 0',
           justifyContent: expanded ? 'flex-start' : 'center',
-          height: 56, boxSizing: 'border-box', flexShrink: 0,
+          height: 64, boxSizing: 'border-box', flexShrink: 0,
         }}>
           <LogoIcon size={24} />
           {expanded && (
@@ -304,14 +304,14 @@ function TopBar({ onToggle, title, subtitle, isDeveloper }: {
   return (
     <header style={{
       display: 'flex', alignItems: 'center', gap: 8,
-      padding: '10px 20px', height: 56, boxSizing: 'border-box',
+      padding: '10px 20px', height: 64, boxSizing: 'border-box',
       background: 'var(--bg-raised)',
       borderBottom: '1px solid var(--border)',
       position: 'sticky', top: 0, zIndex: 5, flexShrink: 0,
     }}>
       <IconButton icon="menu" tooltip="Toggle sidebar" onClick={onToggle} />
       <div className="topbar-title-wrap">
-        <h1 style={{ margin: 0, fontSize: 'var(--text-md)', fontWeight: 600, color: 'var(--fg)', letterSpacing: '-0.01em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <h1 style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 600, color: 'var(--fg)', letterSpacing: '-0.01em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {title}
         </h1>
         {subtitle && <span className="topbar-subtitle">{subtitle}</span>}

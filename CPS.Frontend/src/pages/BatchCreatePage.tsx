@@ -205,37 +205,41 @@ export function BatchCreatePage() {
         </div>
 
         {/* Footer */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
-        <button
-          type="button"
-          onClick={() => navigate('/')}
-          disabled={form.submitting}
-          style={{
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-            padding: '8px 16px', height: 36,
-            background: 'var(--bg-raised)', color: 'var(--fg)',
-            border: '1px solid var(--border-strong)', borderRadius: 'var(--r-md)',
-            fontSize: 'var(--text-sm)', fontWeight: 500, fontFamily: 'var(--font-sans)',
-            cursor: form.submitting ? 'not-allowed' : 'pointer', opacity: form.submitting ? 0.5 : 1,
-          }}
-        >
-          Cancel
-        </button>
-        <button
-          type="submit"
-          disabled={form.submitting}
-          style={{
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-            padding: '8px 20px', height: 36,
-            background: 'var(--accent-500)', color: 'var(--fg-on-accent)',
-            border: '1px solid var(--accent-600)', borderRadius: 'var(--r-md)',
-            fontSize: 'var(--text-sm)', fontWeight: 500, fontFamily: 'var(--font-sans)',
-            cursor: form.submitting ? 'not-allowed' : 'pointer', opacity: form.submitting ? 0.7 : 1,
-          }}
-        >
-          <Icon name="play_arrow" size={16} style={{ color: 'inherit' }} />
-          {form.submitting ? 'Creating...' : 'Create & start scanning'}
-        </button>
+        {/* Footer */}
+        <div style={{ display: 'flex', gap: 10, marginTop: 12, paddingBottom: 48 }}>
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            disabled={form.submitting}
+            style={{
+              flex: 1,
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              padding: '8px', height: 44,
+              background: 'var(--bg-raised)', color: 'var(--fg)',
+              border: '1px solid var(--border-strong)', borderRadius: 'var(--r-md)',
+              fontSize: 'var(--text-sm)', fontWeight: 500, fontFamily: 'var(--font-sans)',
+              cursor: form.submitting ? 'not-allowed' : 'pointer', opacity: form.submitting ? 0.5 : 1,
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={form.submitting}
+            style={{
+              flex: 2,
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              padding: '8px', height: 44,
+              background: 'var(--accent-500)', color: 'var(--fg-on-accent)',
+              border: '1px solid var(--accent-600)', borderRadius: 'var(--r-md)',
+              fontSize: 'var(--text-sm)', fontWeight: 500, fontFamily: 'var(--font-sans)',
+              cursor: form.submitting ? 'not-allowed' : 'pointer', opacity: form.submitting ? 0.7 : 1,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <Icon name="play_arrow" size={18} style={{ color: 'inherit' }} />
+            {form.submitting ? 'Creating...' : 'Create & Scan'}
+          </button>
         </div>
       </form>
 

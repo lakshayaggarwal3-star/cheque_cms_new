@@ -2,61 +2,85 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getRRItems, saveRRCorrection, completeRR } from '../services/rrService';
 import { getBatchByNumber } from '../services/batchService';
+import { getScanSession } from '../services/scanService';
 import { toast } from '../store/toastStore';
 import { getChequeImageUrl } from '../utils/imageUtils';
-import { RRItemDto, RRState, BatchDto } from '../types';
+import { RRItemDto, RRState, BatchDto, ScanSessionDto } from '../types';
 import { Icon, Pill } from '../components/scan';
+import { ScanFullscreenOverlay } from './scan';
 import { RRViewport } from './rr/RRViewport';
 
 export function RRPage() {
   const { batchNo } = useParams<{ batchNo: string }>();
   const navigate = useNavigate();
   const [batch, setBatch] = useState<BatchDto | null>(null);
+  const [session, setSession] = useState<ScanSessionDto | null>(null);
   const [items, setItems] = useState<RRItemDto[]>([]);
   const [current, setCurrent] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [micr, setMicr] = useState({ chqNo: '', micr1: '', micr2: '', micr3: '' });
-  const [micrLayout, setMicrLayout] = useState<'bottom' | 'side'>('side');
+  const [micrLayout, setMicrLayout] = useState<'bottom' | 'side'>('bottom');
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isZoomed, setIsZoomed] = useState(false);
+  const [flipped, setFlipped] = useState(false);
+  const [imageType, setImageType] = useState<'bitonal' | 'gray'>('bitonal');
+  const [fsZoom, setFsZoom] = useState(1);
+  const [fsOffset, setFsOffset] = useState({ x: 0, y: 0 });
   const firstInputRef = useRef<HTMLInputElement | null>(null);
 
-  const loadItems = useCallback(async () => {
-    if (!batchNo) {
-      setLoadError('Invalid RR batch number.');
-      setLoading(false);
-      return;
-    }
-
-    try {
-      setLoadError(null);
-      const bDetails = await getBatchByNumber(batchNo);
-      setBatch(bDetails);
-
-      const data = await getRRItems(bDetails.batchID);
-      setItems(data);
-      if (data.length > 0) {
-        // Initially, land on the first pending item, or the first item if all are done
-        const firstPendingIndex = data.findIndex(d => d.rrState === RRState.NeedsReview);
-        const targetIndex = firstPendingIndex >= 0 ? firstPendingIndex : 0;
-        const first = data[targetIndex];
-        setCurrent(targetIndex);
-        setMicr({
-          chqNo: first.chqNo ?? '',
-          micr1: first.rrmicr1 ?? first.scanMICR1 ?? '',
-          micr2: first.rrmicr2 ?? first.scanMICR2 ?? '',
-          micr3: first.rrmicr3 ?? first.scanMICR3 ?? '',
-        });
+  useEffect(() => {
+    if (items.length > 0) {
+      const activeEl = document.getElementById(`rr-item-${current}`);
+      if (activeEl) {
+        activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }
-    } catch (err: any) {
-      setLoadError(err?.response?.data?.message ?? 'Unable to load RR items.');
-      toast.error('Failed to load RR items');
-    } finally {
-      setLoading(false);
     }
-  }, [batchNo]);
+  }, [current, items.length]);
 
-  useEffect(() => { loadItems(); }, [loadItems]);
+  useEffect(() => {
+    async function load() {
+      if (!batchNo) {
+        setLoadError('Invalid RR batch number.');
+        setLoading(false);
+        return;
+      }
+      try {
+        const b = await getBatchByNumber(batchNo);
+        setBatch(b);
+        const data = await getRRItems(b.batchID);
+        setItems(data);
+        
+        // Also load session to get slip details (client name, deposit slip no)
+        try {
+          const sess = await getScanSession(b.batchID);
+          setSession(sess);
+        } catch (sessErr) {
+          console.warn('Could not load scan session for RR details', sessErr);
+        }
+
+        if (data.length > 0) {
+          const firstPendingIndex = data.findIndex(d => d.rrState === RRState.NeedsReview);
+          const targetIndex = firstPendingIndex >= 0 ? firstPendingIndex : 0;
+          const first = data[targetIndex];
+          setCurrent(targetIndex);
+          setMicr({
+            chqNo: first.chqNo ?? '',
+            micr1: first.rrmicr1 ?? first.scanMICR1 ?? '',
+            micr2: first.rrmicr2 ?? first.scanMICR2 ?? '',
+            micr3: first.rrmicr3 ?? first.scanMICR3 ?? '',
+          });
+        }
+      } catch (err: any) {
+        setLoadError(err?.response?.data?.message ?? 'Unable to load RR items.');
+        toast.error('Failed to load RR data');
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, [batchNo]);
 
   // -- Inactivity Lock Logic --
   const [lastActivity, setLastActivity] = useState(Date.now());
@@ -101,19 +125,11 @@ export function RRPage() {
     return () => clearInterval(timer);
   }, [batch?.batchID, loading, lastActivity, hasWarned, handleAutoRelease]);
 
-  useEffect(() => {
-    if (!loading && items.length > 0) {
-      const timer = setTimeout(() => {
-        if (firstInputRef.current) {
-          firstInputRef.current.focus();
-          firstInputRef.current.select();
-        }
-      }, 200);
-      return () => clearTimeout(timer);
-    }
-  }, [loading, current, items.length]);
-
   const item = items[current];
+  const activeSlip = session?.slipGroups?.find(g => g.slipEntryId === item?.slipEntryId);
+  const displaySlipNo = activeSlip?.depositSlipNo || item?.depositSlipNo || item?.slipNo || '—';
+  const displayClientName = activeSlip?.clientName || item?.clientName || '—';
+
   const pendingItems = items.filter(i => i.rrState === RRState.NeedsReview);
   const completedCount = items.filter(i => i.rrState !== RRState.NeedsReview).length;
   const totalCount = items.length;
@@ -121,6 +137,7 @@ export function RRPage() {
 
   const handleApproveAndNext = async () => {
     if (!item || !batch) return;
+    setIsZoomed(false);
     setSaving(true);
     try {
       // Set approve: true to move the item to 'Approved' state
@@ -197,6 +214,21 @@ export function RRPage() {
     };
   }, [batch?.batchID]);
 
+  const getClearingTypeLabel = (code?: string) => {
+    switch (code) {
+      case '01': return 'Regular (01)';
+      case '02': return 'High Value (02)';
+      case '03': return 'CTS (03)';
+      case '11': return 'Non-CTS (11)';
+      default: return code || '—';
+    }
+  };
+
+  const getBasename = (path?: string) => {
+    if (!path) return '';
+    return path.split(/[\\/]/).pop() || '';
+  };
+
   if (loading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', color: 'var(--fg-muted)', fontSize: 'var(--text-sm)' }}>
@@ -224,8 +256,8 @@ export function RRPage() {
       {/* ── Top Header ── */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 24,
-        padding: '10px 24px', borderBottom: '1px solid #1a1a1b',
-        background: '#111111', flexShrink: 0
+        padding: '10px 24px', borderBottom: '1px solid var(--border)',
+        background: 'var(--bg-raised)', flexShrink: 0
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ 
@@ -235,31 +267,30 @@ export function RRPage() {
             <Icon name="build" size={18} />
           </div>
           <div>
-            <h1 style={{ margin: 0, fontSize: 'var(--text-md)', fontWeight: 700, color: '#fff', lineHeight: 1.2 }}>
+            <h1 style={{ margin: 0, fontSize: 'var(--text-md)', fontWeight: 700, color: 'var(--fg)', lineHeight: 1.2 }}>
               Reject & Repair
             </h1>
-            <div style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 600 }}>
+            <div style={{ fontSize: 10, color: 'var(--accent-500)', fontWeight: 600 }}>
               {completedCount} of {totalCount} completed
             </div>
           </div>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, overflow: 'hidden' }}>
-          <Pill icon="tag" mono style={{ background: 'rgba(255,255,255,0.05)', color: '#ccc', border: '1px solid rgba(255,255,255,0.08)' }}>Batch: {batch?.batchNo}</Pill>
-          <Pill icon="receipt_long" style={{ background: 'rgba(255,255,255,0.05)', color: '#ccc', border: '1px solid rgba(255,255,255,0.08)' }}>Ref: {batch?.summRefNo || '—'}</Pill>
-          <Pill icon="grid_view" style={{ background: 'rgba(255,255,255,0.05)', color: '#ccc', border: '1px solid rgba(255,255,255,0.08)' }}>Cluster: {batch?.clusterCode || '—'}</Pill>
-          <Pill icon="location_on" style={{ background: 'rgba(255,255,255,0.05)', color: '#ccc', border: '1px solid rgba(255,255,255,0.08)' }}>{batch?.locationCode}</Pill>
-          <Pill icon="category" style={{ background: 'rgba(255,255,255,0.05)', color: '#ccc', border: '1px solid rgba(255,255,255,0.08)' }}>{batch?.clearingType}</Pill>
+          <Pill icon="tag" mono title="Batch Number" style={{ background: 'var(--bg-subtle)', color: 'var(--fg-muted)', border: '1px solid var(--border)' }}>Batch: {batch?.batchNo}</Pill>
+          <Pill icon="receipt_long" title="Summary Reference Number" style={{ background: 'var(--bg-subtle)', color: 'var(--fg-muted)', border: '1px solid var(--border)' }}>Ref: {batch?.summRefNo || '—'}</Pill>
+          <Pill icon="grid_view" title="Cluster Code" style={{ background: 'var(--bg-subtle)', color: 'var(--fg-muted)', border: '1px solid var(--border)' }}>Cluster: {batch?.clusterCode || '—'}</Pill>
+          <Pill icon="location_on" title="Location" style={{ background: 'var(--bg-subtle)', color: 'var(--fg-muted)', border: '1px solid var(--border)' }}>{batch?.locationCode}</Pill>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <button 
             onClick={() => setMicrLayout(l => l === 'bottom' ? 'side' : 'bottom')}
             className="btn-secondary"
-            style={{ height: 32, padding: '0 12px', fontSize: 'var(--text-xs)', gap: 6, background: '#222', borderColor: '#333', color: '#fff' }}
+            style={{ height: 32, padding: '0 12px', fontSize: 'var(--text-xs)', gap: 6 }}
           >
-            <Icon name={micrLayout === 'side' ? 'view_sidebar' : 'view_headline'} size={14} />
-            {micrLayout === 'side' ? 'Side Layout' : 'Bottom Layout'}
+            <Icon name={micrLayout === 'bottom' ? 'view_sidebar' : 'view_headline'} size={14} />
+            {micrLayout === 'bottom' ? 'Side Layout' : 'Bottom Layout'}
           </button>
           
           <button 
@@ -268,9 +299,7 @@ export function RRPage() {
             className="btn-primary" 
             style={{ 
               height: 32, padding: '0 16px', fontSize: 'var(--text-xs)', 
-              background: pendingItems.length > 0 ? '#222' : 'var(--success)', 
-              borderColor: pendingItems.length > 0 ? '#333' : 'var(--success)',
-              color: pendingItems.length > 0 ? '#666' : '#fff'
+              opacity: pendingItems.length > 0 ? 0.5 : 1
             }}
           >
             <Icon name="verified" size={14} />
@@ -279,51 +308,57 @@ export function RRPage() {
         </div>
       </div>
 
-      {/* ── Secondary Header (Unified Dark Style) ── */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 12,
-        padding: '8px 24px', borderBottom: '1px solid #1a1a1b',
-        background: '#111111', flexShrink: 0, overflowX: 'auto', scrollbarWidth: 'none'
-      }}>
-        <div style={{ color: '#555', fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.1em', marginRight: 4 }}>
-          SLIP CONTEXT
+      {micrLayout === 'bottom' && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 12,
+          padding: '8px 24px', borderBottom: '1px solid var(--border)',
+          background: 'var(--bg-raised)', flexShrink: 0, overflowX: 'auto', scrollbarWidth: 'none'
+        }}>
+          <div style={{ color: 'var(--fg-faint)', fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.1em', marginRight: 4 }}>
+            SLIP CONTEXT
+          </div>
+          <Pill icon="receipt_long" mono title="Deposit Slip Number" style={{ background: 'var(--bg-subtle)', color: 'var(--accent-500)', border: '1px solid var(--border)' }}>
+            Deposit Slip No: {displaySlipNo}
+          </Pill>
+          <Pill icon="payments" title="Slip Amount" style={{ background: 'var(--bg-subtle)', color: 'var(--fg)', border: '1px solid var(--border)' }}>
+            Amt: ₹{item?.slipAmount?.toLocaleString('en-IN') ?? '—'}
+          </Pill>
+          <Pill icon="person" title="Client Name" style={{ background: 'var(--bg-subtle)', color: 'var(--fg)', border: '1px solid var(--border)' }}>
+            {displayClientName}
+          </Pill>
         </div>
-        <Pill icon="receipt_long" mono style={{ background: 'rgba(255,255,255,0.03)', color: 'var(--accent)', border: '1px solid rgba(255,255,255,0.06)' }}>
-          Slip: {item?.slipNo || '—'}
-        </Pill>
-        <Pill icon="payments" style={{ background: 'rgba(255,255,255,0.03)', color: '#fff', border: '1px solid rgba(255,255,255,0.06)' }}>
-          Amt: ₹{item?.slipAmount?.toLocaleString('en-IN') ?? '—'}
-        </Pill>
-        <Pill icon="person" style={{ background: 'rgba(255,255,255,0.03)', color: '#fff', border: '1px solid rgba(255,255,255,0.06)' }}>
-          {item?.clientName || '—'}
-        </Pill>
-        <Pill icon="pin" style={{ background: 'rgba(255,255,255,0.03)', color: '#fff', border: '1px solid rgba(255,255,255,0.06)' }}>
-          Seq: {item?.chqSeq}
-        </Pill>
-      </div>
+      )}
 
       {/* ── Main Layout ── */}
       <div style={{ 
         flex: 1, display: 'grid', 
-        gridTemplateColumns: `260px 1fr${micrLayout === 'side' ? ' 340px' : ''}`, 
+        gridTemplateColumns: `160px 1fr${micrLayout === 'side' ? ' 340px' : ''}`, 
         minHeight: 0, overflow: 'hidden' 
       }}>
         
-        {/* Sidebar: Sequences */}
+        {/* Left: Queue Sidebar */}
         <div style={{ 
-          borderRight: '1px solid var(--border)', background: 'var(--bg-raised)', 
-          display: 'flex', flexDirection: 'column', overflow: 'hidden' 
+          width: 160, borderRight: '1px solid var(--border)', 
+          background: 'var(--bg-raised)', display: 'flex', flexDirection: 'column',
+          flexShrink: 0,
         }}>
-          <div style={{ padding: '12px 16px', fontSize: 10, fontWeight: 700, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
-            Queue Sequences
+          <div style={{ 
+            padding: '8px 12px', height: 44, boxSizing: 'border-box',
+            borderBottom: '1px solid var(--border)',
+            fontSize: 9, fontWeight: 700, color: 'var(--fg-faint)',
+            textTransform: 'uppercase', letterSpacing: '.05em',
+            display: 'flex', alignItems: 'center', background: 'var(--bg-raised)',
+          }}>
+            Queue
           </div>
-          <div style={{ flex: 1, overflowY: 'auto', padding: '0 8px 16px' }}>
+          <div className="custom-scrollbar" style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '8px' }}>
             {items.map((it, idx) => {
               const isSelected = idx === current;
               const isDone = it.rrState !== RRState.NeedsReview;
               return (
                 <button
-                  key={it.chequeItemId}
+                  key={it.slipEntryId + idx}
+                  id={`rr-item-${idx}`}
                   onClick={() => {
                     setCurrent(idx);
                     setMicr({
@@ -333,32 +368,35 @@ export function RRPage() {
                       micr3: it.rrmicr3 ?? it.scanMICR3 ?? '',
                     });
                   }}
-                  style={{
-                    width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-                    padding: '10px 12px', margin: '4px 0', borderRadius: 'var(--r-md)',
-                    border: isSelected ? '1px solid var(--accent-300)' : '1px solid transparent',
-                    background: isSelected ? 'var(--accent-50)' : 'transparent',
-                    cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s ease',
-                    boxShadow: isSelected ? '0 2px 8px rgba(0,0,0,0.05)' : 'none'
+                  style={{ 
+                    width: '100%', padding: '12px 10px', display: 'flex', alignItems: 'center', gap: 10, 
+                    background: isSelected ? 'rgba(249, 115, 22, 0.15)' : (isDone ? 'rgba(34, 197, 94, 0.1)' : 'transparent'),
+                    border: 'none', borderLeft: isSelected ? '3px solid var(--accent-500)' : '3px solid transparent',
+                    borderBottom: '1px solid var(--border-faint)',
+                    cursor: 'pointer', transition: 'all 0.2s ease', position: 'relative',
+                    borderRadius: isSelected ? 'var(--r-md)' : '0'
                   }}
                 >
                   <div style={{ 
-                    width: 24, height: 24, borderRadius: '50%', 
-                    background: isDone ? 'var(--success-bg)' : (isSelected ? 'var(--accent-100)' : 'var(--bg-subtle)'),
-                    color: isDone ? 'var(--success)' : (isSelected ? 'var(--accent-700)' : 'var(--fg-muted)'),
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700,
+                    width: 20, height: 20, borderRadius: '50%', 
+                    background: isDone ? 'rgba(34, 197, 94, 0.2)' : (isSelected ? 'var(--accent-500)' : 'var(--bg-subtle)'),
+                    color: isDone ? '#22c55e' : (isSelected ? 'var(--fg-on-accent)' : 'var(--fg-muted)'),
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700,
                     flexShrink: 0
                   }}>
-                    {isDone ? <Icon name="check" size={14} /> : idx + 1}
+                    {idx + 1}
                   </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: isSelected ? 'var(--accent-900)' : 'var(--fg)' }}>Item #{idx + 1}</span>
-                      <span style={{ fontSize: 9, color: 'var(--fg-muted)', fontWeight: 600 }}>Seq {it.chqSeq}</span>
-                    </div>
-                    <div style={{ fontSize: 9, color: 'var(--fg-faint)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 500 }}>
-                      {it.chqNo ? `Chq: ${it.chqNo}` : 'MICR ERR'} • Slip {it.slipNo}
-                    </div>
+                  <div style={{ 
+                    width: 80, height: 48, borderRadius: 'var(--r-sm)', background: 'var(--bg-subtle)', 
+                    overflow: 'hidden', border: '1px solid var(--border)', flexShrink: 0,
+                    boxShadow: isSelected ? '0 4px 12px rgba(0,0,0,0.2)' : 'none'
+                  }}>
+                    <img 
+                      src={getChequeImageUrl(it, 'front')} 
+                      alt="thumb" 
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                    />
                   </div>
                 </button>
               );
@@ -367,25 +405,34 @@ export function RRPage() {
         </div>
 
         {/* Center: Image + Bottom MICR if configured */}
-        <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden', background: '#111' }}>
-          <div style={{ flex: 1, padding: 16, display: 'flex', flexDirection: 'column' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden', background: 'var(--bg)', flex: 1 }}>
+          <div style={{ flex: 1, padding: '12px 16px', display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
             {item && (
               <RRViewport 
-                previewFront={getChequeImageUrl(item, 'front')}
-                previewBack={getChequeImageUrl(item, 'back')}
-                filename={`${item.imageName || 'CHQ_SEQ_' + item.chqSeq}CF${item.fileExtension?.split(',')[0] || '.jpg'}`}
+                previewFront={getChequeImageUrl(item, imageType === 'bitonal' ? 'frontTiff' : 'front')}
+                previewBack={getChequeImageUrl(item, imageType === 'bitonal' ? 'backTiff' : 'back')}
+                imageBaseName={item.imageBaseName}
+                hasFrontPath={!!item.imageBaseName}
+                hasBackPath={!!item.imageBaseName}
+                filename={item.imageName || item.imageBaseName || `CHQ_SEQ_${item.chqSeq}CF.tif`}
                 itemTitle={`Sequence #${item.chqSeq}`}
+                setIsFullscreen={setIsFullscreen}
+                isZoomed={isZoomed}
+                layout={micrLayout}
+                imageType={imageType}
+                setImageType={setImageType}
               />
             )}
           </div>
           {micrLayout === 'bottom' && (
-            <div style={{ borderTop: '1px solid #1a1a1b', background: 'var(--bg-raised)', padding: '12px 16px' }}>
+            <div style={{ borderTop: '1px solid var(--border)', background: 'var(--bg-raised)', padding: '10px 16px 16px 16px', flexShrink: 0 }}>
               <MICRPanel 
                 item={item} micr={micr} setMicr={setMicr} 
                 saving={saving} onSave={handleApproveAndNext} 
                 isLast={isLastPending} firstInputRef={firstInputRef}
                 onKeyDown={handleKeyDown}
                 layout="bottom"
+                setIsZoomed={setIsZoomed}
               />
             </div>
           )}
@@ -393,19 +440,75 @@ export function RRPage() {
 
         {/* Right: MICR if configured */}
         {micrLayout === 'side' && (
-          <div style={{ borderLeft: '1px solid var(--border)', background: 'var(--bg-raised)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
-            <div style={{ padding: 16 }}>
+          <div style={{ 
+            borderLeft: '1px solid var(--border)', background: 'var(--bg-raised)', 
+            display: 'flex', flexDirection: 'column', width: 340, flexShrink: 0
+          }}>
+            <div style={{ padding: 16, flex: '0 0 auto', overflowY: 'auto' }}>
               <MICRPanel 
                 item={item} micr={micr} setMicr={setMicr} 
                 saving={saving} onSave={handleApproveAndNext} 
                 isLast={isLastPending} firstInputRef={firstInputRef}
                 onKeyDown={handleKeyDown}
                 layout="side"
+                setIsZoomed={setIsZoomed}
               />
+            </div>
+
+            {/* Slip Context at Bottom of Side Panel */}
+            <div style={{ 
+              padding: 16, borderTop: '1px solid var(--border)', background: 'var(--bg)',
+              display: 'flex', flexDirection: 'column', gap: 8
+            }}>
+              <div style={{ fontSize: 9, fontWeight: 800, color: 'var(--fg-faint)', textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: 4 }}>
+                Slip Context
+              </div>
+              <Pill icon="receipt_long" mono title="Deposit Slip Number" style={{ background: 'var(--bg-subtle)', color: 'var(--accent-500)', border: '1px solid var(--border)', width: '100%' }}>
+                No: {displaySlipNo}
+              </Pill>
+              <Pill icon="payments" title="Slip Amount" style={{ background: 'var(--bg-subtle)', color: 'var(--fg)', border: '1px solid var(--border)', width: '100%' }}>
+                Amt: ₹{item?.slipAmount?.toLocaleString('en-IN') ?? '—'}
+              </Pill>
+              <Pill icon="person" title="Client Name" style={{ background: 'var(--bg-subtle)', color: 'var(--fg)', border: '1px solid var(--border)', width: '100%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {displayClientName}
+              </Pill>
             </div>
           </div>
         )}
       </div>
+      {/* ── Fullscreen overlay ── */}
+      {isFullscreen && session && item && (
+        <ScanFullscreenOverlay
+          session={session}
+          isSlipView={false}
+          scanStep="ChequeScan"
+          previewFront={getChequeImageUrl(item, imageType === 'bitonal' ? 'frontTiff' : 'front')}
+          previewBack={getChequeImageUrl(item, imageType === 'bitonal' ? 'backTiff' : 'back')}
+          flipped={flipped}
+          setFlipped={setFlipped}
+          zoom={fsZoom}
+          setZoom={setFsZoom} 
+          nextChqSeq={item.chqSeq}
+          panning={false} // Components internally handles panning state if setZoom/setPan provided
+          hasMoved={{ current: false }}
+          fsPanOffset={fsOffset}
+          setFsPanOffset={setFsOffset}
+          viewerFsRef={{ current: null }}
+          makePanHandlers={(setPan: any) => {
+            let start = { x: 0, y: 0 };
+            return {
+              onMouseDown: (e: React.MouseEvent) => {
+                start = { x: e.clientX - fsOffset.x, y: e.clientY - fsOffset.y };
+                const move = (em: MouseEvent) => setFsOffset({ x: em.clientX - start.x, y: em.clientY - start.y });
+                const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+                window.addEventListener('mousemove', move);
+                window.addEventListener('mouseup', up);
+              }
+            };
+          }}
+          onClose={() => { setIsFullscreen(false); setFsZoom(1); setFsOffset({ x: 0, y: 0 }); }}
+        />
+      )}
     </div>
   );
 }
@@ -413,10 +516,10 @@ export function RRPage() {
 // ── Sub-component: MICR Entry Panel ──
 
 function MICRPanel({ 
-  item, micr, setMicr, saving, onSave, isLast, firstInputRef, onKeyDown, layout 
+  item, micr, setMicr, saving, onSave, isLast, firstInputRef, onKeyDown, layout, setIsZoomed
 }: { 
   item: RRItemDto, micr: any, setMicr: any, saving: boolean, onSave: any, isLast: boolean, 
-  firstInputRef: any, onKeyDown: any, layout: 'side' | 'bottom'
+  firstInputRef: any, onKeyDown: any, layout: 'side' | 'bottom', setIsZoomed: any
 }) {
   const isCompact = true;
   const isMobileBatch = !item.scanMICRRaw && !item.scanChqNo && !item.scanMICR1;
@@ -448,7 +551,7 @@ function MICRPanel({
       </div>
       <div style={{ 
         display: 'grid', 
-        gridTemplateColumns: layout === 'bottom' ? 'repeat(4, 1fr) 140px' : '1fr', 
+        gridTemplateColumns: layout === 'bottom' ? 'repeat(4, 1fr) 180px' : '1fr', 
         gap: 10, alignItems: 'end'
       }}>
         {inputs.map(({ label, key, maxLen, icon, id: inputId, nextId }) => (
@@ -466,6 +569,8 @@ function MICRPanel({
                 value={micr[key as keyof typeof micr]}
                 onChange={(e) => handleInputChange(key, e.target.value, maxLen, nextId)}
                 onKeyDown={(e) => onKeyDown(e, nextId)}
+                onFocus={() => setIsZoomed(true)}
+                onBlur={() => setIsZoomed(false)}
                 maxLength={maxLen}
                 autoComplete="off"
                 className="input-field"
@@ -486,7 +591,8 @@ function MICRPanel({
           style={{ 
             height: 34, fontSize: 'var(--text-xs)', gap: 6, 
             boxShadow: '0 2px 8px rgba(99, 102, 241, 0.15)',
-            marginTop: layout === 'bottom' ? 0 : 6
+            marginTop: layout === 'bottom' ? 0 : 6,
+            whiteSpace: 'nowrap'
           }}
         >
           <Icon name="verified" size={14} />
@@ -498,31 +604,29 @@ function MICRPanel({
 
   const scannedDetails = (
     <div style={{ 
-      background: isMobileBatch ? 'rgba(99, 102, 241, 0.02)' : 'rgba(0,0,0,0.03)', 
-      border: '1px solid var(--border)', 
-      borderRadius: 'var(--r-md)', padding: isCompact ? '10px 14px' : 16, 
-      boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.01)',
-      minHeight: layout === 'bottom' ? 90 : 120
+      background: 'var(--bg-subtle)', 
+      border: isMobileBatch ? '2px solid var(--accent-500)' : '1px solid var(--border)', 
+      borderRadius: 'var(--r-md)', padding: layout === 'side' ? '6px 10px' : (isCompact ? '8px 12px' : 16), 
+      boxShadow: 'var(--shadow-sm)',
+      minHeight: layout === 'side' ? 40 : (layout === 'bottom' ? 60 : 120),
+      width: '100%',
+      overflow: 'hidden'
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
         <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent-700)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
           Scanned MICR Details
         </div>
         {isMobileBatch && (
-          <div style={{ fontSize: 8, fontWeight: 700, color: 'var(--accent)', background: 'var(--accent-100)', padding: '2px 6px', borderRadius: 4 }}>
-            MOBILE CAPTURE
+          <div style={{ 
+            fontSize: 8, fontWeight: 800, color: 'var(--accent-600)', 
+            background: 'rgba(249, 115, 22, 0.1)', 
+            border: '1px solid rgba(249, 115, 22, 0.2)',
+            padding: '2px 6px', borderRadius: 4, letterSpacing: '0.05em',
+            textTransform: 'uppercase'
+          }}>
+            Mobile Capture
           </div>
         )}
-      </div>
-      
-      <div style={{ 
-        fontFamily: 'var(--font-mono)', fontSize: 13, color: isMobileBatch ? 'var(--fg-faint)' : 'var(--fg)', 
-        fontWeight: 700, background: 'var(--bg)', padding: '6px 10px', 
-        borderRadius: 'var(--r-sm)', border: '1px solid var(--border-strong)',
-        marginBottom: 10, textAlign: 'center', letterSpacing: '0.05em',
-        minHeight: 28, display: 'flex', alignItems: 'center', justifyContent: 'center'
-      }}>
-        {item.scanMICRRaw || item.micrRaw || (isMobileBatch ? 'NO MICR DATA' : 'XXXXXXXXXXXX')}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
