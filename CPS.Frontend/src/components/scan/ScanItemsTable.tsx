@@ -503,22 +503,7 @@ function TypeBadge({ type }: { type: 'slip' | 'cheque' }) {
   );
 }
 
-function ScanStatusBadge({ status }: { status: string }) {
-  const ok = status === 'Captured';
-  const fail = status === 'Failed';
-  return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: 4,
-      padding: '2px 6px', borderRadius: 'var(--r-full)',
-      fontSize: 10, fontWeight: 600,
-      background: ok ? 'var(--success-bg, #f0fdf4)' : fail ? 'var(--danger-bg, #fef2f2)' : 'var(--bg-subtle)',
-      color: ok ? 'var(--success, #16a34a)' : fail ? 'var(--danger, #dc2626)' : 'var(--fg-muted)',
-      border: `1px solid ${ok ? 'var(--success, #16a34a)' : fail ? 'var(--danger, #dc2626)' : 'var(--border)'}`,
-    }}>
-      {ok ? '✓' : fail ? '✗' : '…'} {status}
-    </span>
-  );
-}
+
 
 
 // ── DeleteConfirmBanner ───────────────────────────────────────────────────────

@@ -26,13 +26,6 @@ export function LoginPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [keepSignedIn, setKeepSignedIn] = useState(true);
   const [pendingCreds, setPendingCreds] = useState<LoginForm | null>(null);
-  const [debugLogs, setDebugLogs] = useState<string[]>([]);
-  const [showDebug, setShowDebug] = useState(false);
-
-  const log = (msg: string) => {
-    const ts = new Date().toLocaleTimeString();
-    setDebugLogs(prev => [`[${ts}] ${msg}`, ...prev].slice(0, 30));
-  };
 
   const { register, handleSubmit, getValues, formState: { errors } } = useForm<LoginForm>({
     defaultValues: { loginId: 'DEV001', password: 'Dev@1234' },
@@ -48,13 +41,11 @@ export function LoginPage() {
   const onSubmit = async (data: LoginForm) => {
     if (showForceLoginModal) return;
     setPendingCreds(data);
-    log(`onSubmit: loginId=${data.loginId} pwdLen=${data.password.length} force=false`);
     
     setError('');
     setIsSubmitting(true);
     try {
       const user = await login(data.loginId, data.password, false);
-      log('Login success, navigating...');
       setUser(user);
       syncUserSettings();
       
@@ -67,10 +58,7 @@ export function LoginPage() {
       }
     } catch (err: any) {
       const msg = err?.response?.data?.message ?? err?.message ?? 'Login failed';
-      const status = err?.response?.status ?? 'no-status';
-      log(`Login error: status=${status} msg=${msg}`);
       if (msg.toLowerCase().includes('already logged in') || msg.toLowerCase().includes('session')) {
-        log('Showing Force Login modal');
         setShowForceLoginModal(true);
         setError('');
       } else {
@@ -85,23 +73,17 @@ export function LoginPage() {
   const handleForceLogin = async () => {
     const creds = pendingCreds || getValues();
     const { loginId, password } = creds;
-    log(`handleForceLogin: loginId=${loginId} pwdLen=${password.length} hasPendingCreds=${!!pendingCreds}`);
     setIsSubmitting(true);
     try {
-      log('Sending force login request...');
       const user = await login(loginId, password, true);
-      log(`Force login success: userId=${user.userId}`);
       setUser(user);
       syncUserSettings();
 
       const params = new URLSearchParams(window.location.search);
       const returnUrl = params.get('returnUrl');
-      log(`Navigating to: ${returnUrl || '/'}`);
       window.location.href = returnUrl || '/';
     } catch (err: any) {
       const msg = err?.response?.data?.message ?? err?.message ?? 'Login failed';
-      const status = err?.response?.status ?? 'no-status';
-      log(`Force login error: status=${status} msg=${msg}`);
       setError(msg);
       setShowForceLoginModal(false);
     } finally {
@@ -117,30 +99,6 @@ export function LoginPage() {
       position: 'relative', overflow: 'auto',
       display: 'flex', flexDirection: 'column',
     }}>
-      {/* ── Debug Log Panel (remove after debugging) ── */}
-      <div style={{ position: 'fixed', top: 16, right: 16, zIndex: 9999 }}>
-        <button
-          onClick={() => setShowDebug(p => !p)}
-          style={{
-            background: '#1e293b', color: '#94a3b8', border: '1px solid #334155',
-            borderRadius: 8, padding: '6px 12px', fontSize: 11, cursor: 'pointer',
-          }}
-        >🐛 Debug ({debugLogs.length})</button>
-        {showDebug && (
-          <div style={{
-            position: 'absolute', top: 36, right: 0, width: 320,
-            background: '#0f172a', border: '1px solid #334155', borderRadius: 10,
-            padding: 10, maxHeight: 300, overflowY: 'auto',
-          }}>
-            {debugLogs.length === 0
-              ? <p style={{ color: '#64748b', fontSize: 11, margin: 0 }}>No logs yet. Tap Sign In to start.</p>
-              : debugLogs.map((l, i) => (
-                  <p key={i} style={{ margin: '2px 0', fontSize: 10, color: '#94a3b8', fontFamily: 'monospace', wordBreak: 'break-all' }}>{l}</p>
-                ))
-            }
-          </div>
-        )}
-      </div>
       {/* Radial gradient overlays */}
       <div style={{
         position: 'absolute', top: '-25%', right: '-15%',
@@ -350,7 +308,7 @@ export function LoginPage() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => { log('Reset notice tapped'); setShowForceLoginModal(false); }}
+                    onClick={() => setShowForceLoginModal(false)}
                     style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-subtle)', fontSize: 20, lineHeight: 1, padding: 0, flexShrink: 0 }}
                   >×</button>
                 </div>
@@ -359,8 +317,8 @@ export function LoginPage() {
                 <button
                   type="button"
                   disabled={isSubmitting}
-                  onClick={() => { log('Force Sign In clicked (outside form)'); handleForceLogin(); }}
-                  onTouchEnd={(e) => { e.preventDefault(); log('Force Sign In touchEnd (outside form)'); if (!isSubmitting) handleForceLogin(); }}
+                  onClick={() => handleForceLogin()}
+                  onTouchEnd={(e) => { e.preventDefault(); if (!isSubmitting) handleForceLogin(); }}
                   style={{
                     width: '100%', height: 48,
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,

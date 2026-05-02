@@ -80,6 +80,35 @@ const generateUniqueGlobalCode = (existing: GlobalClientDto[]) => {
   }
 };
 
+const getJobDisplayName = (type: string) => {
+  switch (type.toLowerCase()) {
+    case 'location': return 'Location Master';
+    case 'client': return 'Client Master';
+    case 'internal-bank': return 'RCMS Bank Code Master';
+    case 'capture-rule': return 'Enrichment Master';
+    case 'scb-master': return 'CMH Master';
+    default: return type;
+  }
+};
+
+const formatToIST = (date: string | Date) => {
+  if (!date) return '—';
+  const d = new Date(date);
+  // If the date is missing the 'Z' (UTC indicator), append it to ensure correct local conversion
+  const utcDate = typeof date === 'string' && !date.endsWith('Z') ? new Date(date + 'Z') : d;
+  
+  return utcDate.toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true
+  });
+};
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function MastersPage() {
@@ -207,7 +236,7 @@ export function MastersPage() {
   useEffect(() => { loadData(); }, [activeType, page, search, cityFilter, nameFilter, rcmsFilter, loadData]);
 
   // Manual Job Refresh Function
-  const refreshJobStatus = async () => {
+  const refreshJobStatus = useCallback(async () => {
     if (!activeJobId) return;
     try {
       const status = await getJobStatus(activeJobId);
@@ -223,7 +252,7 @@ export function MastersPage() {
     } catch (err) {
       console.error('Refresh error', err);
     }
-  };
+  }, [activeJobId, loadData]);
 
   useEffect(() => {
     let intervalId: any;
@@ -233,8 +262,7 @@ export function MastersPage() {
       }, 10000);
     }
     return () => clearInterval(intervalId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeJobId, jobStatus?.status]);
+  }, [activeJobId, jobStatus, refreshJobStatus]);
 
   // Initial fetch only
   useEffect(() => {
@@ -243,7 +271,7 @@ export function MastersPage() {
     } else {
       setJobStatus(null);
     }
-  }, [activeJobId]);
+  }, [activeJobId, refreshJobStatus]);
 
 
   useEffect(() => {
@@ -314,27 +342,33 @@ export function MastersPage() {
     setVerifying(true);
     setPendingFile(file);
     
-    const reader = new FileReader();
+        const reader = new FileReader();
     reader.onload = (evt) => {
       try {
         const bstr = evt.target?.result;
-        const wb = XLSX.read(bstr, { type: 'array', sheetRows: 101 }); // Read first 100 + header
+        const wb = XLSX.read(bstr, { type: 'array' });
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
-        const data = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
         
-        if (data.length === 0) throw new Error('File is empty');
+        // Use the range to get the total row count efficiently
+        const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+        const totalExcelRows = Math.max(0, range.e.r); // e.r is the last row index (0-indexed)
         
-        const headers = (data[0] || []).map(h => String(h || '').trim());
+        // Only parse the first 100 rows for the preview grid to keep it fast
+        const previewData = XLSX.utils.sheet_to_json(ws, { header: 1, range: { s: { r: 0, c: 0 }, e: { r: 100, c: 50 } } }) as any[][];
+        
+        if (previewData.length === 0) throw new Error('File is empty');
+        
+        const headers = (previewData[0] || []).map(h => String(h || '').trim());
         const required = REQUIRED_HEADERS[activeType] || [];
         const missing = required.filter(h => !headers.some(actual => actual.toUpperCase() === h.toUpperCase()));
         
         const previewDto: MasterPreviewDto = {
           masterType: activeType,
-          totalRows: 0, // Will be determined by backend on apply
-          validRows: 0,
-          errorRows: 0,
-          rows: data.slice(1, 101).map(rowArr => ({
+          totalRows: totalExcelRows,
+          validRows: missing.length === 0 ? totalExcelRows : 0,
+          errorRows: missing.length === 0 ? 0 : totalExcelRows,
+          rows: previewData.slice(1).map(rowArr => ({
             values: headers.reduce((acc, h, i) => {
               acc[h] = String(rowArr[i] || '');
               return acc;
@@ -343,6 +377,7 @@ export function MastersPage() {
           errors: missing.map(m => ({ rowNumber: 1, field: 'Header', message: `Missing required column: ${m}` })),
           parsingLogs: [
             `Local Preview: ${file.name} loaded.`,
+            `Found ${totalExcelRows} total data rows.`,
             missing.length > 0 
               ? `CRITICAL: Missing ${missing.length} headers.` 
               : `Headers verified successfully.`
@@ -1181,8 +1216,8 @@ export function MastersPage() {
           </div>
           
           {preview.parsingLogs && preview.parsingLogs.length > 0 && (
-            <div style={{ padding: '12px 32px', background: '#0d1117', color: '#c9d1d9', fontFamily: 'var(--font-mono)', fontSize: 11, display: 'flex', flexDirection: 'column', gap: 4, borderBottom: '1px solid #30363d' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#8b949e', marginBottom: 4, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <div style={{ padding: '12px 32px', background: 'var(--bg-subtle)', color: 'var(--fg)', fontFamily: 'var(--font-mono)', fontSize: 11, display: 'flex', flexDirection: 'column', gap: 4, borderBottom: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--fg-muted)', marginBottom: 4, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 <Icon name="terminal" size={14} /> <span>System Parsing Logs</span>
               </div>
               {preview.parsingLogs.map((log, i) => (
@@ -1213,7 +1248,7 @@ export function MastersPage() {
                  jobStatus.status === 'Cancelled' ? 'Upload Cancelled' : 'Upload Failed'}
               </h2>
               <p style={{ margin: '8px 0 0', color: 'var(--fg-subtle)' }}>
-                {activeType.toUpperCase()} Master — {jobStatus.totalRows > 0 ? `${jobStatus.processedRows} of ${jobStatus.totalRows} rows` : 'Reading file...'}
+                {getJobDisplayName(activeType)} — {jobStatus.totalRows > 0 ? `${jobStatus.processedRows} of ${jobStatus.totalRows} rows` : 'Reading file...'}
               </p>
             </div>
 
@@ -1242,8 +1277,8 @@ export function MastersPage() {
             </div>
 
             {jobStatus.errors && jobStatus.errors.length > 0 && (
-              <div style={{ maxHeight: 150, overflow: 'auto', background: '#0d1117', padding: 12, borderRadius: 8, border: '1px solid #30363d' }}>
-                <div style={{ fontSize: 10, color: '#8b949e', marginBottom: 8, textTransform: 'uppercase' }}>Recent Errors</div>
+              <div style={{ maxHeight: 150, overflow: 'auto', background: 'var(--bg-subtle)', padding: 12, borderRadius: 8, border: '1px solid var(--border)' }}>
+                <div style={{ fontSize: 10, color: 'var(--fg-muted)', marginBottom: 8, textTransform: 'uppercase' }}>Recent Errors</div>
                 {jobStatus.errors.slice(-5).map((e, i) => (
                   <div key={i} style={{ fontSize: 11, color: '#f85149', marginBottom: 4, display: 'flex', gap: 8 }}>
                     <span style={{ opacity: 0.7 }}>Row {e.rowNumber}:</span>
@@ -1314,8 +1349,8 @@ export function MastersPage() {
                 <div key={job.id} style={{ background: 'var(--bg-subtle)', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', padding: 16 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
                     <div>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--fg-base)' }}>{job.jobType} Upload <span style={{ color: 'var(--fg-subtle)', fontSize: 12, fontWeight: 400 }}>#{job.id}</span></div>
-                      <div style={{ fontSize: 11, color: 'var(--fg-faint)', marginTop: 4 }}>{new Date(job.createdAt).toLocaleString()}</div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--fg-base)' }}>{getJobDisplayName(job.jobType)} <span style={{ color: 'var(--fg-subtle)', fontSize: 12, fontWeight: 400 }}>#{job.id}</span></div>
+                      <div style={{ fontSize: 11, color: 'var(--fg-faint)', marginTop: 4 }}>{formatToIST(job.createdAt)}</div>
                     </div>
                     <span style={{ 
                       padding: '4px 8px', borderRadius: 4, fontSize: 10, fontWeight: 600,

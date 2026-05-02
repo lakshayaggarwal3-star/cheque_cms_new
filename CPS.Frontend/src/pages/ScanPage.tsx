@@ -82,7 +82,7 @@ export function ScanPage() {
     id, session, batchDetails, loading,
     scanStep, setScanStep,
     activeSlipEntryId,
-    nextSlipItemOrder, setNextSlipItemOrder, 
+    nextSlipItemOrder, 
     nextChqSeq, setNextChqSeq,
     frontPreview, backPreview,
     flipped, setFlipped, zoom, setZoom,
@@ -194,7 +194,7 @@ export function ScanPage() {
       }
     }, 5000);
     return () => clearInterval(timer);
-  }, [id, loading, lastActivity, hasWarned, handleAutoRelease]);
+  }, [id, loading, lastActivity, hasWarned, handleAutoRelease, INACTIVITY_LIMIT, WARNING_LIMIT]);
 
   // -- Release lock on unmount --
   useEffect(() => {

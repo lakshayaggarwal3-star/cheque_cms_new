@@ -9,6 +9,7 @@
 using CPS.API.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using SixLabors.ImageSharp;
 
 namespace CPS.API.Controllers;
 
@@ -78,6 +79,33 @@ public class ImagesController : ControllerBase
         Response.Headers.Append("Cache-Control", "no-store, no-cache, must-revalidate");
         Response.Headers.Append("Pragma", "no-cache");
 
-        return PhysicalFile(fullPath, "image/jpeg");
+        var extension = Path.GetExtension(fullPath).ToLowerInvariant();
+        if (extension == ".tif" || extension == ".tiff")
+        {
+            try
+            {
+                using var image = SixLabors.ImageSharp.Image.Load(fullPath);
+                var ms = new MemoryStream();
+                image.SaveAsJpeg(ms);
+                ms.Position = 0;
+                return File(ms, "image/jpeg");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error converting TIFF to JPEG for {Path}", relativePath);
+                // Fallback: try to serve the raw file anyway, though browser likely won't show it
+                return PhysicalFile(fullPath, "image/tiff");
+            }
+        }
+
+        var contentType = extension switch
+        {
+            ".png" => "image/png",
+            ".gif" => "image/gif",
+            ".webp" => "image/webp",
+            _ => "image/jpeg"
+        };
+
+        return PhysicalFile(fullPath, contentType);
     }
 }

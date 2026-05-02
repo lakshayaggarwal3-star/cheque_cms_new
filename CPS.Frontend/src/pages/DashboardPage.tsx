@@ -186,7 +186,7 @@ export function DashboardPage() {
       icon: 'list_alt',
       active: true,
       path: '/all-batches',
-      gradient: 'linear-gradient(135deg, #c4613f 0%, #9d4e33 100%)', // Terracotta
+      gradient: 'linear-gradient(135deg, #d97757 0%, #a35238 100%)',
       iconColor: 'rgba(255,255,255,0.95)',
       show: true,
     },
@@ -196,7 +196,7 @@ export function DashboardPage() {
       icon: 'add_box',
       active: !!canCreateBatch,
       path: '/batch/create',
-      gradient: 'linear-gradient(135deg, #d97757 0%, #a35238 100%)', // Burnt Orange
+      gradient: 'linear-gradient(135deg, #d97757 0%, #a35238 100%)',
       iconColor: 'rgba(255,255,255,0.95)',
       show: true,
     },
@@ -206,7 +206,7 @@ export function DashboardPage() {
       icon: 'scanner',
       active: !!canCreateBatch,
       path: '/scan',
-      gradient: 'linear-gradient(135deg, #b87333 0%, #7a4f25 100%)', // Amber
+      gradient: 'linear-gradient(135deg, #d97757 0%, #a35238 100%)',
       iconColor: 'rgba(255,255,255,0.95)',
       show: true,
     },
@@ -216,7 +216,7 @@ export function DashboardPage() {
       icon: 'build',
       active: true,
       path: '/rr',
-      gradient: 'linear-gradient(135deg, #8b4513 0%, #5d2e0d 100%)', // Saddle Brown
+      gradient: 'linear-gradient(135deg, #d97757 0%, #a35238 100%)',
       iconColor: 'rgba(255,255,255,0.95)',
       show: true,
     },
@@ -259,9 +259,9 @@ export function DashboardPage() {
   ];
 
   return (
-    <div>
+    <div className="dashboard-page-wrap">
       {/* Module grid */}
-      <div style={{ marginBottom: 28 }}>
+      <div className="module-grid-wrapper">
         <div className="module-grid">
           {modules.map((m) => (
             m.active ? (
@@ -320,9 +320,10 @@ export function DashboardPage() {
           ))}
         </div>
       </div>
-
+      
       {/* KPI tiles */}
-      <div className="kpi-grid">
+      <div className="kpi-grid-wrapper">
+        <div className="kpi-grid">
         {kpis.map((k, i) => (
           <div key={i} className="kpi-card" style={{ position: 'relative' }}>
             <div className="kpi-icon-box">
@@ -341,6 +342,7 @@ export function DashboardPage() {
             </div>
           </div>
         ))}
+        </div>
       </div>
 
       {/* Batch table card */}

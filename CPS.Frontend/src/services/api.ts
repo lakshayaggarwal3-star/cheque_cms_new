@@ -22,9 +22,7 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      const requestUrl = String(error.config?.url ?? '');
       const currentPath = window.location.pathname;
-      const isAuthMeRequest = requestUrl.includes('/auth/me');
       const isOnLoginPage = currentPath === '/login';
 
       let message = '';

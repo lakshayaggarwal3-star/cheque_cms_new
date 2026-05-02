@@ -147,7 +147,16 @@ namespace CPS.API.Services
                             ["LocationCode"] = code,
                             ["LocationName"] = GetVal(row, headerMap, "LocationName") ?? "",
                             ["State"] = GetVal(row, headerMap, "State") ?? "",
-                            ["Zone"] = GetVal(row, headerMap, "Zone") ?? ""
+                            ["Zone"] = GetVal(row, headerMap, "Zone") ?? "",
+                            ["Grid"] = GetVal(row, headerMap, "Grid") ?? "",
+                            ["ClusterCode"] = GetVal(row, headerMap, "Cluster CODE") ?? GetVal(row, headerMap, "ClusterCode") ?? "",
+                            ["ScannerID"] = GetVal(row, headerMap, "ScannerID") ?? "",
+                            ["BOFD"] = GetVal(row, headerMap, "BOFD") ?? "",
+                            ["PreTrun"] = GetVal(row, headerMap, "PreTrun") ?? "",
+                            ["DepositAccount"] = GetVal(row, headerMap, "DepositAc") ?? GetVal(row, headerMap, "DepositAccount") ?? "",
+                            ["IFSC"] = GetVal(row, headerMap, "IFSC") ?? "",
+                            ["LocType"] = GetVal(row, headerMap, "LocType") ?? "",
+                            ["PIFPrefix"] = GetVal(row, headerMap, "PIF Number") ?? GetVal(row, headerMap, "PIFPrefix") ?? ""
                         };
 
                         await UpsertLocationAsync(db, values, job.CreatedBy);
@@ -440,7 +449,11 @@ namespace CPS.API.Services
             var code = values["LocationCode"];
             if (string.IsNullOrWhiteSpace(code)) throw new Exception("LocationCode is required");
 
-            var location = await db.Locations.FirstOrDefaultAsync(l => l.LocationCode == code && !l.IsDeleted);
+            var location = await db.Locations
+                .Include(l => l.Finance)
+                .Include(l => l.Scanners)
+                .FirstOrDefaultAsync(l => l.LocationCode == code && !l.IsDeleted);
+
             if (location == null)
             {
                 location = new Location { LocationCode = code, CreatedBy = userId, CreatedAt = DateTime.UtcNow };
@@ -457,11 +470,11 @@ namespace CPS.API.Services
             location.UpdatedAt = DateTime.UtcNow;
 
             // Finance
-            var finance = await db.LocationFinances.FirstOrDefaultAsync(f => f.LocationID == location.LocationID);
+            var finance = location.Finance;
             if (finance == null)
             {
-                finance = new LocationFinance { LocationID = location.LocationID, CreatedBy = userId, CreatedAt = DateTime.UtcNow };
-                db.LocationFinances.Add(finance);
+                finance = new LocationFinance { CreatedBy = userId, CreatedAt = DateTime.UtcNow };
+                location.Finance = finance;
             }
             finance.BOFD = values["BOFD"];
             finance.PreTrun = values["PreTrun"];
@@ -474,12 +487,11 @@ namespace CPS.API.Services
             var scannerId = values["ScannerID"];
             if (!string.IsNullOrWhiteSpace(scannerId))
             {
-                var scanner = await db.LocationScanners.FirstOrDefaultAsync(s => s.LocationID == location.LocationID && s.ScannerID == scannerId);
+                var scanner = location.Scanners.FirstOrDefault(s => s.ScannerID == scannerId);
                 if (scanner == null)
                 {
-                    db.LocationScanners.Add(new LocationScanner 
+                    location.Scanners.Add(new LocationScanner 
                     { 
-                        LocationID = location.LocationID, 
                         ScannerID = scannerId, 
                         CreatedBy = userId, 
                         CreatedAt = DateTime.UtcNow 

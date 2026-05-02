@@ -245,7 +245,7 @@ export interface RRItemDto {
   totalInstruments?: number;
   imageBaseName?: string;
   imageName?: string;
-
+  depositSlipNo?: string;
   fileExtension?: string;
   rowVersion: string;
 }
