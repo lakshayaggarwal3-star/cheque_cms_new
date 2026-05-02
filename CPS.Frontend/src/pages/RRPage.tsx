@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getRRItems, saveRRCorrection, completeRR } from '../services/rrService';
 import { getBatchByNumber } from '../services/batchService';
-import { getScanSession } from '../services/scanService';
+import { getScanSession, releaseScanLock } from '../services/scanService';
 import { toast } from '../store/toastStore';
 import { getChequeImageUrl } from '../utils/imageUtils';
 import { RRItemDto, RRState, BatchDto, ScanSessionDto } from '../types';
@@ -103,7 +103,6 @@ export function RRPage() {
   const handleAutoRelease = useCallback(async () => {
     if (!batch?.batchID) return;
     try {
-      const { releaseScanLock } = await import('../services/scanService');
       await releaseScanLock(batch.batchID);
       toast.warning('Session released due to inactivity');
     } finally {
@@ -209,7 +208,7 @@ export function RRPage() {
   useEffect(() => {
     return () => {
       if (batch?.batchID) {
-        import('../services/scanService').then(m => m.releaseScanLock(batch.batchID)).catch(() => {});
+        releaseScanLock(batch.batchID).catch(() => {});
       }
     };
   }, [batch?.batchID]);

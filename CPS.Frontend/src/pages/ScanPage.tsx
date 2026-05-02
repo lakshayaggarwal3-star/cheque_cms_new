@@ -27,7 +27,7 @@ import { ImageEditModal } from '../components/ImageEditModal';
 import {
   Pill, Icon, ScanItemsTable, ScannerSettingsModal,
 } from '../components/scan';
-import { uploadBulkSlipItems } from '../services/scanService';
+import { uploadBulkSlipItems, releaseScanLock } from '../services/scanService';
 import { BatchStatus } from '../types';
 
 import {
@@ -174,7 +174,6 @@ export function ScanPage() {
   const handleAutoRelease = useCallback(async () => {
     if (!id) return;
     try {
-      const { releaseScanLock } = await import('../services/scanService');
       await releaseScanLock(id);
       toast.warning('Session released due to inactivity');
     } finally {
@@ -200,7 +199,7 @@ export function ScanPage() {
   useEffect(() => {
     return () => {
       if (id) {
-        import('../services/scanService').then(m => m.releaseScanLock(id)).catch(() => {});
+        releaseScanLock(id).catch(() => {});
       }
     };
   }, [id]);

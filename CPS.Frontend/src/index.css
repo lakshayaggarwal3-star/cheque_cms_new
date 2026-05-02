@@ -206,6 +206,13 @@
   }
 }
 
+/* Dashboard Layout Wrapper */
+.dashboard-page-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
 /* Dashboard Module Buttons */
 .module-btn {
   display: flex;
@@ -322,7 +329,6 @@
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 16px;
-  margin-bottom: 24px;
 }
 @media (max-width: 767px) {
   .kpi-grid { grid-template-columns: repeat(2, 1fr); }
