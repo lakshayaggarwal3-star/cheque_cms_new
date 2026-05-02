@@ -414,7 +414,7 @@ export function ImageCropEditor({ file, title, onClose, onSave, mode = 'desktop'
     } catch (e) {
       console.error('[Editor] Corner extraction failed', e);
     }
-  }, [selectedDetId, protosData, protosShape, imgNatural.w, detections]);
+  }, [selectedDetId, protosData, protosShape, imgNatural.w, imgNatural.h, detections]);
 
   const calcLayout = useCallback(() => {
     const el = containerRef.current;
@@ -550,7 +550,7 @@ export function ImageCropEditor({ file, title, onClose, onSave, mode = 'desktop'
     }
   }, [dragging, draggingSide, dragStart, initialCorners, getCanvasPos]);
 
-  const onEnd = () => {
+  const onEnd = useCallback(() => {
     if (dragging >= 0 || draggingSide >= 0) {
       wasDraggingRef.current = true;
       // Small timeout to prevent the immediate click event from firing a snap
@@ -560,7 +560,7 @@ export function ImageCropEditor({ file, title, onClose, onSave, mode = 'desktop'
     setDraggingSide(-1);
     setDragStart(null);
     setInitialCorners(null);
-  };
+  }, [dragging, draggingSide]);
 
   useEffect(() => {
     const mm = (e: MouseEvent) => onMove(e.clientX, e.clientY);
@@ -583,7 +583,7 @@ export function ImageCropEditor({ file, title, onClose, onSave, mode = 'desktop'
       window.removeEventListener('touchmove', tm);
       window.removeEventListener('touchend', tu);
     };
-  }, [onMove, dragging]);
+  }, [onMove, onEnd, dragging, draggingSide]);
 
   const handleReset = () => {
     setCorners([{ x: 0.1, y: 0.1 }, { x: 0.9, y: 0.1 }, { x: 0.9, y: 0.9 }, { x: 0.1, y: 0.9 }]);
@@ -747,6 +747,7 @@ export function ImageCropEditor({ file, title, onClose, onSave, mode = 'desktop'
         {imgUrl && (
           <img
             src={imgUrl}
+            alt="Source to crop"
             onLoad={e => {
               const img = e.currentTarget;
               setImgNatural({ w: img.naturalWidth, h: img.naturalHeight });

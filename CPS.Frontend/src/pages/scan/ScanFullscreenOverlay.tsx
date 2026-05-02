@@ -7,7 +7,7 @@
 
 import React from 'react';
 import { type ScanSessionDto } from '../../types';
-import { Icon, IconBtn, ImagePlaceholder } from '../../components/scan';
+import { IconBtn, ImagePlaceholder } from '../../components/scan';
 
 interface Props {
   session: ScanSessionDto;

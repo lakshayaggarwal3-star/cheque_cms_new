@@ -123,7 +123,7 @@ export function RRPage() {
       }
     }, 5000);
     return () => clearInterval(timer);
-  }, [batch?.batchID, loading, lastActivity, hasWarned, handleAutoRelease]);
+  }, [batch?.batchID, loading, lastActivity, hasWarned, handleAutoRelease, INACTIVITY_LIMIT, WARNING_LIMIT]);
 
   const item = items[current];
   const activeSlip = session?.slipGroups?.find(g => g.slipEntryId === item?.slipEntryId);
@@ -214,20 +214,9 @@ export function RRPage() {
     };
   }, [batch?.batchID]);
 
-  const getClearingTypeLabel = (code?: string) => {
-    switch (code) {
-      case '01': return 'Regular (01)';
-      case '02': return 'High Value (02)';
-      case '03': return 'CTS (03)';
-      case '11': return 'Non-CTS (11)';
-      default: return code || '—';
-    }
-  };
 
-  const getBasename = (path?: string) => {
-    if (!path) return '';
-    return path.split(/[\\/]/).pop() || '';
-  };
+
+
 
   if (loading) {
     return (

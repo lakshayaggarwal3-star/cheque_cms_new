@@ -134,8 +134,8 @@ try
             var devUser = new UserMaster
             {
                 EmployeeID  = "DEV001",
-                Username    = "admin",
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword("Admin@1234", workFactor: 12),
+                Username    = "Developer",
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword("Dev@1234", workFactor: 12),
                 Email       = "admin@cps.local",
                 IsActive    = true,
                 CreatedAt   = DateTime.UtcNow,

@@ -8,7 +8,7 @@
 // Updated     : 2026-04-27
 // =============================================================================
 
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { getBatchByNumber } from '../services/batchService';
 import { completeChequePhase, completeScan, completeSlipPhase, getScanSession, releaseScanLock, startScan, uploadMobileCheque, uploadMobileSlipItem } from '../services/scanService';
@@ -43,12 +43,7 @@ const card: React.CSSProperties = {
   padding: 16,
 };
 
-const pill: React.CSSProperties = {
-  padding: '4px 10px', borderRadius: 'var(--r-md)',
-  fontSize: 11, fontWeight: 600,
-  background: 'var(--bg-subtle)', border: '1px solid var(--border)',
-  color: 'var(--fg)',
-};
+
 
 const thumbBtn: React.CSSProperties = {
   position: 'absolute', top: 4, right: 4,
@@ -159,7 +154,7 @@ export function MobileScanPage() {
       }
     }, 5000);
     return () => clearInterval(timer);
-  }, [id, loading, lastActivity, hasWarned, handleAutoRelease]);
+  }, [id, loading, lastActivity, hasWarned, handleAutoRelease, INACTIVITY_LIMIT, WARNING_LIMIT]);
 
   // -- Release lock on unmount --
   useEffect(() => {
@@ -251,7 +246,6 @@ export function MobileScanPage() {
 
   const onCameraCapture = (file: File, _position: 'front' | 'back', isScan: boolean) => {
     setShowCamera(false);
-    const editTitle = isScan ? 'Review Scan' : 'Edit Image';
     if (step === 'slip-capture') {
       setEditState({ file, target: 'slip', title: `Review Slip ${isScan ? 'Scan' : 'Capture'}`, isScan, isSlip: true });
     } else if (step === 'cheque-front') {
@@ -775,39 +769,9 @@ export function MobileScanPage() {
 
 // -- Small Components ----------------------------------------------------------
 
-function StepPanel({ icon, title, subtitle, accent, children }: {
-  icon: string; title: string; subtitle: string; accent: string; children: React.ReactNode;
-}) {
-  return (
-    <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-        <div style={{ width: 36, height: 36, borderRadius: 'var(--r-md)', background: accent, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <span className="material-symbols-outlined" style={{ fontSize: 20, color: '#fff' }}>{icon}</span>
-        </div>
-        <div>
-          <div style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--fg)' }}>{title}</div>
-          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-muted)' }}>{subtitle}</div>
-        </div>
-      </div>
-      {children}
-    </div>
-  );
-}
 
-function ActionBtn({ icon, label, onClick }: { icon: string; label: string; onClick: () => void }) {
-  return (
-    <button onClick={onClick} style={{
-      width: '100%', padding: '14px', borderRadius: 'var(--r-lg)',
-      background: 'var(--accent-500)', color: 'var(--fg-on-accent)',
-      border: 'none', fontSize: 'var(--text-sm)', fontWeight: 600,
-      cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-      fontFamily: 'inherit',
-    }}>
-      <span className="material-symbols-outlined" style={{ fontSize: 20 }}>{icon}</span>
-      {label}
-    </button>
-  );
-}
+
+
 
 function PrimaryBtn({ icon, label, onClick, disabled }: { icon: string; label: string; onClick: () => void; disabled?: boolean }) {
   return (
@@ -871,19 +835,4 @@ function Chip({ icon, label }: { icon: string; label: string }) {
   );
 }
 
-function StatusPill({ status }: { status: string }) {
-  const map: Record<string, { bg: string; color: string }> = {
-    Captured:      { bg: 'var(--success-bg)', color: 'var(--success)' },
-    Failed:        { bg: 'var(--danger-bg)',  color: 'var(--danger)'  },
-    RetryPending:  { bg: 'var(--warning-bg)', color: 'var(--warning)' },
-    Pending:       { bg: 'var(--bg-subtle)',  color: 'var(--fg-muted)'},
-  };
-  const s = map[status] ?? map['Pending'];
-  return (
-    <span style={{
-      padding: '2px 7px', borderRadius: 'var(--r-full)',
-      fontSize: 10, fontWeight: 600,
-      background: s.bg, color: s.color, whiteSpace: 'nowrap',
-    }}>{status}</span>
-  );
-}
+

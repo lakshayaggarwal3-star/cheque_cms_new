@@ -12,14 +12,6 @@ interface Tab {
 
 const TABS: Tab[] = [
   { 
-    label: 'Home', 
-    path: '/', 
-    icon: 'dashboard', 
-    activeColor: '#d97757', // Theme Orange
-    glowColor: 'rgba(217, 119, 87, 0.4)',
-    bgGradient: 'linear-gradient(135deg, #d97757 0%, #a35238 100%)'
-  },
-  { 
     label: 'New Batch', 
     path: '/batch/create', 
     icon: 'add_circle', 

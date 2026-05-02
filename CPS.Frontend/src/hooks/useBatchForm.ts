@@ -160,7 +160,7 @@ export function useBatchForm() {
     } finally {
       setSubmitting(false);
     }
-  }, [entryMode, showHiddenFields, totalSlips, totalAmount, pdc, pdcDate, user?.locationId, activeScanner, locationDetails?.locationCode, batchDate, clearingType, summRefNo, pif, scanType, withSlip, setWithSlipDefault, navigate]);
+  }, [entryMode, showHiddenFields, totalSlips, totalAmount, pdc, pdcDate, user?.locationId, activeScanner, locationDetails?.locationCode, batchDate, clearingType, summRefNo, scanType, withSlip, setWithSlipDefault, navigate]);
 
   return {
     user,

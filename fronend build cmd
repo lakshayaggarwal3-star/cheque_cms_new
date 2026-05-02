@@ -23,3 +23,8 @@ key={location.pathname} on the content wrapper div forces React to do a clean un
 (!isNoHeaderPage || isMobile) ensures the hamburger button always shows on mobile/small screens, so you can always open the nav sidebar even on the scan/RR detail pages.
 
 The fix is already in Layout.tsx. Just rebuild and test — navigating from the scan page to any sidebar link should now fully switch the content. The nav will feel slightly less instant when leaving the scan page (scanner cleanup runs), but it will always work correctly.
+
+# 1. Delete the database
+dotnet ef database drop --project CPS.API --force
+# 2. Recreate it from the current migrations
+dotnet ef database update --project CPS.API  
