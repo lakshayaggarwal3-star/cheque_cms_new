@@ -13,7 +13,7 @@ import { getBatchList } from '../services/batchService';
 import { useAuthStore } from '../store/authStore';
 import { BatchDto, BatchStatus, BatchStatusLabels } from '../types';
 import { toast } from '../store/toastStore';
-import { QueueTabs } from '../components/QueueTabs';
+import { todayIST } from '../utils/dateUtils';
 
 // ── primitives ────────────────────────────────────────────────────────────────
 
@@ -73,7 +73,7 @@ function Dot({ tone = 'neutral' as Tone }: { tone?: Tone }) {
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-const STATUS_TONE: Record<number, Tone> = { 0: 'neutral', 1: 'info', 2: 'warning', 3: 'success', 4: 'danger', 5: 'success' };
+const STATUS_TONE: Record<number, Tone> = { 0: 'neutral', 1: 'info', 2: 'warning', 3: 'success', 4: 'danger', 5: 'success', 6: 'warning' };
 
 function fmtAmount(n: number) {
   return n === 0 ? '—' : '₹' + n.toLocaleString('en-IN');
@@ -86,16 +86,24 @@ export function ScanListPage() {
   const navigate = useNavigate();
   const [batches, setBatches] = useState<BatchDto[]>([]);
   const [loading, setLoading] = useState(true);
+  const [date, setDate] = useState(todayIST);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [search, setSearch] = useState('');
   const [searchFocus, setSearchFocus] = useState(false);
 
+  const isAdminOrDev = user?.roles?.some(r => ['Admin', 'Developer'].includes(r));
+
   const load = useCallback(async () => {
     if (!user) return;
     setLoading(true);
     try {
-      const res = await getBatchList({ locationId: user.locationId, page, pageSize: 100 });
+      const res = await getBatchList({
+        locationId: isAdminOrDev ? undefined : user.locationId,
+        date,
+        page,
+        pageSize: 100
+      });
       // Filter for scanning-related statuses
       const pending = res.items.filter(b =>
         b.batchStatus === BatchStatus.Created ||
@@ -109,7 +117,7 @@ export function ScanListPage() {
     } finally {
       setLoading(false);
     }
-  }, [user, page]);
+  }, [user, page, date]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -130,7 +138,6 @@ export function ScanListPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0, height: '100%' }}>
-      <QueueTabs />
       {/* Table card */}
       <div style={{
         background: 'var(--bg-raised)', border: '1px solid var(--border)',
@@ -169,6 +176,25 @@ export function ScanListPage() {
                   outline: 'none',
                   boxShadow: searchFocus ? 'var(--shadow-focus)' : 'none',
                   transition: 'border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease)',
+                }}
+              />
+            </div>
+
+            {/* Date Picker */}
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <Icon name="calendar_today" size={16} style={{
+                position: 'absolute', left: 10, color: 'var(--fg-subtle)', pointerEvents: 'none',
+              }} />
+              <input
+                type="date"
+                value={date}
+                onChange={e => { setDate(e.target.value); setPage(1); }}
+                style={{
+                  padding: '8px 12px 8px 32px',
+                  background: 'var(--bg-input)', color: 'var(--fg)',
+                  border: '1px solid var(--border-strong)', borderRadius: 'var(--r-md)',
+                  fontSize: 'var(--text-sm)', fontFamily: 'var(--font-sans)',
+                  outline: 'none', height: 36, boxSizing: 'border-box',
                 }}
               />
             </div>

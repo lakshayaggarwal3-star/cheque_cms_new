@@ -13,7 +13,7 @@ import { getBatchList } from '../services/batchService';
 import { useAuthStore } from '../store/authStore';
 import { BatchDto, BatchStatus, BatchStatusLabels } from '../types';
 import { toast } from '../store/toastStore';
-import { QueueTabs } from '../components/QueueTabs';
+import { todayIST } from '../utils/dateUtils';
 
 // ── primitives ────────────────────────────────────────────────────────────────
 
@@ -73,7 +73,7 @@ function Dot({ tone = 'neutral' as Tone }: { tone?: Tone }) {
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-const STATUS_TONE: Record<number, Tone> = { 0: 'neutral', 1: 'info', 2: 'warning', 3: 'success', 4: 'danger', 5: 'success' };
+const STATUS_TONE: Record<number, Tone> = { 0: 'neutral', 1: 'info', 2: 'warning', 3: 'success', 4: 'danger', 5: 'success', 6: 'warning' };
 
 function fmtAmount(n: number) {
   return n === 0 ? '—' : '₹' + n.toLocaleString('en-IN');
@@ -86,17 +86,27 @@ export function RRListPage() {
   const navigate = useNavigate();
   const [batches, setBatches] = useState<BatchDto[]>([]);
   const [loading, setLoading] = useState(true);
+  const [date, setDate] = useState(todayIST);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [search, setSearch] = useState('');
   const [searchFocus, setSearchFocus] = useState(false);
 
+  const isAdminOrDev = user?.roles?.some(r => ['Admin', 'Developer'].includes(r));
+
   const load = useCallback(async () => {
     if (!user) return;
     setLoading(true);
     try {
-      const res = await getBatchList({ locationId: user.locationId, page, pageSize: 100 });
-      const rrPending = res.items.filter(b => b.batchStatus === BatchStatus.RRPending);
+      const res = await getBatchList({
+        locationId: isAdminOrDev ? undefined : user.locationId,
+        date,
+        page,
+        pageSize: 100
+      });
+      const rrPending = res.items.filter(b =>
+        b.batchStatus === BatchStatus.RRPending || b.batchStatus === BatchStatus.RRInProgress
+      );
       setBatches(rrPending);
       setTotalPages(res.totalPages);
     } catch {
@@ -104,7 +114,7 @@ export function RRListPage() {
     } finally {
       setLoading(false);
     }
-  }, [user, page]);
+  }, [user, page, date]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -125,7 +135,6 @@ export function RRListPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0, height: '100%' }}>
-      <QueueTabs />
       {/* Table card */}
       <div style={{
         background: 'var(--bg-raised)', border: '1px solid var(--border)',
@@ -164,6 +173,25 @@ export function RRListPage() {
                   outline: 'none',
                   boxShadow: searchFocus ? 'var(--shadow-focus)' : 'none',
                   transition: 'border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease)',
+                }}
+              />
+            </div>
+
+            {/* Date Picker */}
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <Icon name="calendar_today" size={16} style={{
+                position: 'absolute', left: 10, color: 'var(--fg-subtle)', pointerEvents: 'none',
+              }} />
+              <input
+                type="date"
+                value={date}
+                onChange={e => { setDate(e.target.value); setPage(1); }}
+                style={{
+                  padding: '8px 12px 8px 32px',
+                  background: 'var(--bg-input)', color: 'var(--fg)',
+                  border: '1px solid var(--border-strong)', borderRadius: 'var(--r-md)',
+                  fontSize: 'var(--text-sm)', fontFamily: 'var(--font-sans)',
+                  outline: 'none', height: 36, boxSizing: 'border-box',
                 }}
               />
             </div>
@@ -211,6 +239,7 @@ export function RRListPage() {
                 <tbody>
                   {filtered.map(b => {
                     const tone = STATUS_TONE[b.batchStatus] ?? 'neutral';
+                    const isInProgress = b.batchStatus === BatchStatus.RRInProgress;
                     return (
                       <tr key={b.batchID} style={{ borderBottom: '1px solid var(--border-subtle)' }}
                         onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-subtle)')}
@@ -222,6 +251,18 @@ export function RRListPage() {
                             <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 500, color: 'var(--fg)' }}>
                               {b.batchNo}
                             </span>
+                            {isInProgress && (
+                              <span style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 4,
+                                padding: '2px 7px', borderRadius: 'var(--r-full)',
+                                fontSize: 11, fontWeight: 500,
+                                background: 'var(--warning-bg)', color: 'var(--warning)',
+                                border: '1px solid transparent',
+                              }}>
+                                <Icon name="lock" size={11} />
+                                In Progress
+                              </span>
+                            )}
                           </div>
                         </td>
                         <td style={{ padding: '14px 20px', color: 'var(--fg-muted)' }}>
@@ -252,7 +293,7 @@ export function RRListPage() {
                             onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
                             onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                           >
-                            Repair
+                            {isInProgress ? 'View' : 'Repair'}
                             <Icon name="arrow_forward" size={16} weight={500} />
                           </button>
                         </td>
@@ -266,12 +307,24 @@ export function RRListPage() {
               <div className="mobile-batch-cards">
                 {filtered.map(b => {
                   const tone = STATUS_TONE[b.batchStatus] ?? 'neutral';
+                  const isInProgress = b.batchStatus === BatchStatus.RRInProgress;
                   return (
                     <div key={b.batchID} className="batch-card">
                       <div className="batch-card-header">
                         <div className="batch-card-no-group">
                           <Dot tone={tone} />
                           <span>{b.batchNo}</span>
+                          {isInProgress && (
+                            <span style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 3,
+                              padding: '1px 6px', borderRadius: 'var(--r-full)',
+                              fontSize: 10, fontWeight: 500,
+                              background: 'var(--warning-bg)', color: 'var(--warning)',
+                            }}>
+                              <Icon name="lock" size={10} />
+                              In Progress
+                            </span>
+                          )}
                         </div>
                         <Chip tone={tone}>{BatchStatusLabels[b.batchStatus]}</Chip>
                       </div>
@@ -290,7 +343,7 @@ export function RRListPage() {
                         </div>
                       </div>
                       <button className="batch-card-action" onClick={() => navigate(`/rr/${b.batchNo}`)}>
-                        Repair
+                        {isInProgress ? 'View' : 'Repair'}
                         <Icon name="arrow_forward" size={16} />
                       </button>
                     </div>

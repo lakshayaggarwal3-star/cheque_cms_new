@@ -15,7 +15,8 @@ public enum BatchStatus
     ScanningPending = 2,
     ScanningCompleted = 3,
     RRPending = 4,
-    RRCompleted = 5
+    RRCompleted = 5,
+    RRInProgress = 6
 }
 
 public enum RRState

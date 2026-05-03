@@ -96,11 +96,14 @@ try
     builder.Services.AddScoped<IMasterImportJobProcessor, MasterImportJobProcessor>();
     builder.Services.AddSingleton<IJobSignalService, JobSignalService>();
     builder.Services.AddHostedService<CPS.API.Workers.BackgroundJobWorker>();
+    builder.Services.AddSingleton<ActivityFlushService>();
+    builder.Services.AddHostedService(sp => sp.GetRequiredService<ActivityFlushService>());
 
     builder.Services.AddControllers()
         .AddJsonOptions(opts =>
             opts.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase);
 
+    builder.Services.AddHttpContextAccessor();
     builder.Services.AddMemoryCache();
 
     var app = builder.Build();
@@ -146,7 +149,18 @@ try
             var devRole = db.Roles.First(r => r.RoleName == "Developer");
             db.UserRoles.Add(new UserRole { UserID = devUser.UserID, RoleID = devRole.RoleID });
             db.SaveChanges();
-            Log.Information("Seeded default developer account — EmployeeID: DEV001 / Password: Admin@1234");
+            Log.Information("Seeded default developer account — EmployeeID: DEV001 / Password: Dev@1234");
+
+            // Seed default user settings for Developer
+            if (!db.UserSettings.Any(s => s.UserID == devUser.UserID))
+            {
+                db.UserSettings.AddRange(
+                    new UserSetting { UserID = devUser.UserID, SettingKey = "ScanMode", SettingValue = "scanner", UpdatedAt = DateTime.UtcNow },
+                    new UserSetting { UserID = devUser.UserID, SettingKey = "WithSlip", SettingValue = "true", UpdatedAt = DateTime.UtcNow }
+                );
+                db.SaveChanges();
+                Log.Information("Seeded default settings for DEV001 (ScanMode: scanner, WithSlip: true)");
+            }
         }
         else
         {

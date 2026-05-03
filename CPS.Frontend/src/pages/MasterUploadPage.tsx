@@ -1015,10 +1015,13 @@ export function MastersPage() {
         <ScbMasterTab />
       ) : null}
 
-      {/* ── Add Clients Modal ── */}
       {showAddModal && selectedGlobal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300, backdropFilter: 'blur(4px)' }}>
-          <div className="card" style={{ width: 700, height: '70vh', display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden' }}>
+        <div className="modal-overlay-container" style={{ 
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(12px)', 
+          display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 9999, 
+          padding: '40px 20px', overflowY: 'auto' 
+        }}>
+          <div className="bg-[var(--bg-raised)] border border-[var(--border)] rounded-[32px] shadow-2xl w-full max-w-3xl flex flex-col mb-10 overflow-hidden">
             <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg-raised)' }}>
               <h2 style={{ margin: 0, fontSize: 'var(--text-lg)' }}>Add RCMS Codes to {selectedGlobal.globalCode}</h2>
               <button onClick={() => setShowAddModal(false)} className="btn-ghost"><Icon name="close" size={24} /></button>
@@ -1064,10 +1067,13 @@ export function MastersPage() {
         </div>
       )}
 
-      {/* ── Create Global Client Code Modal ── */}
       {showCreateModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300, backdropFilter: 'blur(4px)' }}>
-          <div className="card" style={{ width: 500, display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden' }}>
+        <div className="modal-overlay-container" style={{ 
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(12px)', 
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, 
+          padding: 20 
+        }}>
+          <div className="bg-[var(--bg-raised)] border border-[var(--border)] rounded-[32px] shadow-2xl w-full max-w-md overflow-hidden">
             <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg-raised)' }}>
               <h2 style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 700 }}>New Global Client Code</h2>
               <button onClick={() => setShowCreateModal(false)} className="btn-ghost"><Icon name="close" size={24} /></button>
@@ -1090,17 +1096,20 @@ export function MastersPage() {
         </div>
       )}
 
-      {/* ── Edit Client Modal (Enhanced) ── */}
       {editClient && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, backdropFilter: 'blur(2px)' }}>
-          <div className="card" style={{ width: 500, padding: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div className="modal-overlay-container" style={{ 
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(12px)', 
+          display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 9999, 
+          padding: '40px 20px', overflowY: 'auto' 
+        }}>
+          <div className="bg-[var(--bg-raised)] border border-[var(--border)] rounded-[32px] shadow-2xl w-full max-w-lg flex flex-col mb-10 overflow-hidden">
             <div style={{ padding: '16px 24px', background: 'var(--bg-raised)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <h2 style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 700 }}>Edit Client Master</h2>
               <button onClick={() => setEditClient(null)} className="btn-ghost"><Icon name="close" size={24} /></button>
             </div>
             
-            <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16, maxHeight: '70vh', overflow: 'auto' }}>
-              <div style={{ display: 'flex', gap: 16 }}>
+            <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16, overflowY: 'auto' }}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div style={{ flex: 1 }}>
                   <label className="label" style={{ fontSize: 10 }}>CITY CODE</label>
                   <input className="input-field" value={editClient.cityCode} onChange={e => setEditClient({ ...editClient, cityCode: e.target.value })} />
@@ -1116,7 +1125,7 @@ export function MastersPage() {
                 <input className="input-field" value={editClient.clientName} onChange={e => setEditClient({ ...editClient, clientName: e.target.value })} />
               </div>
 
-              <div style={{ display: 'flex', gap: 16 }}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div style={{ flex: 1 }}>
                   <label className="label" style={{ fontSize: 10 }}>PICKUP CODE</label>
                   <input className="input-field" value={editClient.pickupPointCode} onChange={e => setEditClient({ ...editClient, pickupPointCode: e.target.value })} />
@@ -1155,21 +1164,24 @@ export function MastersPage() {
         </div>
       )}
 
-      {/* ── Edit Location Modal ── */}
       {editLocation && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, backdropFilter: 'blur(2px)' }}>
-          <div className="card" style={{ width: 500, padding: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div className="modal-overlay-container" style={{ 
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(12px)', 
+          display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 9999, 
+          padding: '40px 20px', overflowY: 'auto' 
+        }}>
+          <div className="bg-[var(--bg-raised)] border border-[var(--border)] rounded-[32px] shadow-2xl w-full max-w-lg flex flex-col mb-10 overflow-hidden">
             <div style={{ padding: '16px 24px', background: 'var(--bg-raised)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <h2 style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 700 }}>Edit Location Master</h2>
               <button onClick={() => setEditLocation(null)} className="btn-ghost"><Icon name="close" size={24} /></button>
             </div>
             
-            <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16, overflowY: 'auto' }}>
               <div>
                 <label className="label" style={{ fontSize: 10 }}>LOCATION NAME</label>
                 <input className="input-field" value={editLocation.locationName} onChange={e => setEditLocation({ ...editLocation, locationName: e.target.value })} />
               </div>
-              <div style={{ display: 'flex', gap: 16 }}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div style={{ flex: 1 }}>
                   <label className="label" style={{ fontSize: 10 }}>STATE</label>
                   <input className="input-field" value={editLocation.state} onChange={e => setEditLocation({ ...editLocation, state: e.target.value })} />
@@ -1236,10 +1248,9 @@ export function MastersPage() {
           </div>
         </div>
       )}
-      {/* Job Progress Overlay */}
       {jobStatus && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(8px)' }}>
-          <div className="card" style={{ width: 600, padding: 32, display: 'flex', flexDirection: 'column', gap: 24, boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(8px)', padding: 16 }}>
+          <div className="bg-[var(--bg-raised)] border border-[var(--border)] rounded-3xl shadow-2xl w-full max-w-xl p-6 sm:p-8 flex flex-col gap-6 overflow-y-auto max-h-[90vh]">
             <div style={{ textAlign: 'center' }}>
               <h2 style={{ margin: 0, fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--accent-500)' }}>
                 {jobStatus.status === 'Processing' ? 'Processing Upload...' : 
@@ -1262,7 +1273,7 @@ export function MastersPage() {
               }} />
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               {[
                 { label: 'Processed', value: jobStatus.processedRows, color: 'var(--fg)' },
                 { label: 'Inserted', value: jobStatus.insertedCount, color: '#4caf50' },

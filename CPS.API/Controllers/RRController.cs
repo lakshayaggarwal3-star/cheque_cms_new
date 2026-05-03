@@ -53,4 +53,12 @@ public class RRController : ControllerBase
         await _rrService.CompleteRRAsync(batchId, userId);
         return Ok(ApiResponse<object>.Ok(null, "RR completed"));
     }
+
+    [HttpPost("{batchId:long}/release")]
+    public async Task<IActionResult> Release(long batchId)
+    {
+        var userId = int.Parse(User.FindFirstValue("userId")!);
+        await _rrService.ReleaseRRLockAsync(batchId, userId);
+        return Ok(ApiResponse<object>.Ok(null, "RR lock released"));
+    }
 }

@@ -6,7 +6,7 @@
 // Created     : 2026-04-19
 // =============================================================================
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   captureCheque, completeScan, startFeed, stopFeed,
   uploadMobileCheque, uploadMobileSlipItem,
@@ -181,20 +181,29 @@ export function useScannerLogic({
   }, [scannerChoice, batchNo, nextChqSeq, activeSlipEntryId, batchId, onCaptureSuccess, rangerEndorsementBatchName]);
 
   // Automate Ranger Lifecycle (ShutDown -> ChangeOptions -> ReadyToFeed)
+  // Guard: only attempt startup once per scannerChoice/wsUrl change. If it fails,
+  // do not retry on every state change — that creates an infinite WebSocket loop
+  // that blocks the main thread and freezes React Router navigation.
+  const rangerStartupAttempted = useRef(false);
   useEffect(() => {
-    // Only auto-init if we have chosen Ranger or are in a step that likely needs it
+    // Reset attempt flag whenever the scannerChoice or URL changes (user-driven retry)
+    rangerStartupAttempted.current = false;
+  }, [scannerChoice, rangerWsUrl]);
+
+  useEffect(() => {
     if (scannerChoice !== 'Ranger') return;
-    
+
     const runAutoRanger = async () => {
       try {
         if (rangerState === RangerTransportState.TransportShutDown || rangerState === RangerTransportState.TransportUnknownState) {
+          if (rangerStartupAttempted.current) return; // already tried — don't loop
+          rangerStartupAttempted.current = true;
           console.log('Ranger: Auto-starting...');
           await rangerStartup(rangerWsUrl);
         } else if (rangerState === RangerTransportState.TransportChangeOptions) {
           console.log('Ranger: Auto-enabling options...');
-          // Set options once we are in ChangeOptions state
           await rangerSetImagingOptions({ needImaging: true, needFrontGrayscale: true, needRearGrayscale: true });
-          
+
           if (rangerEndorsementEnabled) {
             const bName = rangerEndorsementBatchName || batchNo;
             const startSeq = String(nextChqSeq).padStart(4, '0');
@@ -205,7 +214,7 @@ export function useScannerLogic({
           } else {
             await rangerSetEndorsementOptions({ enabled: false });
           }
-          
+
           await rangerEnableOptions();
         }
       } catch (err: any) {

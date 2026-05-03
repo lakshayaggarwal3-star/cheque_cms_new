@@ -7,7 +7,7 @@
 // =============================================================================
 
 import React, { useEffect, useState } from 'react';
-import { getRoleCatalog, resetOperationalData, RoleCatalogDto } from '../services/systemService';
+import { resetOperationalData } from '../services/systemService';
 import { getUserSettings, setUserSetting } from '../services/userSettingService';
 import { toast } from '../store/toastStore';
 import { useSettingsStore } from '../store/settingsStore';
@@ -106,7 +106,6 @@ function SettingRow({ title, description, children }: {
 
 export function SettingsPage() {
   const [resetting, setResetting] = useState(false);
-  const [roles, setRoles] = useState<RoleCatalogDto[]>([]);
   const { mockScanEnabled, setMockScanEnabled, entryMode, setEntryMode, setWithSlipDefault } = useSettingsStore();
   const { theme, setTheme } = useTheme();
   const { user } = useAuthStore();
@@ -121,11 +120,6 @@ export function SettingsPage() {
     }).catch(() => {});
   }, [setEntryMode, setWithSlipDefault]);
 
-  useEffect(() => {
-    getRoleCatalog()
-      .then(setRoles)
-      .catch(() => toast.error('Failed to load role catalog'));
-  }, []);
 
   const handleEntryModeChange = async (mode: 'scanner' | 'mobile') => {
     setEntryMode(mode);
@@ -212,66 +206,47 @@ export function SettingsPage() {
         </div>
       </div>
 
-      {/* Role Catalog */}
-      <div className="card overflow-hidden">
-        <div className="px-5 py-4 border-b border-light-DEFAULT dark:border-dark-DEFAULT flex items-center gap-2">
-          <span className="material-symbols-outlined text-accent-500" style={{ fontSize: '20px' }}>shield_person</span>
-          <h2 className="text-sm font-semibold text-light-primary dark:text-dark-primary">Role Catalog</h2>
-        </div>
-        <div className="px-5 py-5">
-          {roles.length === 0 ? (
-            <p className="text-sm text-light-tertiary dark:text-dark-tertiary">No roles found.</p>
-          ) : (
-            <div className="space-y-2">
-              {roles.map((role) => (
-                <div key={role.key} className="rounded-lg border border-light-DEFAULT dark:border-dark-DEFAULT p-3 hover:bg-light-subtle dark:hover:bg-dark-subtle transition-colors duration-fast">
-                  <p className="text-sm font-medium text-light-primary dark:text-dark-primary">{role.name}</p>
-                  <p className="text-xs text-light-secondary dark:text-dark-secondary mt-1">{role.description}</p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
 
-      {/* Developer Tools */}
-      <div className="card overflow-hidden">
-        <div className="px-5 py-4 border-b border-light-DEFAULT dark:border-dark-DEFAULT flex items-center gap-2">
-          <span className="material-symbols-outlined text-warning" style={{ fontSize: '20px' }}>code</span>
-          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-warning-light dark:bg-warning dark:bg-opacity-20 text-warning">Developer</span>
-          <h2 className="text-sm font-semibold text-light-primary dark:text-dark-primary">Developer Tools</h2>
-        </div>
-        <div className="px-5 py-5 space-y-4">
-          <div className="flex items-start justify-between gap-6 p-4 border border-danger border-opacity-30 rounded-lg bg-danger-light dark:bg-danger dark:bg-opacity-10">
-            <div>
-              <p className="text-sm font-semibold text-light-primary dark:text-dark-primary">Reset Operational Data</p>
-              <p className="text-xs text-light-secondary dark:text-dark-secondary mt-0.5">
-                Deletes all batches, scans, slips, RR records, and audit logs.
-                Users, locations, and client master data are preserved.
-                Use only in development or UAT — irreversible.
-              </p>
+      {/* Developer Tools - Strictly for Developers */}
+      {user?.isDeveloper && (
+        <div className="card overflow-hidden">
+          <div className="px-5 py-4 border-b border-light-DEFAULT dark:border-dark-DEFAULT flex items-center gap-2">
+            <span className="material-symbols-outlined text-warning" style={{ fontSize: '20px' }}>code</span>
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-warning-light dark:bg-warning dark:bg-opacity-20 text-warning">Developer</span>
+            <h2 className="text-sm font-semibold text-light-primary dark:text-dark-primary">Developer Tools</h2>
+          </div>
+          <div className="px-5 py-5 space-y-4">
+            <div className="flex items-start justify-between gap-6 p-4 border border-danger border-opacity-30 rounded-lg bg-danger-light dark:bg-danger dark:bg-opacity-10">
+              <div>
+                <p className="text-sm font-semibold text-light-primary dark:text-dark-primary">Reset Operational Data</p>
+                <p className="text-xs text-light-secondary dark:text-dark-secondary mt-0.5">
+                  Deletes all batches, scans, slips, RR records, and audit logs.
+                  Users, locations, and client master data are preserved.
+                  Use only in development or UAT — irreversible.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleReset}
+                disabled={resetting}
+                className="shrink-0 inline-flex items-center gap-2 bg-danger hover:bg-danger/90 text-white text-sm font-medium px-4 py-2 rounded-md transition-colors duration-fast disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {resetting ? (
+                  <>
+                    <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Resetting…
+                  </>
+                ) : (
+                  <>
+                    <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>delete_outline</span>
+                    Reset Data
+                  </>
+                )}
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={handleReset}
-              disabled={resetting}
-              className="shrink-0 inline-flex items-center gap-2 bg-danger hover:bg-danger/90 text-white text-sm font-medium px-4 py-2 rounded-md transition-colors duration-fast disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {resetting ? (
-                <>
-                  <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  Resetting…
-                </>
-              ) : (
-                <>
-                  <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>delete_outline</span>
-                  Reset Data
-                </>
-              )}
-            </button>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

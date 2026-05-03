@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getRRItems, saveRRCorrection, completeRR } from '../services/rrService';
+import { getRRItems, saveRRCorrection, completeRR, releaseRRLock } from '../services/rrService';
 import { getBatchByNumber } from '../services/batchService';
-import { getScanSession, releaseScanLock } from '../services/scanService';
+import { getScanSession } from '../services/scanService';
 import { toast } from '../store/toastStore';
 import { getChequeImageUrl } from '../utils/imageUtils';
 import { RRItemDto, RRState, BatchDto, ScanSessionDto } from '../types';
@@ -103,7 +103,7 @@ export function RRPage() {
   const handleAutoRelease = useCallback(async () => {
     if (!batch?.batchID) return;
     try {
-      await releaseScanLock(batch.batchID);
+      await releaseRRLock(batch.batchID);
       toast.warning('Session released due to inactivity');
     } finally {
       navigate('/all-batches');
@@ -205,12 +205,19 @@ export function RRPage() {
     }
   };
 
+  // -- Release lock on unmount (navigation) + beforeunload (tab close / crash) --
   useEffect(() => {
     return () => {
-      if (batch?.batchID) {
-        releaseScanLock(batch.batchID).catch(() => {});
-      }
+      if (batch?.batchID) releaseRRLock(batch.batchID).catch(() => {});
     };
+  }, [batch?.batchID]);
+
+  useEffect(() => {
+    if (!batch?.batchID) return;
+    const batchId = batch.batchID;
+    const release = () => navigator.sendBeacon(`/api/rr/${batchId}/release`);
+    window.addEventListener('beforeunload', release);
+    return () => window.removeEventListener('beforeunload', release);
   }, [batch?.batchID]);
 
 
@@ -482,7 +489,7 @@ export function RRPage() {
           fsPanOffset={fsOffset}
           setFsPanOffset={setFsOffset}
           viewerFsRef={{ current: null }}
-          makePanHandlers={(setPan: any) => {
+          makePanHandlers={(_setPan: any) => {
             let start = { x: 0, y: 0 };
             return {
               onMouseDown: (e: React.MouseEvent) => {

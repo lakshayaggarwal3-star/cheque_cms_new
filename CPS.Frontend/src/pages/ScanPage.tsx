@@ -195,13 +195,18 @@ export function ScanPage() {
     return () => clearInterval(timer);
   }, [id, loading, lastActivity, hasWarned, handleAutoRelease, INACTIVITY_LIMIT, WARNING_LIMIT]);
 
-  // -- Release lock on unmount --
+  // -- Release lock on unmount (navigation) + beforeunload (tab close / crash) --
   useEffect(() => {
     return () => {
-      if (id) {
-        releaseScanLock(id).catch(() => {});
-      }
+      if (id) releaseScanLock(id).catch(() => {});
     };
+  }, [id]);
+
+  useEffect(() => {
+    if (!id) return;
+    const release = () => navigator.sendBeacon(`/api/scan/${id}/release-lock`);
+    window.addEventListener('beforeunload', release);
+    return () => window.removeEventListener('beforeunload', release);
   }, [id]);
 
   // ── Derived values ──────────────────────────────────────────────────────────

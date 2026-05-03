@@ -24,22 +24,42 @@ public class AuthService : IAuthService
     private readonly IConfiguration _config;
     private readonly ILogger<AuthService> _logger;
     private readonly IMemoryCache _cache;
+    private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly ActivityFlushService _activityFlush;
 
-    public AuthService(IUserRepository users, IConfiguration config, ILogger<AuthService> logger, IMemoryCache cache)
+    public AuthService(IUserRepository users, IConfiguration config, ILogger<AuthService> logger, IMemoryCache cache, IHttpContextAccessor httpContextAccessor, ActivityFlushService activityFlush)
     {
         _users = users;
         _config = config;
         _logger = logger;
         _cache = cache;
+        _httpContextAccessor = httpContextAccessor;
+        _activityFlush = activityFlush;
     }
 
     public async Task<LoginResponse> LoginAsync(LoginRequest request)
     {
+        // Intelligent IP detection (check for proxy headers first)
+        var context = _httpContextAccessor.HttpContext;
+        var ipAddress = context?.Request.Headers["X-Forwarded-For"].FirstOrDefault() 
+                        ?? context?.Connection?.RemoteIpAddress?.ToString() 
+                        ?? "unknown";
+        
+        var rateLimitKey = $"login_fail_ip_{ipAddress}";
+        
+        if (_cache.TryGetValue(rateLimitKey, out int fails) && fails >= 10)
+        {
+            _logger.LogWarning("IP {IP} blocked due to too many failed login attempts.", ipAddress);
+            throw new ValidationException("Too many failed attempts from this location. Please try again later.");
+        }
+
         var user = await _users.GetByLoginIdAsync(request.LoginId.Trim());
 
         if (user == null)
         {
-            _logger.LogWarning("Login failed — user not found: {LoginId}", request.LoginId);
+            // Increment IP-based failure count even if user doesn't exist
+            _cache.Set(rateLimitKey, (fails) + 1, TimeSpan.FromMinutes(15));
+            _logger.LogWarning("Login failed — user not found: {LoginId} (IP: {IP})", request.LoginId, ipAddress);
             throw new ValidationException("Invalid credentials.");
         }
 
@@ -68,12 +88,16 @@ public class AuthService : IAuthService
         if (user.IsLoggedIn && !request.ForceLogin)
             throw new ConflictException("User already logged in. Pass forceLogin=true to override.");
 
-        // Rotate session token
+        // Rotate session token and stamp activity so inactivity check starts fresh
         user.SessionToken = Guid.NewGuid();
         user.IsLoggedIn = true;
         user.LoginAttempts = 0;
+        user.LastActiveAt = DateTime.UtcNow;
         user.UpdatedAt = DateTime.UtcNow;
         await _users.UpdateAsync(user);
+
+        // Warm the activity cache immediately so middleware sees a fresh timestamp
+        _activityFlush.RecordActivity(user.UserID);
 
         // Clear session cache to enforce immediate lockout on other devices
         _cache.Remove($"session_token_{user.UserID}");

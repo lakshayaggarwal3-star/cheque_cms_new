@@ -47,3 +47,7 @@ export async function saveRRCorrection(chequeItemId: number, data: {
 export async function completeRR(batchId: number): Promise<void> {
   await apiClient.post(`/rr/${batchId}/complete`);
 }
+
+export async function releaseRRLock(batchId: number): Promise<void> {
+  await apiClient.post(`/rr/${batchId}/release`);
+}

@@ -31,15 +31,17 @@ export enum BatchStatus {
   ScanningCompleted = 3,
   RRPending = 4,
   RRCompleted = 5,
+  RRInProgress = 6,
 }
 
 export const BatchStatusLabels: Record<number, string> = {
   0: 'Created — Scanning Not Started',
   1: 'Scanning In Progress',
-  2: 'Pending Batches',
+  2: 'Scanning Pending',
   3: 'Scanning Completed',
   4: 'RR Pending',
   5: 'RR Completed',
+  6: 'RR In Progress',
 };
 
 export enum RRState {

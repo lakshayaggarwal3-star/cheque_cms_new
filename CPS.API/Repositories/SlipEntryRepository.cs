@@ -152,6 +152,9 @@ public class SlipEntryRepository : ISlipEntryRepository
             !c.IsDeleted &&
             c.RRState == (int)RRState.NeedsReview);
 
+    public async Task<bool> HasAnyChequeItemsAsync(long batchId) =>
+        await _db.ChequeItems.AnyAsync(c => c.BatchId == batchId && !c.IsDeleted);
+
     // ─── SlipNo generation ────────────────────────────────────────────────────
     // Format: {BatchDailySeq:3}{ScannerIdSuffix:2}{SlipSeq:2} = 7 digits
     // Uses UPDLOCK on BatchSlipSequence to prevent race conditions.

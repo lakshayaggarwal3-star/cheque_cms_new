@@ -12,6 +12,7 @@ import { getBatchList, getDashboard } from '../services/batchService';
 import { useAuthStore } from '../store/authStore';
 import { BatchDto, BatchStatus, BatchStatusLabels, DashboardSummary } from '../types';
 import { toast } from '../store/toastStore';
+import { todayIST } from '../utils/dateUtils';
 
 // ── primitives ────────────────────────────────────────────────────────────────
 
@@ -73,14 +74,15 @@ function Dot({ tone = 'neutral' as Tone }: { tone?: Tone }) {
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-const STATUS_TONE: Record<number, Tone> = { 0: 'neutral', 1: 'info', 2: 'warning', 3: 'success', 4: 'danger', 5: 'success' };
+const STATUS_TONE: Record<number, Tone> = { 0: 'neutral', 1: 'info', 2: 'warning', 3: 'success', 4: 'danger', 5: 'success', 6: 'warning' };
 
 function getAction(b: BatchDto): { label: string; path: string } | null {
   switch (b.batchStatus) {
     case BatchStatus.Created:            return { label: 'Start',    path: `/scan/${b.batchNo}` };
     case BatchStatus.ScanningInProgress:
     case BatchStatus.ScanningPending:    return { label: 'Continue', path: `/scan/${b.batchNo}` };
-    case BatchStatus.RRPending:          return { label: 'Repair',   path: `/rr/${b.batchID}` };
+    case BatchStatus.RRPending:          return { label: 'Repair',   path: `/rr/${b.batchNo}` };
+    case BatchStatus.RRInProgress:       return { label: 'View RR',  path: `/rr/${b.batchNo}` };
     default:                             return null;
   }
 }
@@ -126,6 +128,7 @@ export function DashboardPage() {
   const [batches, setBatches] = useState<BatchDto[]>([]);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
+  const [date, setDate] = useState(todayIST);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [search, setSearch] = useState('');
@@ -136,8 +139,16 @@ export function DashboardPage() {
     setLoading(true);
     try {
       const [batchRes, summaryRes] = await Promise.all([
-        getBatchList({ locationId: user.locationId, date: user.eodDate, page, pageSize: 20 }),
-        getDashboard(user.locationId, user.eodDate),
+        getBatchList({ 
+          locationId: user.roles.some(r => ['Admin', 'Developer', 'Maker', 'Checker', 'RR'].includes(r)) ? undefined : user.locationId, 
+          date, 
+          page, 
+          pageSize: 20 
+        }),
+        getDashboard(
+          user.roles.some(r => ['Admin', 'Developer', 'Maker', 'Checker', 'RR'].includes(r)) ? 0 : user.locationId, 
+          date
+        ),
       ]);
       setBatches(batchRes.items);
       setTotalPages(batchRes.totalPages);
@@ -147,7 +158,7 @@ export function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [user, page]);
+  }, [user, page, date]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -382,6 +393,25 @@ export function DashboardPage() {
                   outline: 'none',
                   boxShadow: searchFocus ? 'var(--shadow-focus)' : 'none',
                   transition: 'border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease)',
+                }}
+              />
+            </div>
+
+            {/* Date Picker */}
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <Icon name="calendar_today" size={16} style={{
+                position: 'absolute', left: 10, color: 'var(--fg-subtle)', pointerEvents: 'none',
+              }} />
+              <input
+                type="date"
+                value={date}
+                onChange={e => { setDate(e.target.value); setPage(1); }}
+                style={{
+                  padding: '8px 12px 8px 32px',
+                  background: 'var(--bg-input)', color: 'var(--fg)',
+                  border: '1px solid var(--border-strong)', borderRadius: 'var(--r-md)',
+                  fontSize: 'var(--text-sm)', fontFamily: 'var(--font-sans)',
+                  outline: 'none', height: 36, boxSizing: 'border-box',
                 }}
               />
             </div>

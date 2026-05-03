@@ -116,10 +116,12 @@ public class UserService : IUserService
         var user = await _userRepo.GetByIdAsync(userId)
             ?? throw new NotFoundException($"User {userId} not found.");
 
-        user.IsDeleted = true;
-        user.IsActive = false;
-        user.UpdatedBy = deletedBy;
-        user.UpdatedAt = DateTime.UtcNow;
+        user.IsDeleted    = true;
+        user.IsActive     = false;
+        user.IsLoggedIn   = false;
+        user.SessionToken = null;
+        user.UpdatedBy    = deletedBy;
+        user.UpdatedAt    = DateTime.UtcNow;
         await _userRepo.UpdateAsync(user);
 
         await _audit.LogAsync("UserMaster", userId.ToString(), "DELETE",
@@ -167,6 +169,14 @@ public class UserService : IUserService
         user.IsActive = isActive;
         user.UpdatedBy = updatedBy;
         user.UpdatedAt = DateTime.UtcNow;
+
+        // Terminate active session immediately when deactivating
+        if (!isActive)
+        {
+            user.IsLoggedIn   = false;
+            user.SessionToken = null;
+        }
+
         await _userRepo.UpdateAsync(user);
     }
 

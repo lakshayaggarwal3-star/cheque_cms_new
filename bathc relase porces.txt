@@ -1,0 +1,29 @@
+Server crash / restart
+Lock columns (ScanLockedBy, ScanLockedAt, RRLockedBy, RRLockedAt) are in SQL Server — they survive server restart completely
+When server comes back up, those locks are still there
+Next user who tries to open that batch → stale check runs → lock is older than 7 min → auto-released, they take over
+No manual intervention needed
+User device crash (laptop dies, phone battery dead)
+beforeunload does NOT fire on hard crash — no power = no code runs
+sendBeacon never gets sent
+useEffect cleanup never runs
+Only the 7-min stale timeout saves you — next person to open the batch after 7 min gets it automatically
+User loses internet / network drops
+Frontend stops sending requests, session middleware stops seeing activity
+Lock stays in DB as-is
+If they reconnect within 7 min and reopen the batch → they get their own lock refreshed (same userId, no conflict)
+If they reconnect after 7 min → treated as stale, next person who opened it already has it, they get a conflict error
+Browser force-killed (Task Manager, OOM kill)
+Same as device crash — beforeunload may or may not fire depending on OS
+Windows: usually does NOT fire on Task Manager kill
+macOS: sometimes fires, sometimes not
+Again, 7-min stale timeout is the safety net
+Summary
+Scenario	sendBeacon fires?	useEffect fires?	Stale timeout?	Result
+Normal navigation	No	✅ Yes	Not needed	Instant release
+Tab close / browser close	✅ Best-effort	No	Backup	Usually instant
+Laptop sleep (lid close)	✅ Yes (before sleep)	No	Backup	Usually instant
+Hard crash / power cut	No	No	✅ 7 min	Released in ≤7 min
+Server restart	No	No	✅ 7 min	Released in ≤7 min
+Network drop + reconnect	—	—	If >7 min idle	Handled
+The only scenario with a delay is hard crash — and 7 min is the max anyone waits. Everything else releases immediately or near-immediately.

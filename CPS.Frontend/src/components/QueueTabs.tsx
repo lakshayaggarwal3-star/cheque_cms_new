@@ -88,7 +88,7 @@ export function QueueTabs() {
             bottom: 0 !important;
             left: 0 !important;
             right: 0 !important;
-            z-index: 1000 !important;
+            z-index: 40 !important;
             background: var(--bg-raised) !important;
             border: none !important;
             border-top: 1px solid var(--border) !important;
