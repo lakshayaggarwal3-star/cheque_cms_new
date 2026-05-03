@@ -11,6 +11,9 @@ using CPS.API.Exceptions;
 using CPS.API.Models;
 using CPS.API.Repositories;
 using Microsoft.EntityFrameworkCore;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Jpeg;
+using SixLabors.ImageSharp.Metadata.Profiles.Exif;
 
 namespace CPS.API.Services;
 
@@ -18,15 +21,17 @@ public class RRService : IRRService
 {
     private readonly ISlipEntryRepository _slipRepo;
     private readonly IBatchRepository _batchRepo;
+    private readonly IImageStorageConfig _imageStorageConfig;
     private readonly IAuditService _audit;
     private readonly ILogger<RRService> _logger;
     private static readonly TimeSpan STALE_RR_LOCK_TIMEOUT = TimeSpan.FromMinutes(7);
 
     public RRService(ISlipEntryRepository slipRepo, IBatchRepository batchRepo,
-        IAuditService audit, ILogger<RRService> logger)
+        IImageStorageConfig imageStorageConfig, IAuditService audit, ILogger<RRService> logger)
     {
         _slipRepo = slipRepo;
         _batchRepo = batchRepo;
+        _imageStorageConfig = imageStorageConfig;
         _audit = audit;
         _logger = logger;
     }
@@ -93,7 +98,13 @@ public class RRService : IRRService
         batch.StatusHistory = BatchHistory.Append(batch.StatusHistory, "RRReleased", userId);
         batch.UpdatedBy = userId;
         batch.UpdatedAt = DateTime.UtcNow;
-        await _batchRepo.UpdateAsync(batch);
+
+        try { await _batchRepo.UpdateAsync(batch); }
+        catch (DbUpdateConcurrencyException)
+        {
+            // Lock release is idempotent — if another session already updated the batch, ignore the conflict
+            _logger.LogWarning("RR lock release concurrency conflict ignored: BatchId={BatchId}", batchId);
+        }
 
         _logger.LogInformation("RR lock released: BatchNo={BatchNo} by UserID={UserId}", batch.BatchNo, userId);
     }
@@ -180,6 +191,85 @@ public class RRService : IRRService
 
         var slip = await _slipRepo.GetByIdAsync(item.SlipEntryId);
         return MapToDto(item, slip);
+    }
+
+    public async Task SaveRRImagesAsync(long chequeItemId, SaveRRImagesRequest request, int userId)
+    {
+        var item = await _slipRepo.GetChequeItemByIdAsync(chequeItemId)
+            ?? throw new NotFoundException($"Cheque item {chequeItemId} not found.");
+
+        var batch = await _batchRepo.GetByIdAsync(item.BatchId)
+            ?? throw new NotFoundException($"Batch not found for cheque item {chequeItemId}.");
+
+        if (batch.RRLockedBy != userId)
+            throw new ForbiddenException("You do not hold the RR lock for this batch.");
+
+        // Derive folder from ImageBaseName — format is "Mobile/YYYYMMDD/BatchNo/Cheque/BatchNo_SeqCF"
+        var basePath = _imageStorageConfig.BasePath;
+        string folder;
+        if (!string.IsNullOrEmpty(item.ImageBaseName))
+        {
+            // ImageBaseName ends with e.g. "BatchNo_001" — strip the base name to get the folder
+            var relDir = item.ImageBaseName.Replace('/', Path.DirectorySeparatorChar);
+            // ImageBaseName may include sub-path; take everything up to and including Cheque sub-folder
+            var absCandidate = Path.Combine(basePath, Path.GetDirectoryName(relDir) ?? string.Empty);
+            folder = Directory.Exists(absCandidate) ? absCandidate
+                     : Path.Combine(basePath, "Mobile", DateTime.UtcNow.ToString("yyyyMMdd"), batch.BatchNo, "Cheque");
+        }
+        else
+            folder = Path.Combine(basePath, "Mobile", DateTime.UtcNow.ToString("yyyyMMdd"), batch.BatchNo, "Cheque");
+
+        Directory.CreateDirectory(folder);
+
+        var baseName = !string.IsNullOrEmpty(item.ImageBaseName)
+            ? Path.GetFileName(item.ImageBaseName)
+            : $"{batch.BatchNo}_{item.SeqNo:D3}";
+
+        // Overwrite gray JPG + B&W TIFF for front and back
+        await OverwriteFileAsync(request.FrontJpg,  Path.Combine(folder, baseName + "CF.jpg"));
+        await OverwriteFileAsync(request.FrontTiff, Path.Combine(folder, baseName + "CF.tif"));
+        await OverwriteFileAsync(request.BackJpg,   Path.Combine(folder, baseName + "CR.jpg"));
+        await OverwriteFileAsync(request.BackTiff,  Path.Combine(folder, baseName + "CR.tif"));
+
+        // Update EXIF metadata on the original images with new bbox/grayIntensity/bwThreshold
+        await UpdateOriginalExifAsync(Path.Combine(folder, baseName + "CF_O.jpg"), request.FrontMeta);
+        await UpdateOriginalExifAsync(Path.Combine(folder, baseName + "CR_O.jpg"), request.BackMeta);
+
+        item.RRState = (int)RRState.Repaired;
+        item.RRCompletedBy = userId;
+        item.RRCompletedAt = DateTime.UtcNow;
+        item.UpdatedBy = userId;
+        item.UpdatedAt = DateTime.UtcNow;
+        item.RowVersion = request.RowVersionBytes;
+
+        try { await _slipRepo.UpdateChequeItemAsync(item); }
+        catch (DbUpdateConcurrencyException) { throw new ConflictException("Item was modified by another user. Refresh and try again."); }
+
+        _logger.LogInformation("RR images updated: ChequeItemId={Id} by UserID={UserId}", chequeItemId, userId);
+        await _audit.LogAsync("ChequeItem", chequeItemId.ToString(), "RR_IMG",
+            new { }, new { item.RRState }, userId, batchNo: batch.BatchNo);
+    }
+
+    private static async Task OverwriteFileAsync(IFormFile file, string absolutePath)
+    {
+        await using var fs = new FileStream(absolutePath, FileMode.Create, FileAccess.Write);
+        await file.CopyToAsync(fs);
+    }
+
+    private static async Task UpdateOriginalExifAsync(string absolutePath, string metaJson)
+    {
+        if (!File.Exists(absolutePath)) return;
+        try
+        {
+            using var image = await SixLabors.ImageSharp.Image.LoadAsync(absolutePath);
+            image.Metadata.ExifProfile ??= new ExifProfile();
+            image.Metadata.ExifProfile.SetValue(ExifTag.UserComment, metaJson);
+            await image.SaveAsync(absolutePath, new JpegEncoder());
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Failed to update EXIF on {absolutePath}: {ex.Message}");
+        }
     }
 
     public async Task CompleteRRAsync(long batchId, int userId)

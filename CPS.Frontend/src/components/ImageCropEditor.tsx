@@ -47,8 +47,8 @@ interface ImageCropEditorProps {
   file: File;
   title: string;
   onClose: () => void;
-  /** processed = grayscale TIFF; originalFile is the raw capture (cheque only); corners = BBox */
-  onSave: (file: File, previewUrl: string, originalFile?: File, corners?: Point[]) => void;
+  /** grayJpg = gray high-pass JPEG; bwTiff = B&W thresholded TIFF; originalFile = raw capture; bbox = full meta JSON */
+  onSave: (grayJpg: File, previewUrl: string, bwTiff: File, originalFile?: File, corners?: Point[]) => void;
   mode?: 'desktop' | 'mobile';
   initialCropFull?: boolean;
   /** true for cheque: onSave also receives the untouched original capture */
@@ -71,7 +71,6 @@ export function ImageCropEditor({ file, title, onClose, onSave, mode = 'desktop'
   ]);
   
   const [brightness, setBrightness] = useState(100);
-  const [grayscale, setGrayscale] = useState(0);
   const [rotation, setRotation] = useState(0);
   const [saving, setSaving] = useState(false);
   const [dragging, setDragging] = useState<number>(-1);
@@ -588,7 +587,7 @@ export function ImageCropEditor({ file, title, onClose, onSave, mode = 'desktop'
 
   const handleReset = () => {
     setCorners([{ x: 0.1, y: 0.1 }, { x: 0.9, y: 0.1 }, { x: 0.9, y: 0.9 }, { x: 0.1, y: 0.9 }]);
-    setBrightness(100); setGrayscale(0); setRotation(0);
+    setBrightness(100); setRotation(0);
   };
 
   const handleSave = () => {
@@ -597,10 +596,10 @@ export function ImageCropEditor({ file, title, onClose, onSave, mode = 'desktop'
     // Yield to browser so the "saving..." spinner renders before heavy CPU work begins
     setTimeout(async () => {
       let sp: any = null, dp: any = null, M: any = null, srcMat: any = null;
-      let warpMat: any = null, grayMat: any = null, equalizedMat: any = null, finalMat: any = null;
+      let warpMat: any = null, grayMat: any = null, finalMat: any = null;
       const cleanup = () => {
-        [sp, dp, M, srcMat, warpMat, grayMat, equalizedMat, finalMat].forEach(m => { try { m?.delete(); } catch (_) {} });
-        sp = dp = M = srcMat = warpMat = grayMat = equalizedMat = finalMat = null;
+        [sp, dp, M, srcMat, warpMat, grayMat, finalMat].forEach(m => { try { m?.delete(); } catch (_) {} });
+        sp = dp = M = srcMat = warpMat = grayMat = finalMat = null;
       };
       try {
         const img = await loadImg(imgUrl);
@@ -637,74 +636,92 @@ export function ImageCropEditor({ file, title, onClose, onSave, mode = 'desktop'
             if (blob) {
               const jpgFile = new File([blob], `${baseName}.jpg`, { type: 'image/jpeg' });
               const previewUrl = canvas.toDataURL('image/jpeg', 0.9);
-              onSave(jpgFile, previewUrl);
+              // Slips have no B&W TIFF — pass same jpg as placeholder
+              onSave(jpgFile, previewUrl, jpgFile);
             }
             setSaving(false);
           }, 'image/jpeg', 0.9);
           return; // toBlob is async — setSaving(false) called inside callback
         }
 
-        // Cheques: High-Pass Background Removal (matches Python image_proce.py)
+        // ── Cheque pipeline (bank spec compliant) ──────────────────────────────
+        const GRAY_INTENSITY = 220;  // gamma reference (stored in EXIF)
+        const BW_THRESHOLD   = 128;  // Otsu offset (stored in EXIF)
+
+        // Standard CTS cheque: 8 inches wide
+        // Gray = 100 DPI → 800px wide; BW = 200 DPI → 1600px wide
+        const CHEQUE_W_IN = 8;
+        const GRAY_W = CHEQUE_W_IN * 100;  // 800
+        const BW_W   = CHEQUE_W_IN * 200;  // 1600
+
+        // ── Step A: scale warped image to Gray resolution (800px wide) ──
+        const grayScaleMat = new cv.Mat();
+        const grayScaleH = Math.round(dh * (GRAY_W / dw));
+        cv.resize(warpMat, grayScaleMat, new cv.Size(GRAY_W, grayScaleH), 0, 0, cv.INTER_LANCZOS4);
+
+        // ── Step B: convert to grayscale ──
         grayMat = new cv.Mat();
-        cv.cvtColor(warpMat, grayMat, cv.COLOR_RGBA2GRAY);
+        cv.cvtColor(grayScaleMat, grayMat, cv.COLOR_RGBA2GRAY);
+        grayScaleMat.delete();
 
-        // Downscale → blur → upscale for fast sigma-80 background estimation
-        const BLUR_RES   = 300;
-        const blurScale  = Math.min(1.0, BLUR_RES / Math.max(dw, dh));
-        const bw         = Math.max(1, Math.round(dw * blurScale));
-        const bh         = Math.max(1, Math.round(dh * blurScale));
-        const sigmaSmall = Math.max(5, Math.round(80 * blurScale));
+        // ── Step C: gamma at default (155/155 = γ1.0 = no change) at scan time ──
+        // equalizeHist removed — causes dark-border blotch on cheque images
+        finalMat = grayMat.clone();
 
-        const smallGray    = new cv.Mat();
-        const blurSmallMat = new cv.Mat();
-        cv.resize(grayMat, smallGray, new cv.Size(bw, bh), 0, 0, cv.INTER_AREA);
-        cv.GaussianBlur(smallGray, blurSmallMat, new cv.Size(0, 0), sigmaSmall, sigmaSmall);
-        equalizedMat = new cv.Mat();
-        cv.resize(blurSmallMat, equalizedMat, new cv.Size(dw, dh), 0, 0, cv.INTER_LINEAR);
-        smallGray.delete(); blurSmallMat.delete();
-
-        // hp = clip(gray − bg + 220, 0, 255)
-        const grayF  = new cv.Mat();
-        const bgF    = new cv.Mat();
-        const diffF  = new cv.Mat();
-        const normU8 = new cv.Mat();
-        const blurSm = new cv.Mat();
-        grayMat.convertTo(grayF, cv.CV_32F);
-        equalizedMat.convertTo(bgF, cv.CV_32F);
-        cv.subtract(grayF, bgF, diffF);
-        diffF.convertTo(normU8, cv.CV_8U, 1.0, 220);
-        grayF.delete(); bgF.delete(); diffF.delete();
-
-        // Unsharp mask
-        cv.GaussianBlur(normU8, blurSm, new cv.Size(3, 3), 0, 0);
-        finalMat = new cv.Mat();
-        cv.addWeighted(normU8, 1.4, blurSm, -0.4, 0, finalMat);
-        normU8.delete(); blurSm.delete();
-
-        // Encode grayscale TIFF
-        const w = finalMat.cols, h = finalMat.rows;
-        const step = finalMat.step[0] as number;
-        const pixels = new Uint8Array(w * h);
-        for (let row = 0; row < h; row++)
-          for (let col = 0; col < w; col++)
-            pixels[row * w + col] = finalMat.data[row * step + col];
-
-        const tiffFile = new File(
-          [new Blob([encodeGrayscaleTIFF(pixels, w, h)], { type: 'image/tiff' })],
-          `${baseName}.tif`, { type: 'image/tiff' }
-        );
-
-        // JPEG preview for inline display
+        // ── Step E: encode Gray JPEG with 100 DPI header ──
         const previewCanvas = document.createElement('canvas');
         cv.imshow(previewCanvas, finalMat);
-        const previewUrl = previewCanvas.toDataURL('image/jpeg', 0.88);
+        const previewUrl = previewCanvas.toDataURL('image/jpeg', 0.82);
+        const grayJpgBlob = await new Promise<Blob>((res, rej) =>
+          previewCanvas.toBlob(b => b ? res(b) : rej(new Error('toBlob failed')), 'image/jpeg', 0.82)
+        );
+        // Patch DPI into JPEG header (JFIF APP0 marker at offset 14-17: units=1(DPI), Xdensity, Ydensity)
+        const grayJpgPatched = patchJpegDpi(await grayJpgBlob.arrayBuffer(), 100);
+        const grayJpgFile = new File([grayJpgPatched], `${baseName}.jpg`, { type: 'image/jpeg' });
+
+        // ── Step F: scale to BW resolution (1600px wide) ──
+        const bwScaleMat = new cv.Mat();
+        const bwScaleH = Math.round(grayScaleH * (BW_W / GRAY_W));  // proportional to BW resolution
+        cv.resize(finalMat, bwScaleMat, new cv.Size(BW_W, bwScaleH), 0, 0, cv.INTER_LANCZOS4);
+
+        // ── Step G: Otsu binarization on the equalized gray (at BW resolution) ──
+        const bwMat = new cv.Mat();
+        // cv.threshold returns void in OpenCV.js — THRESH_OTSU computes the threshold internally
+        cv.threshold(bwScaleMat, bwMat, 0, 255, cv.THRESH_BINARY | cv.THRESH_OTSU);
+        bwScaleMat.delete();
+        // BW_THRESHOLD=128 stored in EXIF as reference default for RR re-use
+
+        // ── Step H: encode 1-bit WhiteIsZero TIFF with 200 DPI ──
+        const wT = bwMat.cols, hT = bwMat.rows;
+        const stepT = bwMat.step[0] as number;
+        // Pack 8-bit pixels into 1-bit (MSB first, WhiteIsZero: white=0, black=1)
+        const rowBytes = Math.ceil(wT / 8);
+        const packed = new Uint8Array(rowBytes * hT);
+        for (let row = 0; row < hT; row++) {
+          for (let col = 0; col < wT; col++) {
+            const pixVal = bwMat.data[row * stepT + col]; // 255=white, 0=black
+            // WhiteIsZero: white pixel (255) → bit 0; black pixel (0) → bit 1
+            if (pixVal === 0) {  // black → set bit to 1
+              packed[row * rowBytes + Math.floor(col / 8)] |= (0x80 >> (col % 8));
+            }
+            // white pixels leave bit as 0 (already zeroed)
+          }
+        }
+        bwMat.delete();
+        const bwTiffFile = new File(
+          [new Blob([encodeBitonalTIFF(packed, wT, hT, rowBytes)], { type: 'image/tiff' })],
+          `${baseName}.tif`, { type: 'image/tiff' }
+        );
 
         // Original capture renamed with _O suffix
         const ext = file.name.substring(file.name.lastIndexOf('.'));
         const originalRenamed = new File([file], `${baseName}_O${ext}`, { type: file.type });
 
+        // bbox meta — full JSON so RREditModal can reproduce exact same output
+        const metaCorners = corners.map(p => ({ x: p.x, y: p.y }));
+
         cleanup(); // free all mats before calling onSave
-        onSave(tiffFile, previewUrl, saveOriginal ? originalRenamed : undefined, corners);
+        onSave(grayJpgFile, previewUrl, bwTiffFile, saveOriginal ? originalRenamed : undefined, metaCorners as Point[]);
       } catch (e) {
         console.error('ImageCropEditor save failed', e);
       } finally {
@@ -885,13 +902,12 @@ export function ImageCropEditor({ file, title, onClose, onSave, mode = 'desktop'
         gap: isTouch ? 10 : 14, 
         flexShrink: 0,
       }}>
-        <div style={{ 
-          display: 'grid', 
-          gridTemplateColumns: isTouch ? '1fr' : (isSlip ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)'), 
-          gap: isTouch ? 8 : 8 
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: isTouch ? '1fr' : 'repeat(2, 1fr)',
+          gap: isTouch ? 8 : 8
         }}>
           <Slider label="Brightness" value={brightness} min={50} max={160} step={5} unit="%" onChange={setBrightness} />
-          {!isSlip && <Slider label="Grayscale"  value={grayscale}  min={0}  max={100} step={5} unit="%" onChange={setGrayscale}  />}
           <Slider label="Rotate"     value={rotation}   min={-180} max={180} step={1} unit="°" onChange={setRotation} />
         </div>
 
@@ -922,33 +938,57 @@ export function ImageCropEditor({ file, title, onClose, onSave, mode = 'desktop'
   );
 }
 
-// Encode an 8-bit grayscale pixel array as an uncompressed TIFF (little-endian, TIFF 6.0)
-function encodeGrayscaleTIFF(pixels: Uint8Array, width: number, height: number): ArrayBuffer {
-  // IFD entries: [tag, type (3=SHORT 4=LONG), count, value]
+// Patch JFIF JPEG header to write correct DPI (units=1, Xdensity, Ydensity)
+function patchJpegDpi(buffer: ArrayBuffer, dpi: number): ArrayBuffer {
+  const arr = new Uint8Array(buffer.slice(0));
+  // JFIF APP0 segment starts at byte 2 (after FF D8)
+  // Structure: FF E0 | length(2) | 'JFIF\0'(5) | version(2) | units(1) | Xdensity(2) | Ydensity(2)
+  // units offset from segment start: 2+2+5+2 = 11, Xdensity at 13, Ydensity at 15
+  if (arr[0] === 0xFF && arr[1] === 0xD8 && arr[2] === 0xFF && arr[3] === 0xE0) {
+    arr[11] = 1;  // units = DPI
+    arr[12] = (dpi >> 8) & 0xFF; arr[13] = dpi & 0xFF;  // Xdensity
+    arr[14] = (dpi >> 8) & 0xFF; arr[15] = dpi & 0xFF;  // Ydensity
+  }
+  return arr.buffer;
+}
+
+// Encode a 1-bit bi-tonal TIFF (WhiteIsZero, MSB-first, 200 DPI, single strip, TIFF 6.0)
+function encodeBitonalTIFF(packed: Uint8Array, width: number, height: number, rowBytes: number): ArrayBuffer {
+  // Rational values stored after IFD: numerator(4) + denominator(4) = 8 bytes each
+  // We need 2 rationals for XResolution and YResolution
   const entries: [number, number, number, number][] = [
-    [256, 4, 1, width],         // ImageWidth
-    [257, 4, 1, height],        // ImageLength
-    [258, 3, 1, 8],             // BitsPerSample = 8
-    [259, 3, 1, 1],             // Compression = None
-    [262, 3, 1, 1],             // PhotometricInterpretation = BlackIsZero
-    [273, 4, 1, 0],             // StripOffsets — patched below
-    [277, 3, 1, 1],             // SamplesPerPixel = 1
-    [278, 4, 1, height],        // RowsPerStrip = all rows in one strip
-    [279, 4, 1, pixels.length], // StripByteCounts
+    [256, 4, 1, width],           // ImageWidth
+    [257, 4, 1, height],          // ImageLength
+    [258, 3, 1, 1],               // BitsPerSample = 1
+    [259, 3, 1, 1],               // Compression = None (1) — use 4 for G4 if available
+    [262, 3, 1, 0],               // PhotometricInterpretation = WhiteIsZero (0)
+    [266, 3, 1, 1],               // FillOrder = MSB-to-LSB (1)
+    [273, 4, 1, 0],               // StripOffsets — patched below
+    [277, 3, 1, 1],               // SamplesPerPixel = 1
+    [278, 4, 1, height],          // RowsPerStrip = all rows (single strip)
+    [279, 4, 1, packed.length],   // StripByteCounts
+    [282, 5, 1, 0],               // XResolution (RATIONAL) — offset patched below
+    [283, 5, 1, 0],               // YResolution (RATIONAL) — offset patched below
+    [296, 3, 1, 2],               // ResolutionUnit = inch (2)
   ];
 
-  const HEADER    = 8;
-  const IFD_SIZE  = 2 + entries.length * 12 + 4; // count + entries + nextIFD
-  const DATA_OFF  = HEADER + IFD_SIZE;
-  entries[5][3]   = DATA_OFF; // fix StripOffsets
+  const HEADER   = 8;
+  const IFD_SIZE = 2 + entries.length * 12 + 4;
+  const RATIONAL_OFF = HEADER + IFD_SIZE;  // where rationals are stored
+  const DATA_OFF     = RATIONAL_OFF + 16;  // 2 rationals × 8 bytes
 
-  const buf = new ArrayBuffer(DATA_OFF + pixels.length);
+  // Patch offsets
+  entries[6][3]  = DATA_OFF;            // StripOffsets
+  entries[10][3] = RATIONAL_OFF;        // XResolution rational offset
+  entries[11][3] = RATIONAL_OFF + 8;    // YResolution rational offset
+
+  const buf = new ArrayBuffer(DATA_OFF + packed.length);
   const dv  = new DataView(buf);
   const LE  = true;
 
-  dv.setUint16(0, 0x4949, LE); // 'II' little-endian
-  dv.setUint16(2, 42,     LE); // TIFF magic
-  dv.setUint32(4, HEADER, LE); // IFD offset
+  dv.setUint16(0, 0x4949, LE);
+  dv.setUint16(2, 42,     LE);
+  dv.setUint32(4, HEADER, LE);
 
   let pos = HEADER;
   dv.setUint16(pos, entries.length, LE); pos += 2;
@@ -957,14 +997,20 @@ function encodeGrayscaleTIFF(pixels: Uint8Array, width: number, height: number):
     dv.setUint16(pos,     tag,   LE);
     dv.setUint16(pos + 2, type,  LE);
     dv.setUint32(pos + 4, count, LE);
-    // For SHORT (type 3) the value sits in the first 2 bytes of the 4-byte value field
-    if (type === 3) { dv.setUint16(pos + 8, value, LE); dv.setUint16(pos + 10, 0, LE); }
-    else            { dv.setUint32(pos + 8, value, LE); }
+    if (type === 3)      { dv.setUint16(pos + 8, value as number, LE); dv.setUint16(pos + 10, 0, LE); }
+    else if (type === 5) { dv.setUint32(pos + 8, value as number, LE); }  // rational: store offset
+    else                 { dv.setUint32(pos + 8, value as number, LE); }
     pos += 12;
   }
   dv.setUint32(pos, 0, LE); // next IFD = none
 
-  new Uint8Array(buf).set(pixels, DATA_OFF);
+  // Write rationals: 200/1 for both XResolution and YResolution
+  dv.setUint32(RATIONAL_OFF,      200, LE);  // XResolution numerator
+  dv.setUint32(RATIONAL_OFF + 4,    1, LE);  // XResolution denominator
+  dv.setUint32(RATIONAL_OFF + 8,  200, LE);  // YResolution numerator
+  dv.setUint32(RATIONAL_OFF + 12,   1, LE);  // YResolution denominator
+
+  new Uint8Array(buf).set(packed, DATA_OFF);
   return buf;
 }
 

@@ -58,10 +58,14 @@ export interface ScanPageState {
   // Camera / preview files
   frontFile: File | null;
   setFrontFile: (f: File | null) => void;
+  frontFileTiff: File | null;
+  setFrontFileTiff: (f: File | null) => void;
   frontFileOriginal: File | null;
   setFrontFileOriginal: (f: File | null) => void;
   backFile: File | null;
   setBackFile: (f: File | null) => void;
+  backFileTiff: File | null;
+  setBackFileTiff: (f: File | null) => void;
   backFileOriginal: File | null;
   setBackFileOriginal: (f: File | null) => void;
   frontPreview: string | null;
@@ -76,7 +80,7 @@ export interface ScanPageState {
   editorState: { file: File; target: EditableImageTarget; title: string; isSlip: boolean } | null;
   setEditorState: (v: { file: File; target: EditableImageTarget; title: string; isSlip: boolean } | null) => void;
   openImageEditor: (file: File, target: EditableImageTarget) => void;
-  applyEditedImage: (target: string, file: File, previewUrl: string, originalFile?: File, corners?: any[]) => void;
+  applyEditedImage: (target: string, grayJpg: File, previewUrl: string, bwTiff: File, originalFile?: File, corners?: any[]) => void;
 
   // Cheque viewer
   flipped: boolean;
@@ -153,8 +157,10 @@ export function useScanPageState(): ScanPageState {
 
   // Camera / preview files
   const [frontFile, setFrontFile] = useState<File | null>(null);
+  const [frontFileTiff, setFrontFileTiff] = useState<File | null>(null);
   const [frontFileOriginal, setFrontFileOriginal] = useState<File | null>(null);
   const [backFile, setBackFile] = useState<File | null>(null);
+  const [backFileTiff, setBackFileTiff] = useState<File | null>(null);
   const [backFileOriginal, setBackFileOriginal] = useState<File | null>(null);
   const [frontPreview, setFrontPreview] = useState<string | null>(null);
   const [backPreview, setBackPreview] = useState<string | null>(null);
@@ -164,8 +170,8 @@ export function useScanPageState(): ScanPageState {
   const clearCameraFiles = useCallback(() => {
     if (frontPreview) URL.revokeObjectURL(frontPreview);
     if (backPreview) URL.revokeObjectURL(backPreview);
-    setFrontFile(null); setFrontFileOriginal(null); setFrontBBox(null);
-    setBackFile(null); setBackFileOriginal(null); setBackBBox(null);
+    setFrontFile(null); setFrontFileTiff(null); setFrontFileOriginal(null); setFrontBBox(null);
+    setBackFile(null); setBackFileTiff(null); setBackFileOriginal(null); setBackBBox(null);
     setFrontPreview(null); setBackPreview(null);
   }, [frontPreview, backPreview]);
 
@@ -184,17 +190,19 @@ export function useScanPageState(): ScanPageState {
     setEditorState({ file, target, title: titleMap[target], isSlip });
   };
 
-  const applyEditedImage = useCallback((target: string, file: File, preview: string, original?: File, corners?: any[]) => {
-    const bbox = corners ? JSON.stringify(corners) : null;
+  const applyEditedImage = useCallback((target: string, grayJpg: File, preview: string, bwTiff: File, original?: File, corners?: any[]) => {
+    const bbox = corners ? JSON.stringify({ bbox: corners, grayIntensity: 220, bwThreshold: 128 }) : null;
     if (target === 'cheque-front' || target === 'slip-front') {
       if (frontPreview) URL.revokeObjectURL(frontPreview);
-      setFrontFile(file);
+      setFrontFile(grayJpg);
+      setFrontFileTiff(bwTiff);
       setFrontPreview(preview);
       if (original) setFrontFileOriginal(original);
       if (bbox) setFrontBBox(bbox);
     } else {
       if (backPreview) URL.revokeObjectURL(backPreview);
-      setBackFile(file);
+      setBackFile(grayJpg);
+      setBackFileTiff(bwTiff);
       setBackPreview(preview);
       if (original) setBackFileOriginal(original);
       if (bbox) setBackBBox(bbox);
@@ -280,8 +288,10 @@ export function useScanPageState(): ScanPageState {
     scanStep, setScanStep,
     scanStepRef,
     frontFile, setFrontFile,
+    frontFileTiff, setFrontFileTiff,
     frontFileOriginal, setFrontFileOriginal,
     backFile, setBackFile,
+    backFileTiff, setBackFileTiff,
     backFileOriginal, setBackFileOriginal,
     frontPreview, setFrontPreview,
     backPreview, setBackPreview,

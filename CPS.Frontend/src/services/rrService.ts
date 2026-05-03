@@ -44,6 +44,28 @@ export async function saveRRCorrection(chequeItemId: number, data: {
   return extractData<RRItemDto>(res);
 }
 
+export async function saveRRImages(chequeItemId: number, data: {
+  frontJpg: File;
+  frontTiff: File;
+  backJpg: File;
+  backTiff: File;
+  frontMeta: string;
+  backMeta: string;
+  rowVersion: string;
+}): Promise<void> {
+  const formData = new FormData();
+  formData.append('frontJpg', data.frontJpg);
+  formData.append('frontTiff', data.frontTiff);
+  formData.append('backJpg', data.backJpg);
+  formData.append('backTiff', data.backTiff);
+  formData.append('frontMeta', data.frontMeta);
+  formData.append('backMeta', data.backMeta);
+  formData.append('rowVersion', data.rowVersion);
+  await apiClient.post(`/rr/item/${chequeItemId}/images`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+}
+
 export async function completeRR(batchId: number): Promise<void> {
   await apiClient.post(`/rr/${batchId}/complete`);
 }

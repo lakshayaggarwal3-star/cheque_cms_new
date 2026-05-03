@@ -15,6 +15,7 @@ public interface IRRService
     Task<List<RRItemDto>> GetRRItemsAsync(long batchId, int userId);
     Task<RRItemDto> GetRRItemAsync(long chequeItemId);
     Task<RRItemDto> SaveCorrectionAsync(long chequeItemId, SaveRRCorrectionRequest request, int userId);
+    Task SaveRRImagesAsync(long chequeItemId, SaveRRImagesRequest request, int userId);
     Task CompleteRRAsync(long batchId, int userId);
     Task ReleaseRRLockAsync(long batchId, int userId);
     Task HeartbeatAsync(long batchId, int userId);

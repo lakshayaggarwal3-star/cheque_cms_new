@@ -13,7 +13,7 @@ interface ImageEditModalProps {
   file: File | null;
   title: string;
   onClose: () => void;
-  onSave: (file: File, previewUrl: string, originalFile?: File, corners?: any[]) => void;
+  onSave: (grayJpg: File, previewUrl: string, bwTiff: File, originalFile?: File, corners?: any[]) => void;
   isSlip?: boolean;
 }
 

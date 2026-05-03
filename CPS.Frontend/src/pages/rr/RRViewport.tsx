@@ -21,11 +21,13 @@ interface Props {
   layout?: 'side' | 'bottom';
   imageType?: 'gray' | 'bitonal';
   setImageType?: (val: 'gray' | 'bitonal') => void;
+  onEdit?: () => void;
 }
 
-export function RRViewport({ 
+export function RRViewport({
   previewFront, previewBack, imageBaseName, filename, itemTitle, hasFrontPath, hasBackPath,
-  setIsFullscreen, isZoomed = false, layout = 'bottom', imageType = 'bitonal', setImageType
+  setIsFullscreen, isZoomed = false, layout = 'bottom', imageType = 'bitonal', setImageType,
+  onEdit
 }: Props) {
   const [zoom, setZoom] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
@@ -110,31 +112,21 @@ export function RRViewport({
           </span>
         </div>
 
-        <div style={{ 
-          display: 'flex', gap: 6, alignItems: 'center', background: 'var(--bg)', borderRadius: 'var(--r-md)', 
+        <div style={{
+          display: 'flex', gap: 6, alignItems: 'center', background: 'var(--bg)', borderRadius: 'var(--r-md)',
           border: '1px solid var(--border)', padding: '2px 4px',
           scale: layout === 'side' ? '0.8' : '1',
           transformOrigin: 'right center'
         }}>
-          {/* Image Type Toggle */}
+          {/* BW / GRAY toggle — BW shows .tif (converted to JPEG by backend), GRAY shows .jpg */}
           <div style={{ display: 'flex', background: 'var(--bg-subtle)', borderRadius: 'var(--r-md)', padding: 3, marginRight: 4, gap: 2 }}>
             <button
               onClick={() => setImageType && setImageType('bitonal')}
-              style={{
-                border: 'none', background: imageType === 'bitonal' ? 'var(--accent-500)' : 'transparent',
-                color: imageType === 'bitonal' ? '#fff' : 'var(--fg-muted)',
-                fontSize: 9, fontWeight: 700, padding: '3px 8px', borderRadius: 'var(--r-sm)', cursor: 'pointer',
-                transition: 'background 0.15s, color 0.15s',
-              }}
+              style={{ border: 'none', background: imageType === 'bitonal' ? 'var(--accent-500)' : 'transparent', color: imageType === 'bitonal' ? '#fff' : 'var(--fg-muted)', fontSize: 9, fontWeight: 700, padding: '3px 8px', borderRadius: 'var(--r-sm)', cursor: 'pointer', transition: 'background 0.15s, color 0.15s' }}
             >BW</button>
             <button
               onClick={() => setImageType && setImageType('gray')}
-              style={{
-                border: 'none', background: imageType === 'gray' ? 'var(--accent-500)' : 'transparent',
-                color: imageType === 'gray' ? '#fff' : 'var(--fg-muted)',
-                fontSize: 9, fontWeight: 700, padding: '3px 8px', borderRadius: 'var(--r-sm)', cursor: 'pointer',
-                transition: 'background 0.15s, color 0.15s',
-              }}
+              style={{ border: 'none', background: imageType === 'gray' ? 'var(--accent-500)' : 'transparent', color: imageType === 'gray' ? '#fff' : 'var(--fg-muted)', fontSize: 9, fontWeight: 700, padding: '3px 8px', borderRadius: 'var(--r-sm)', cursor: 'pointer', transition: 'background 0.15s, color 0.15s' }}
             >GRAY</button>
           </div>
 
@@ -142,6 +134,18 @@ export function RRViewport({
           <IconBtn icon="zoom_in" tooltip="Zoom in" onClick={() => setZoom(z => Math.min(4, +(z + 0.25).toFixed(2)))} />
           <IconBtn icon="fit_screen" tooltip="Reset" onClick={() => { setZoom(1); setRotation(0); setOffset({x:0, y:0}); }} />
           <IconBtn icon="fullscreen" tooltip="Fullscreen" onClick={() => setIsFullscreen && setIsFullscreen(true)} />
+          
+          <button
+            onClick={onEdit}
+            style={{
+              height: 24, padding: '0 10px', fontSize: 10, fontWeight: 700,
+              background: 'var(--accent-500)', color: '#fff', border: 'none',
+              borderRadius: 'var(--r-sm)', cursor: 'pointer', marginLeft: 4,
+              display: 'flex', alignItems: 'center', justifyContent: 'center'
+            }}
+          >
+            EDIT
+          </button>
         </div>
       </div>
 
@@ -178,9 +182,11 @@ export function RRViewport({
             {!isZoomed && <div style={{ fontSize: 9, fontWeight: 800, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '.1em', textAlign: 'center' }}>FRONT</div>}
             <div style={{ position: 'relative', flex: 1, aspectRatio: '2.35 / 1', background: 'var(--bg-subtle)', borderRadius: 'var(--r-md)', border: '1px solid var(--border)', overflow: 'hidden' }}>
               {!frontError && hasFrontPath ? (
-                <img 
-                  src={imageType === 'bitonal' ? previewFront || '' : (imageBaseName ? `${window.location.origin}/api/images/${imageBaseName}CF.jpg` : previewFront || '')} 
-                  alt="Front" 
+                <img
+                  src={imageBaseName
+                    ? `${window.location.origin}/api/images/${imageBaseName}CF${imageType === 'bitonal' ? '.tif' : '.jpg'}`
+                    : previewFront || ''}
+                  alt="Front"
                   draggable={false}
                   style={{ width: '100%', height: '100%', objectFit: 'contain', pointerEvents: 'none', userSelect: 'none' }}
                   onError={() => setFrontError(true)}
@@ -203,9 +209,11 @@ export function RRViewport({
               <div style={{ fontSize: 9, fontWeight: 800, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '.1em', textAlign: 'center' }}>BACK</div>
               <div style={{ position: 'relative', flex: 1, aspectRatio: '2.35 / 1', background: 'var(--bg-subtle)', borderRadius: 'var(--r-md)', border: '1px solid var(--border)', overflow: 'hidden' }}>
                 {!backError && hasBackPath ? (
-                  <img 
-                    src={imageType === 'bitonal' ? previewBack || '' : (imageBaseName ? `${window.location.origin}/api/images/${imageBaseName}CR.jpg` : previewBack || '')} 
-                    alt="Back" 
+                  <img
+                    src={imageBaseName
+                      ? `${window.location.origin}/api/images/${imageBaseName}CR${imageType === 'bitonal' ? '.tif' : '.jpg'}`
+                      : previewBack || ''}
+                    alt="Back"
                     draggable={false}
                     style={{ width: '100%', height: '100%', objectFit: 'contain', pointerEvents: 'none', userSelect: 'none' }}
                     onError={() => setBackError(true)}

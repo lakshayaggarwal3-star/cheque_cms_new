@@ -41,8 +41,10 @@ interface UseScannerLogicProps {
   onClearCameraFiles: () => void;
   onLockLost: () => void;
   frontFile: File | null;
+  frontFileTiff: File | null;
   frontFileOriginal: File | null;
   backFile: File | null;
+  backFileTiff: File | null;
   backFileOriginal: File | null;
   frontBBox: string | null;
   backBBox: string | null;
@@ -68,8 +70,10 @@ export function useScannerLogic({
   onClearCameraFiles,
   onLockLost,
   frontFile,
+  frontFileTiff,
   frontFileOriginal,
   backFile,
+  backFileTiff,
   backFileOriginal,
   frontBBox,
   backBBox,
@@ -387,7 +391,9 @@ export function useScannerLogic({
           slipEntryId: activeSlipEntryId,
           chqSeq: nextChqSeq,
           imageFront: frontFile ?? undefined,
+          imageFrontTiff: frontFileTiff ?? undefined,
           imageBack: backFile ?? undefined,
+          imageBackTiff: backFileTiff ?? undefined,
           imageFrontOriginal: frontFileOriginal ?? undefined,
           imageBackOriginal: backFileOriginal ?? undefined,
           bboxFront: frontBBox ?? undefined,
@@ -411,7 +417,7 @@ export function useScannerLogic({
     } finally {
       setIsBusy(false);
     }
-  }, [activeSlipEntryId, isDeveloper, mockScanEnabled, frontFile, backFile, frontFileOriginal, backFileOriginal, frontBBox, backBBox, batchId, nextChqSeq, onClearCameraFiles, onCaptureSuccess, onLockLost]);
+  }, [activeSlipEntryId, isDeveloper, mockScanEnabled, frontFile, frontFileTiff, backFile, backFileTiff, frontFileOriginal, backFileOriginal, frontBBox, backBBox, batchId, nextChqSeq, onClearCameraFiles, onCaptureSuccess, onLockLost]);
 
   const handleCompleteScan = useCallback(async (onComplete: () => void) => {
     setIsBusy(true);

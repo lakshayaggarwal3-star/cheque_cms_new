@@ -12,7 +12,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace CPS.API.Migrations
 {
     [DbContext(typeof(CpsDbContext))]
-    [Migration("20260502191712_AddLastActiveAtToUserMaster")]
+    [Migration("20260503170341_AddLastActiveAtToUserMaster")]
     partial class AddLastActiveAtToUserMaster
     {
         /// <inheritdoc />

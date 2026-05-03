@@ -49,6 +49,19 @@ public class RRItemDto
     public byte[] RowVersion { get; set; } = null!;
 }
 
+public class SaveRRImagesRequest
+{
+    public IFormFile FrontJpg { get; set; } = null!;
+    public IFormFile FrontTiff { get; set; } = null!;
+    public IFormFile BackJpg { get; set; } = null!;
+    public IFormFile BackTiff { get; set; } = null!;
+    public string FrontMeta { get; set; } = string.Empty;
+    public string BackMeta { get; set; } = string.Empty;
+    // Sent as base64 string from FormData — parsed to byte[] by RowVersionBytes
+    public string RowVersion { get; set; } = string.Empty;
+    public byte[] RowVersionBytes => Convert.FromBase64String(RowVersion);
+}
+
 public class SaveRRCorrectionRequest
 {
     public string? ChqNo { get; set; }

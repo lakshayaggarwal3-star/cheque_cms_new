@@ -46,6 +46,14 @@ public class RRController : ControllerBase
         return Ok(ApiResponse<RRItemDto>.Ok(result));
     }
 
+    [HttpPost("item/{chequeItemId:long}/images")]
+    public async Task<IActionResult> SaveImages(long chequeItemId, [FromForm] SaveRRImagesRequest request)
+    {
+        var userId = int.Parse(User.FindFirstValue("userId")!);
+        await _rrService.SaveRRImagesAsync(chequeItemId, request, userId);
+        return Ok(ApiResponse<object>.Ok(null, "Images updated"));
+    }
+
     [HttpPost("{batchId:long}/complete")]
     public async Task<IActionResult> Complete(long batchId)
     {

@@ -131,8 +131,10 @@ export function ScanPage() {
     },
     onClearCameraFiles: state.clearCameraFiles,
     frontFile: state.frontFile,
+    frontFileTiff: state.frontFileTiff,
     frontFileOriginal: state.frontFileOriginal,
     backFile: state.backFile,
+    backFileTiff: state.backFileTiff,
     backFileOriginal: state.backFileOriginal,
     frontBBox,
     backBBox,
@@ -744,8 +746,8 @@ export function ScanPage() {
           title={editorState.title}
           isSlip={editorState.isSlip}
           onClose={() => setEditorState(null)}
-          onSave={(file, previewUrl, originalFile) => {
-            state.applyEditedImage(editorState.target, file, previewUrl, originalFile);
+          onSave={(grayJpg, previewUrl, bwTiff, originalFile, corners) => {
+            state.applyEditedImage(editorState.target, grayJpg, previewUrl, bwTiff, originalFile, corners);
             setEditorState(null);
             toast.success('Edited image saved');
           }}

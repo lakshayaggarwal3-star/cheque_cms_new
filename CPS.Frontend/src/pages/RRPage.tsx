@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getRRItems, saveRRCorrection, completeRR, releaseRRLock, heartbeatRRLock } from '../services/rrService';
+import { getRRItems, saveRRCorrection, saveRRImages, completeRR, releaseRRLock, heartbeatRRLock } from '../services/rrService';
 import { getBatchByNumber } from '../services/batchService';
 import { getScanSession } from '../services/scanService';
 import { toast } from '../store/toastStore';
@@ -9,6 +9,7 @@ import { RRItemDto, RRState, BatchDto, ScanSessionDto } from '../types';
 import { Icon, Pill } from '../components/scan';
 import { ScanFullscreenOverlay } from './scan';
 import { RRViewport } from './rr/RRViewport';
+import { RREditModal } from './rr/RREditModal';
 
 export function RRPage() {
   const { batchNo } = useParams<{ batchNo: string }>();
@@ -25,9 +26,10 @@ export function RRPage() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isZoomed, setIsZoomed] = useState(false);
   const [flipped, setFlipped] = useState(false);
-  const [imageType, setImageType] = useState<'bitonal' | 'gray'>('bitonal');
   const [fsZoom, setFsZoom] = useState(1);
   const [fsOffset, setFsOffset] = useState({ x: 0, y: 0 });
+  const [imageType, setImageType] = useState<'bitonal' | 'gray'>('bitonal');
+  const [isEditing, setIsEditing] = useState(false);
   const firstInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -400,9 +402,9 @@ export function RRPage() {
         <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden', background: 'var(--bg)', flex: 1 }}>
           <div style={{ flex: 1, padding: '12px 16px', display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
             {item && (
-              <RRViewport 
-                previewFront={getChequeImageUrl(item, imageType === 'bitonal' ? 'frontTiff' : 'front')}
-                previewBack={getChequeImageUrl(item, imageType === 'bitonal' ? 'backTiff' : 'back')}
+              <RRViewport
+                previewFront={getChequeImageUrl(item, 'front')}
+                previewBack={getChequeImageUrl(item, 'back')}
                 imageBaseName={item.imageBaseName}
                 hasFrontPath={!!item.imageBaseName}
                 hasBackPath={!!item.imageBaseName}
@@ -413,6 +415,7 @@ export function RRPage() {
                 layout={micrLayout}
                 imageType={imageType}
                 setImageType={setImageType}
+                onEdit={() => setIsEditing(true)}
               />
             )}
           </div>
@@ -474,8 +477,8 @@ export function RRPage() {
           session={session}
           isSlipView={false}
           scanStep="ChequeScan"
-          previewFront={getChequeImageUrl(item, imageType === 'bitonal' ? 'frontTiff' : 'front')}
-          previewBack={getChequeImageUrl(item, imageType === 'bitonal' ? 'backTiff' : 'back')}
+          previewFront={getChequeImageUrl(item, 'front')}
+          previewBack={getChequeImageUrl(item, 'back')}
           flipped={flipped}
           setFlipped={setFlipped}
           zoom={fsZoom}
@@ -499,6 +502,30 @@ export function RRPage() {
             };
           }}
           onClose={() => { setIsFullscreen(false); setFsZoom(1); setFsOffset({ x: 0, y: 0 }); }}
+        />
+      )}
+
+      {/* ── Edit Modal ── */}
+      {isEditing && item?.imageBaseName && (
+        <RREditModal
+          imageBaseName={item.imageBaseName}
+          onClose={() => setIsEditing(false)}
+          onSave={async (frontJpg, frontTiff, backJpg, backTiff, frontMeta, backMeta) => {
+            try {
+              await saveRRImages(item.chequeItemId, {
+                frontJpg, frontTiff, backJpg, backTiff,
+                frontMeta: JSON.stringify({ bbox: frontMeta.bbox, grayIntensity: frontMeta.grayIntensity }),
+                backMeta:  JSON.stringify({ bbox: backMeta.bbox,  grayIntensity: backMeta.grayIntensity }),
+                rowVersion: item.rowVersion,
+              });
+              const updated = await getRRItems(batch!.batchID);
+              setItems(updated);
+              toast.success('Images updated successfully.');
+            } catch (err: any) {
+              toast.error(err?.response?.data?.message ?? 'Failed to save images');
+            }
+            setIsEditing(false);
+          }}
         />
       )}
     </div>

@@ -369,18 +369,23 @@ public class ScanService : IScanService
         var rootFolder = GetRootFolder(batch.EntryMode);
         var subFolder = "Cheque";
 
-        // 1. Process and save Front image (multiple formats for CTS)
-        var frontResult = await ProcessAndSaveCtsChequeAsync(batch.BatchNo, request.ImageFront, baseFileName + "CF", rootFolder, subFolder);
-        
-        // 2. Process and save Back image (JPG + TIF)
+        // 1. Save front JPG (gray, already processed by frontend OpenCV pipeline)
+        var frontJpgPath = await SaveMobileImageAsync(batch.BatchNo, request.ImageFront, baseFileName + "CF", rootFolder, subFolder);
+
+        // 1b. Save front TIFF (B&W, already thresholded by frontend)
+        string? frontTiffPath = null;
+        if (request.ImageFrontTiff != null)
+            frontTiffPath = await SaveMobileImageAsync(batch.BatchNo, request.ImageFrontTiff, baseFileName + "CF", rootFolder, subFolder);
+
+        // 2. Save back JPG + TIFF
         string? backPath = null;
         string? backTiffPath = null;
         if (request.ImageBack != null)
-        {
-            var backResult = await ProcessAndSaveCtsChequeAsync(batch.BatchNo, request.ImageBack, baseFileName + "CR", rootFolder, subFolder);
-            backPath = backResult.JpgPath;
-            backTiffPath = backResult.TifPath;
-        }
+            backPath = await SaveMobileImageAsync(batch.BatchNo, request.ImageBack, baseFileName + "CR", rootFolder, subFolder);
+        if (request.ImageBackTiff != null)
+            backTiffPath = await SaveMobileImageAsync(batch.BatchNo, request.ImageBackTiff, baseFileName + "CR", rootFolder, subFolder);
+
+        var frontResult = (JpgPath: frontJpgPath, TifPath: frontTiffPath);
 
         // 3. Save Original images if provided
         if (request.ImageFrontOriginal != null)
@@ -403,51 +408,13 @@ public class ScanService : IScanService
             ScanMICR1 = request.ScanMICR1,
             ScanMICR2 = request.ScanMICR2,
             ScanMICR3 = request.ScanMICR3,
-            FrontImagePath = frontResult.JpgPath,
+            FrontImagePath = frontResult.JpgPath ?? string.Empty,
             BackImagePath = backPath,
             FrontImageTiffPath = frontResult.TifPath,
             BackImageTiffPath = backTiffPath,
             ScannerType = GetScannerType(batch.EntryMode, "Cheque"),
             ScanType = batch.ScanType
         }, userId);
-    }
-
-    private async Task<(string JpgPath, string TifPath)> ProcessAndSaveCtsChequeAsync(string batchNo, IFormFile file, string exactFileName, string rootFolder, string subFolder, bool isBack = false)
-    {
-        using var stream = file.OpenReadStream();
-        using var image = await Image.LoadAsync<Rgba32>(stream);
-
-        // ─── Grayscale JPEG (100 DPI) ───
-        // Target: 8 inches @ 100 DPI = 800px width
-        using var grayImage = image.Clone(x => x
-            .Resize(new ResizeOptions { Size = new Size(800, 0), Mode = ResizeMode.Max })
-            .Grayscale());
-        
-        grayImage.Metadata.HorizontalResolution = 100;
-        grayImage.Metadata.VerticalResolution = 100;
-
-        var grayRelPath = GetRelativeImagePath(batchNo, exactFileName + ".jpg", rootFolder, subFolder);
-        var grayAbsPath = GetAbsolutePath(grayRelPath);
-        Directory.CreateDirectory(Path.GetDirectoryName(grayAbsPath)!);
-        
-        await grayImage.SaveAsJpegAsync(grayAbsPath, new SixLabors.ImageSharp.Formats.Jpeg.JpegEncoder { Quality = 80 });
-
-        // ─── B&W TIFF (200 DPI) ───
-        // Target: 8 inches @ 200 DPI = 1600px width
-        using var bwImage = image.Clone(x => x
-            .Resize(new ResizeOptions { Size = new Size(1600, 0), Mode = ResizeMode.Max })
-            .BinaryThreshold(0.5f)); 
-
-        bwImage.Metadata.HorizontalResolution = 200;
-        bwImage.Metadata.VerticalResolution = 200;
-
-        var tifRelPath = GetRelativeImagePath(batchNo, exactFileName + ".tif", rootFolder, subFolder);
-        var tifAbsPath = GetAbsolutePath(tifRelPath);
-        Directory.CreateDirectory(Path.GetDirectoryName(tifAbsPath)!);
-        
-        await bwImage.SaveAsTiffAsync(tifAbsPath);
-
-        return (grayRelPath, tifRelPath);
     }
 
     private string GetRelativeImagePath(string batchNo, string fileName, string rootFolder, string subFolder)

@@ -81,11 +81,13 @@ export function MobileScanPage() {
 
   // Captured files per step
   const [frontFile, setFrontFile] = useState<File | null>(null);
+  const [frontFileTiff, setFrontFileTiff] = useState<File | null>(null);
   const [frontFileOriginal, setFrontFileOriginal] = useState<File | null>(null);
   const [frontPreview, setFrontPreview] = useState<string | null>(null);
   const [frontBBox, setFrontBBox] = useState<string | null>(null);
 
   const [backFile, setBackFile] = useState<File | null>(null);
+  const [backFileTiff, setBackFileTiff] = useState<File | null>(null);
   const [backFileOriginal, setBackFileOriginal] = useState<File | null>(null);
   const [backPreview, setBackPreview] = useState<string | null>(null);
   const [backBBox, setBackBBox] = useState<string | null>(null);
@@ -291,7 +293,9 @@ export function MobileScanPage() {
         slipEntryId,
         chqSeq: seq,
         imageFront: frontFile ?? undefined,
+        imageFrontTiff: frontFileTiff ?? undefined,
         imageBack: backFile ?? undefined,
+        imageBackTiff: backFileTiff ?? undefined,
         imageFrontOriginal: frontFileOriginal ?? undefined,
         imageBackOriginal: backFileOriginal ?? undefined,
         bboxFront: frontBBox ?? undefined,
@@ -302,9 +306,8 @@ export function MobileScanPage() {
         scanMICR3: micr.micr3 || undefined,
       });
       toast.success(`Cheque #${seq} saved`);
-      // Reset state and navigate immediately — session refresh happens in background
-      setFrontFile(null); setFrontPreview(null); setFrontFileOriginal(null); setFrontBBox(null);
-      setBackFile(null); setBackPreview(null); setBackFileOriginal(null); setBackBBox(null);
+      setFrontFile(null); setFrontFileTiff(null); setFrontPreview(null); setFrontFileOriginal(null); setFrontBBox(null);
+      setBackFile(null); setBackFileTiff(null); setBackPreview(null); setBackFileOriginal(null); setBackBBox(null);
       setMicr({ chqNo: '', micr1: '', micr2: '', micr3: '' });
       setStep('cheque-front');
       setBusy(false);
@@ -724,22 +727,23 @@ export function MobileScanPage() {
           initialCropFull={editState.isScan}
           isSlip={editState.isSlip}
           onClose={() => setEditState(null)}
-          onSave={(file, previewUrl, originalFile, corners) => {
-            const bbox = corners ? JSON.stringify(corners) : null;
+          onSave={(grayJpg, previewUrl, bwTiff, originalFile, corners) => {
+            const bbox = corners ? JSON.stringify({ bbox: corners, grayIntensity: 220, bwThreshold: 128 }) : null;
             if (editState.target === 'slip') {
               setEditState(null);
-              uploadSlipFile(file, originalFile, bbox);
+              uploadSlipFile(grayJpg, originalFile, bbox);
             } else if (editState.target === 'cheque-front') {
-              setFrontFile(file);
+              setFrontFile(grayJpg);
+              setFrontFileTiff(bwTiff);
               setFrontPreview(previewUrl);
               if (originalFile) setFrontFileOriginal(originalFile);
               if (bbox) setFrontBBox(bbox);
               setEditState(null);
-              // Immediately open camera for back side
               setStep('cheque-back');
               openCamera('cheque');
             } else {
-              setBackFile(file);
+              setBackFile(grayJpg);
+              setBackFileTiff(bwTiff);
               setBackPreview(previewUrl);
               if (originalFile) setBackFileOriginal(originalFile);
               if (bbox) setBackBBox(bbox);
