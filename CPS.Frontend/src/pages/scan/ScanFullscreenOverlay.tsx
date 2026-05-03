@@ -39,7 +39,7 @@ export function ScanFullscreenOverlay({
 }: Props) {
   return (
     <div style={{
-      position: 'fixed', inset: 0, background: '#000', zIndex: 1000,
+      position: 'fixed', inset: 0, background: '#000', zIndex: 6000,
       display: 'flex', flexDirection: 'column',
     }}>
       {/* Toolbar */}

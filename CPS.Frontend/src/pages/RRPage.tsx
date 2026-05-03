@@ -1,6 +1,6 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getRRItems, saveRRCorrection, completeRR, releaseRRLock } from '../services/rrService';
+import { getRRItems, saveRRCorrection, completeRR, releaseRRLock, heartbeatRRLock } from '../services/rrService';
 import { getBatchByNumber } from '../services/batchService';
 import { getScanSession } from '../services/scanService';
 import { toast } from '../store/toastStore';
@@ -82,47 +82,34 @@ export function RRPage() {
     load();
   }, [batchNo]);
 
-  // -- Inactivity Lock Logic --
-  const [lastActivity, setLastActivity] = useState(Date.now());
-  const INACTIVITY_LIMIT = 5 * 60 * 1000;
-  const WARNING_LIMIT = 4.5 * 60 * 1000;
-  const [hasWarned, setHasWarned] = useState(false);
+  // -- Heartbeat: keeps RR lock alive while user is active on this page.
+  //    Pings every 2 min if there was activity in the last 2 min.
+  //    If user is idle, pings stop → server sweep releases lock after 7 min. --
+  const lastActivityRef = useRef(Date.now());
 
   useEffect(() => {
-    const updateActivity = () => { setLastActivity(Date.now()); setHasWarned(false); };
-    window.addEventListener('mousedown', updateActivity);
-    window.addEventListener('scroll', updateActivity);
-    window.addEventListener('keydown', updateActivity);
+    const mark = () => { lastActivityRef.current = Date.now(); };
+    window.addEventListener('mousedown', mark);
+    window.addEventListener('keydown', mark);
+    window.addEventListener('scroll', mark);
     return () => {
-      window.removeEventListener('mousedown', updateActivity);
-      window.removeEventListener('scroll', updateActivity);
-      window.removeEventListener('keydown', updateActivity);
+      window.removeEventListener('mousedown', mark);
+      window.removeEventListener('keydown', mark);
+      window.removeEventListener('scroll', mark);
     };
   }, []);
 
-  const handleAutoRelease = useCallback(async () => {
-    if (!batch?.batchID) return;
-    try {
-      await releaseRRLock(batch.batchID);
-      toast.warning('Session released due to inactivity');
-    } finally {
-      navigate('/all-batches');
-    }
-  }, [batch?.batchID, navigate]);
-
   useEffect(() => {
     if (loading || !batch?.batchID) return;
+    const PING_INTERVAL = 2 * 60 * 1000;
     const timer = setInterval(() => {
-      const elapsed = Date.now() - lastActivity;
-      if (elapsed > INACTIVITY_LIMIT) {
-        handleAutoRelease();
-      } else if (elapsed > WARNING_LIMIT && !hasWarned) {
-        setHasWarned(true);
-        toast.info('Session expiring soon due to inactivity...');
+      const idleSince = Date.now() - lastActivityRef.current;
+      if (idleSince < PING_INTERVAL) {
+        heartbeatRRLock(batch.batchID).catch(() => {});
       }
-    }, 5000);
+    }, PING_INTERVAL);
     return () => clearInterval(timer);
-  }, [batch?.batchID, loading, lastActivity, hasWarned, handleAutoRelease, INACTIVITY_LIMIT, WARNING_LIMIT]);
+  }, [batch?.batchID, loading]);
 
   const item = items[current];
   const activeSlip = session?.slipGroups?.find(g => g.slipEntryId === item?.slipEntryId);
@@ -173,6 +160,11 @@ export function RRPage() {
         toast.success('Batch review complete. You can still revisit items or click Complete RR.');
       }
     } catch (err: any) {
+      if (err?.response?.status === 403) {
+        toast.error('RR lock lost — this batch was taken over by another session.');
+        navigate('/all-batches');
+        return;
+      }
       toast.error(err?.response?.data?.message ?? 'Failed to approve item');
     } finally {
       setSaving(false);
@@ -201,6 +193,11 @@ export function RRPage() {
       toast.success('RR completed successfully');
       navigate('/all-batches');
     } catch (err: any) {
+      if (err?.response?.status === 403) {
+        toast.error('RR lock lost — this batch was taken over by another session.');
+        navigate('/all-batches');
+        return;
+      }
       toast.error(err?.response?.data?.message ?? 'Cannot complete RR');
     }
   };

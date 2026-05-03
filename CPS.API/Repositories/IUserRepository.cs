@@ -22,6 +22,8 @@ public interface IUserRepository
     Task<Location?> GetCurrentLocationAsync(int userId, DateOnly date);
     Task AddLocationHistoryAsync(UserLocationHistory history);
     
+    Task<Dictionary<int, string>> GetUsernamesByIdsAsync(List<int> userIds);
+
     // Role management
     Task<List<Role>> GetAllRolesAsync();
     Task<Role?> GetRoleByNameAsync(string roleName);

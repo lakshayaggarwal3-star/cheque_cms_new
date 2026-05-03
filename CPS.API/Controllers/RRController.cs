@@ -61,4 +61,12 @@ public class RRController : ControllerBase
         await _rrService.ReleaseRRLockAsync(batchId, userId);
         return Ok(ApiResponse<object>.Ok(null, "RR lock released"));
     }
+
+    [HttpPost("{batchId:long}/heartbeat")]
+    public async Task<IActionResult> Heartbeat(long batchId)
+    {
+        var userId = int.Parse(User.FindFirstValue("userId")!);
+        await _rrService.HeartbeatAsync(batchId, userId);
+        return Ok(ApiResponse<object>.Ok(null));
+    }
 }

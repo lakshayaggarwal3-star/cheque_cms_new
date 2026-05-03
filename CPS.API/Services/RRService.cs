@@ -98,6 +98,19 @@ public class RRService : IRRService
         _logger.LogInformation("RR lock released: BatchNo={BatchNo} by UserID={UserId}", batch.BatchNo, userId);
     }
 
+    public async Task HeartbeatAsync(long batchId, int userId)
+    {
+        var batch = await _batchRepo.GetByIdAsync(batchId)
+            ?? throw new NotFoundException($"Batch {batchId} not found.");
+
+        if (batch.RRLockedBy != userId)
+            throw new ForbiddenException("You do not hold the RR lock for this batch.");
+
+        batch.RRLockedAt = DateTime.UtcNow;
+        batch.UpdatedAt  = DateTime.UtcNow;
+        await _batchRepo.UpdateAsync(batch);
+    }
+
     public async Task<RRItemDto> GetRRItemAsync(long chequeItemId)
     {
         var item = await _slipRepo.GetChequeItemByIdAsync(chequeItemId)

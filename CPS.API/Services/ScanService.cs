@@ -206,27 +206,54 @@ public class ScanService : IScanService
 
     public async Task<List<SlipItemDto>> UploadBulkSlipItemsAsync(long batchId, BulkSlipItemUploadRequest request, int userId)
     {
-        var (batch, _) = await GetLockedBatchContextAsync(batchId, userId);
+        // No lock check — global slip uploads are allowed regardless of who holds the scan/RR lock.
+        var batch = await _batchRepo.GetByIdAsync(batchId)
+            ?? throw new NotFoundException($"Batch {batchId} not found.");
 
         if (request.Images == null || request.Images.Count == 0)
             throw new ValidationException("At least one slip image is required.");
 
-        var slipGroups = await _slipRepo.GetByBatchAsync(batchId);
         var results = new List<SlipItemDto>();
         var rootFolder = GetRootFolder(batch.EntryMode);
 
-        var slip = await _slipRepo.GetByIdAsync(request.SlipEntryId)
-            ?? throw new NotFoundException($"Slip {request.SlipEntryId} not found.");
+        // When slipEntryId is 0 (global upload), find or create a dedicated GLOBAL slip entry.
+        SlipEntry slip;
+        if (request.SlipEntryId == 0)
+        {
+            var existing = await _db.SlipEntries
+                .FirstOrDefaultAsync(s => s.BatchId == batchId && s.SlipNo == "GLOBAL" && !s.IsDeleted);
+
+            if (existing != null)
+            {
+                slip = existing;
+            }
+            else
+            {
+                slip = new SlipEntry
+                {
+                    BatchId = batchId,
+                    SlipNo = "GLOBAL",
+                    DepositSlipNo = "GLOBAL",
+                    CreatedBy = userId,
+                    CreatedAt = DateTime.UtcNow,
+                };
+                await _slipRepo.CreateAsync(slip);
+            }
+        }
+        else
+        {
+            slip = await _slipRepo.GetByIdAsync(request.SlipEntryId)
+                ?? throw new NotFoundException($"Slip {request.SlipEntryId} not found.");
+        }
 
         for (int i = 0; i < request.Images.Count; i++)
         {
             var image = request.Images[i];
-            
-            var tempFileName = $"{batch.BatchNo}_GLB_{i+1:D2}";
-            var imagePath = await SaveMobileImageAsync(batch.BatchNo, image, tempFileName, rootFolder, "GlobalSlip");
 
             var existingScans = await _db.SlipItems.CountAsync(s => s.SlipEntryId == slip.SlipEntryId && !s.IsDeleted);
             var scanOrder = existingScans + 1;
+            var tempFileName = $"{batch.BatchNo}_GLB_{scanOrder:D2}";
+            var imagePath = await SaveMobileImageAsync(batch.BatchNo, image, tempFileName, rootFolder, "GlobalSlip");
 
             var saved = await SaveSlipItemAsync(new SaveSlipItemRequest
             {
@@ -622,6 +649,20 @@ public class ScanService : IScanService
         batch.StatusHistory = BatchHistory.Append(batch.StatusHistory, "ScanReleased", userId);
         batch.UpdatedBy = userId;
         batch.UpdatedAt = DateTime.UtcNow;
+        await _batchRepo.UpdateAsync(batch);
+    }
+
+    public async Task HeartbeatAsync(long batchId, int userId)
+    {
+        var batch = await _batchRepo.GetByIdAsync(batchId)
+            ?? throw new NotFoundException($"Batch {batchId} not found.");
+
+        // Only refresh if this user actually holds the scan lock
+        if (batch.ScanLockedBy != userId)
+            throw new ForbiddenException("You do not hold the scan lock for this batch.");
+
+        batch.ScanLockedAt = DateTime.UtcNow;
+        batch.UpdatedAt    = DateTime.UtcNow;
         await _batchRepo.UpdateAsync(batch);
     }
 

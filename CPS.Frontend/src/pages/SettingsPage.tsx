@@ -123,8 +123,22 @@ export function SettingsPage() {
 
   const handleEntryModeChange = async (mode: 'scanner' | 'mobile') => {
     setEntryMode(mode);
-    try { await setUserSetting('ScanMode', mode); }
-    catch { toast.error('Failed to save scan mode'); }
+    try { 
+      await setUserSetting('ScanMode', mode); 
+      toast.success('Scan mode preference saved');
+    } catch { 
+      toast.error('Failed to save scan mode'); 
+    }
+  };
+
+  const handleWithSlipChange = async (val: 'with' | 'without') => {
+    setWithSlipDefault(val);
+    try {
+      await setUserSetting('WithSlip', val === 'with' ? 'true' : 'false');
+      toast.success('Slip preference saved');
+    } catch {
+      toast.error('Failed to save slip preference');
+    }
   };
 
   const handleReset = async () => {
@@ -165,7 +179,7 @@ export function SettingsPage() {
                 { id: 'dark'  as const, label: 'Dark',  icon: 'dark_mode'  },
               ]}
               value={theme}
-              onChange={setTheme}
+              onChange={(t) => { setTheme(t); toast.success(`Theme switched to ${t}`); }}
             />
           </SettingRow>
         </div>
@@ -175,15 +189,15 @@ export function SettingsPage() {
       <div className="card overflow-hidden">
         <div className="px-5 py-4 border-b border-light-DEFAULT dark:border-dark-DEFAULT flex items-center gap-2">
           <span className="material-symbols-outlined text-accent-500" style={{ fontSize: '20px' }}>document_scanner</span>
-          <h2 className="text-sm font-semibold text-light-primary dark:text-dark-primary">Scanning</h2>
+          <h2 className="text-sm font-semibold text-light-primary dark:text-dark-primary">Scanning & Entry</h2>
         </div>
         <div className="px-5 py-5 space-y-3">
 
           {/* Entry Mode — only shown when user has both roles */}
           {hasBothRoles && (
             <SettingRow
-              title="Entry Mode"
-              description="How cheques are captured — via connected scanner device or mobile camera."
+              title="Default Device"
+              description="Primary method for capturing cheques."
             >
               <SegmentedSetting
                 options={[
@@ -197,10 +211,24 @@ export function SettingsPage() {
           )}
 
           <SettingRow
-            title="Mock Scan Mode"
-            description="Generate test images without a physical scanner. For development and UAT only."
+            title="Slip Requirement"
+            description="Default state for slip inclusion in new batches."
           >
-            <Toggle checked={mockScanEnabled} onChange={setMockScanEnabled} />
+            <SegmentedSetting
+              options={[
+                { id: 'with' as const, label: 'With Slip', icon: 'description' },
+                { id: 'without' as const, label: 'No Slip', icon: 'check_box_outline_blank' },
+              ]}
+              value={useSettingsStore.getState().withSlipDefault}
+              onChange={handleWithSlipChange}
+            />
+          </SettingRow>
+
+          <SettingRow
+            title="Mock Scan Mode"
+            description="Generate test images without a physical scanner."
+          >
+            <Toggle checked={mockScanEnabled} onChange={(v) => { setMockScanEnabled(v); toast.success(`Mock scan ${v ? 'enabled' : 'disabled'}`); }} />
           </SettingRow>
 
         </div>

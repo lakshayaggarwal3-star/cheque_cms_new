@@ -208,7 +208,8 @@ function Sidebar({ expanded, open, currentPath, onNav, onLogout, user, isMobile 
         borderRight: '1px solid var(--border)',
         display: 'flex', flexDirection: 'column',
         transition: 'width var(--dur) var(--ease), min-width var(--dur) var(--ease)',
-        position: 'relative', zIndex: 100, // Higher z-index to avoid being covered by page content
+        position: isMobile ? 'fixed' : 'relative', 
+        zIndex: 5000, // Highest priority for navigation drawer
         height: isMobile ? '100dvh' : '100vh', 
         maxHeight: isMobile ? '100dvh' : '100vh',
         flexShrink: 0,
@@ -308,7 +309,7 @@ function TopBar({ onToggle, title, subtitle, isDeveloper }: {
       padding: '10px 20px', height: 64, boxSizing: 'border-box',
       background: 'var(--bg-raised)',
       borderBottom: '1px solid var(--border)',
-      position: 'sticky', top: 0, zIndex: 5, flexShrink: 0,
+      position: 'sticky', top: 0, zIndex: 100, flexShrink: 0,
     }}>
       <IconButton icon="menu" tooltip="Toggle sidebar" onClick={onToggle} />
       <div className="topbar-title-wrap">
@@ -413,8 +414,8 @@ export function Layout() {
         isMobile={isMobile}
       />
       
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden', position: 'relative' }}>
-        {(!isNoHeaderPage || isMobile) && (
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
+        {!isNoHeaderPage && (
           <TopBar
             onToggle={() => setSidebarOpen(o => !o)}
             title={pageInfo.title}
@@ -448,6 +449,9 @@ export function Layout() {
               flexDirection: 'column',
             }}
           >
+            {/* Desktop top nav — only on list pages (All Batches, Scan Queue, RR Queue) */}
+            {!isMobile && ['/all-batches', '/scan', '/rr'].some(p => location.pathname === p) && <QueueTabs />}
+            
             <Outlet />
           </div>
         </main>

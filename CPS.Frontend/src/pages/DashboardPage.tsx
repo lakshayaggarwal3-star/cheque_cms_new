@@ -13,6 +13,7 @@ import { useAuthStore } from '../store/authStore';
 import { BatchDto, BatchStatus, BatchStatusLabels, DashboardSummary } from '../types';
 import { toast } from '../store/toastStore';
 import { todayIST } from '../utils/dateUtils';
+import { UploadSlipModal } from '../components/UploadSlipModal';
 
 // ── primitives ────────────────────────────────────────────────────────────────
 
@@ -76,14 +77,21 @@ function Dot({ tone = 'neutral' as Tone }: { tone?: Tone }) {
 
 const STATUS_TONE: Record<number, Tone> = { 0: 'neutral', 1: 'info', 2: 'warning', 3: 'success', 4: 'danger', 5: 'success', 6: 'warning' };
 
-function getAction(b: BatchDto): { label: string; path: string } | null {
+function getAction(b: BatchDto, currentUserId?: number): { label: string; path: string; disabled?: boolean; lockedBy?: string } | null {
+  const isScanLockedByOther = !!b.scanLockedBy && b.scanLockedBy !== currentUserId;
+  const isRRLockedByOther   = !!b.rrLockedBy   && b.rrLockedBy   !== currentUserId;
+
   switch (b.batchStatus) {
-    case BatchStatus.Created:            return { label: 'Start',    path: `/scan/${b.batchNo}` };
+    case BatchStatus.Created:
+      return { label: 'Start',    path: `/scan/${b.batchNo}`, disabled: isScanLockedByOther, lockedBy: b.scanLockedByName };
     case BatchStatus.ScanningInProgress:
-    case BatchStatus.ScanningPending:    return { label: 'Continue', path: `/scan/${b.batchNo}` };
-    case BatchStatus.RRPending:          return { label: 'Repair',   path: `/rr/${b.batchNo}` };
-    case BatchStatus.RRInProgress:       return { label: 'View RR',  path: `/rr/${b.batchNo}` };
-    default:                             return null;
+    case BatchStatus.ScanningPending:
+      return { label: 'Continue', path: `/scan/${b.batchNo}`, disabled: isScanLockedByOther, lockedBy: b.scanLockedByName };
+    case BatchStatus.RRPending:
+    case BatchStatus.RRInProgress:
+      return { label: 'Repair',   path: `/rr/${b.batchNo}`,  disabled: isRRLockedByOther,   lockedBy: b.rrLockedByName };
+    default:
+      return null;
   }
 }
 
@@ -133,6 +141,7 @@ export function DashboardPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [search, setSearch] = useState('');
   const [searchFocus, setSearchFocus] = useState(false);
+  const [uploadTarget, setUploadTarget] = useState<{ batchId: number; batchNo: string } | null>(null);
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -446,7 +455,7 @@ export function DashboardPage() {
               <table className="table-desktop" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-sm)' }}>
                 <thead>
                   <tr style={{ textAlign: 'left', background: 'var(--bg)' }}>
-                    {['Batch no', 'Scanner', 'Slips', 'Amount', 'Status', ''].map((h, i) => (
+                    {['Batch no', 'Scanner', 'Slips', 'Amount', 'Status', 'In Use', ''].map((h, i) => (
                       <th key={i} style={{
                         padding: '10px 20px',
                         fontSize: 'var(--text-xs)', color: 'var(--fg-subtle)',
@@ -459,8 +468,10 @@ export function DashboardPage() {
                 </thead>
                 <tbody>
                   {filtered.map(b => {
-                    const action = getAction(b);
+                    const action = getAction(b, user?.userId);
                     const tone = STATUS_TONE[b.batchStatus] ?? 'neutral';
+                    const lockedByName = b.scanLockedByName || b.rrLockedByName;
+                    
                     return (
                       <tr key={b.batchID} style={{ borderBottom: '1px solid var(--border-subtle)' }}
                         onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-subtle)')}
@@ -486,29 +497,72 @@ export function DashboardPage() {
                         <td style={{ padding: '14px 20px' }}>
                           <Chip tone={tone}>{BatchStatusLabels[b.batchStatus]}</Chip>
                         </td>
-                        <td style={{ padding: '14px 20px', textAlign: 'right' }}>
+                        <td style={{ padding: '14px 20px', color: 'var(--fg-subtle)', fontSize: '12px' }}>
+                          {lockedByName ? (
+                            <div className="flex items-center gap-1.5">
+                              <Icon name="person" size={14} style={{ opacity: 0.6 }} />
+                              <span>{lockedByName}</span>
+                            </div>
+                          ) : (
+                            <span className="opacity-30">—</span>
+                          )}
+                        </td>
+                        <td style={{ padding: '10px 20px', textAlign: 'right' }}>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            <button
+                              onClick={() => setUploadTarget({ batchId: b.batchID, batchNo: b.batchNo })}
+                              title="Upload slip images"
+                              style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 4,
+                                padding: '5px 10px', height: 28,
+                                background: 'var(--warning, #f97316)', color: '#fff',
+                                border: 'none',
+                                borderRadius: 'var(--r-md)',
+                                fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-sans)',
+                                cursor: 'pointer', whiteSpace: 'nowrap',
+                              }}
+                              onMouseEnter={e => { e.currentTarget.style.opacity = '0.88'; }}
+                              onMouseLeave={e => { e.currentTarget.style.opacity = '1'; }}
+                            >
+                              <Icon name="upload_file" size={13} />
+                              Upload Slips
+                            </button>
                           {action ? (
                             <button
-                              onClick={() => navigate(action.path)}
+                              onClick={() => !action.disabled && navigate(action.path)}
+                              disabled={action.disabled}
+                              title={action.disabled && action.lockedBy ? `Locked by ${action.lockedBy} — auto-releases after 7 min of inactivity` : undefined}
                               style={{
                                 display: 'inline-flex', alignItems: 'center', gap: 6,
                                 padding: '6px 12px', height: 30,
-                                background: 'transparent', color: 'var(--fg)',
+                                background: action.disabled ? 'transparent' : 'transparent',
+                                color: action.disabled ? 'var(--fg-faint)' : 'var(--fg)',
                                 border: '1px solid transparent',
                                 borderRadius: 'var(--r-md)',
                                 fontSize: 'var(--text-sm)', fontWeight: 500, fontFamily: 'var(--font-sans)',
-                                cursor: 'pointer',
-                                transition: 'background-color var(--dur-fast) var(--ease)',
+                                cursor: action.disabled ? 'not-allowed' : 'pointer',
+                                transition: 'all var(--dur-fast) var(--ease)',
+                                opacity: action.disabled ? 0.5 : 1,
                               }}
-                              onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
-                              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                              onMouseEnter={e => { if(!action.disabled) e.currentTarget.style.background = 'var(--bg-hover)'; }}
+                              onMouseLeave={e => { if(!action.disabled) e.currentTarget.style.background = 'transparent'; }}
                             >
-                              {action.label}
-                              <Icon name="arrow_forward" size={16} weight={500} />
+                              {action.disabled ? (
+                                <>
+                                  <Icon name="lock" size={14} />
+                                  <span>Locked</span>
+                                </>
+                              ) : (
+                                <>
+                                  {action.label}
+                                  <Icon name="arrow_forward" size={16} weight={500} />
+                                </>
+                              )}
                             </button>
                           ) : (
                             <Icon name="check_circle" size={16} style={{ color: 'var(--success)' }} />
                           )}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -519,7 +573,7 @@ export function DashboardPage() {
               {/* Mobile Cards */}
               <div className="mobile-batch-cards">
                 {filtered.map(b => {
-                  const action = getAction(b);
+                  const action = getAction(b, user?.userId);
                   const tone = STATUS_TONE[b.batchStatus] ?? 'neutral';
                   return (
                     <div key={b.batchID} className="batch-card">
@@ -544,12 +598,27 @@ export function DashboardPage() {
                           <span className="batch-card-value" style={{ fontFamily: 'var(--font-mono)' }}>{fmtAmount(b.totalAmount)}</span>
                         </div>
                       </div>
-                      {action && (
-                        <button className="batch-card-action" onClick={() => navigate(action.path)}>
-                          {action.label}
-                          <Icon name="arrow_forward" size={16} />
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <button
+                          className="batch-card-action"
+                          style={{ 
+                            flex: '1 1 0', minWidth: 0, 
+                            background: 'var(--accent-500)', 
+                            color: '#fff', border: 'none',
+                            fontSize: 12, height: 34
+                          }}
+                          onClick={() => setUploadTarget({ batchId: b.batchID, batchNo: b.batchNo })}
+                        >
+                          <Icon name="upload_file" size={16} />
+                          Upload Slips
                         </button>
-                      )}
+                        {action && (
+                          <button className="batch-card-action" style={{ flex: '1 1 0', minWidth: 0 }} onClick={() => navigate(action.path)}>
+                            {action.label}
+                            <Icon name="arrow_forward" size={16} />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
@@ -592,6 +661,15 @@ export function DashboardPage() {
           </div>
         )}
       </div>
+
+      {uploadTarget && (
+        <UploadSlipModal
+          batchId={uploadTarget.batchId}
+          batchNo={uploadTarget.batchNo}
+          onClose={() => setUploadTarget(null)}
+          onSuccess={load}
+        />
+      )}
     </div>
   );
 }

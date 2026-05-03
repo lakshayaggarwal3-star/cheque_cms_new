@@ -32,5 +32,6 @@ public interface IScanService
 
     Task CompleteScanAsync(long batchId, int userId);
     Task ReleaseLockAsync(long batchId, int userId);
+    Task HeartbeatAsync(long batchId, int userId);
     Task ReopenBatchAsync(long batchId, int userId);
 }

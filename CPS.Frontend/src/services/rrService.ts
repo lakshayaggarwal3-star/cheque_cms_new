@@ -51,3 +51,7 @@ export async function completeRR(batchId: number): Promise<void> {
 export async function releaseRRLock(batchId: number): Promise<void> {
   await apiClient.post(`/rr/${batchId}/release`);
 }
+
+export async function heartbeatRRLock(batchId: number): Promise<void> {
+  await apiClient.post(`/rr/${batchId}/heartbeat`);
+}

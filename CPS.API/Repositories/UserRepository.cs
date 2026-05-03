@@ -88,6 +88,11 @@ public class UserRepository : IUserRepository
         await _db.SaveChangesAsync();
     }
 
+    public async Task<Dictionary<int, string>> GetUsernamesByIdsAsync(List<int> userIds) =>
+        await _db.Users
+            .Where(u => userIds.Contains(u.UserID) && !u.IsDeleted)
+            .ToDictionaryAsync(u => u.UserID, u => u.Username);
+
     public async Task<List<Role>> GetAllRolesAsync() =>
         await _db.Roles.ToListAsync();
 

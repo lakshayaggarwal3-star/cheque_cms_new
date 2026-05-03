@@ -340,7 +340,7 @@ public class BatchService : IBatchService
         throw new ForbiddenException("User does not have a scanner or mobile scanner role.");
     }
 
-    private Task<BatchDto> MapToBatchDto(Batch b)
+    private async Task<BatchDto> MapToBatchDto(Batch b)
     {
         var statusLabels = new Dictionary<int, string>
         {
@@ -353,7 +353,16 @@ public class BatchService : IBatchService
             { 6, "RR In Progress" }
         };
 
-        return Task.FromResult(new BatchDto
+        var userIds = new[] { b.CreatedBy, b.ScanLockedBy, b.RRLockedBy }
+            .Where(id => id.HasValue).Select(id => id!.Value).Distinct().ToList();
+
+        var userNames = userIds.Count > 0
+            ? await _userRepo.GetUsernamesByIdsAsync(userIds)
+            : new Dictionary<int, string>();
+
+        string? getName(int? id) => id.HasValue && userNames.TryGetValue(id.Value, out var n) ? n : null;
+
+        return new BatchDto
         {
             BatchID   = b.BatchID,
             BatchNo   = b.BatchNo,
@@ -377,7 +386,12 @@ public class BatchService : IBatchService
             WithSlip = b.WithSlip,
             BatchStatus = b.BatchStatus,
             BatchStatusLabel = statusLabels.TryGetValue(b.BatchStatus, out var lbl) ? lbl : "Unknown",
-            CreatedAt = b.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss")
-        });
+            CreatedByName = getName(b.CreatedBy) ?? string.Empty,
+            CreatedAt = b.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss"),
+            ScanLockedBy = b.ScanLockedBy,
+            ScanLockedByName = getName(b.ScanLockedBy),
+            RRLockedBy = b.RRLockedBy,
+            RRLockedByName = getName(b.RRLockedBy),
+        };
     }
 }

@@ -90,6 +90,11 @@ export interface BatchDto {
   batchStatusLabel: string;
   createdByName: string;
   createdAt: string;
+  // Locking information
+  scanLockedBy?: number;
+  scanLockedByName?: string;
+  rrLockedBy?: number;
+  rrLockedByName?: string;
 }
 
 export interface DashboardSummary {

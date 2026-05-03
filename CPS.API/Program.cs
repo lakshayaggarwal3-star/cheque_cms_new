@@ -98,6 +98,7 @@ try
     builder.Services.AddHostedService<CPS.API.Workers.BackgroundJobWorker>();
     builder.Services.AddSingleton<ActivityFlushService>();
     builder.Services.AddHostedService(sp => sp.GetRequiredService<ActivityFlushService>());
+    builder.Services.AddHostedService<StaleLockCleanupService>();
 
     builder.Services.AddControllers()
         .AddJsonOptions(opts =>

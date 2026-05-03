@@ -148,6 +148,14 @@ public class ScanController : ControllerBase
         return Ok(ApiResponse<object>.Ok(new { }, "Lock released"));
     }
 
+    [HttpPost("{batchId:long}/heartbeat")]
+    public async Task<IActionResult> Heartbeat(long batchId)
+    {
+        var userId = int.Parse(User.FindFirstValue("userId")!);
+        await _scanService.HeartbeatAsync(batchId, userId);
+        return Ok(ApiResponse<object>.Ok(new { }));
+    }
+
     [HttpPost("{batchId:long}/reopen")]
     [Authorize(Roles = "Admin,Developer")]
     public async Task<IActionResult> ReopenBatch(long batchId)
