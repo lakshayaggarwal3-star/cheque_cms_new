@@ -14,6 +14,7 @@ import { setUserSetting } from '../services/userSettingService';
 import { useAuthStore } from '../store/authStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { toast } from '../store/toastStore';
+import { todayIST } from '../utils/dateUtils';
 import type { LocationDto, ScannerDto } from '../types';
 
 export function useBatchForm() {
@@ -39,7 +40,7 @@ export function useBatchForm() {
 
   // Form State
   const [clearingType, setClearingType] = useState('03');
-  const [batchDate, setBatchDate] = useState(new Date().toISOString().slice(0, 10));
+  const [batchDate, setBatchDate] = useState(todayIST);
   
   const [summRefNo, setSummRefNo] = useState('');
   const [pif, setPif] = useState('');
@@ -50,6 +51,10 @@ export function useBatchForm() {
   // Shared scan options
   const [scanType, setScanType] = useState<'Scan' | 'Rescan'>('Scan');
   const [withSlip, setWithSlip] = useState<'with' | 'without'>(withSlipDefault);
+  useEffect(() => {
+    setWithSlip(withSlipDefault);
+  }, [withSlipDefault]);
+
   const [pdc, setPdc] = useState(false);
   const [pdcDate, setPdcDate] = useState('');
 
@@ -67,8 +72,11 @@ export function useBatchForm() {
 
   // Load scanners and location details
   useEffect(() => {
-    if (!user?.locationId) return;
-    getScanners(user.locationId).then(setScanners).catch(() => {});
+    if (user?.locationId == null) return;
+
+    if (user.locationId > 0) {
+      getScanners(user.locationId).then(setScanners).catch(() => {});
+    }
     getLocations().then(locs => {
       const loc = locs.find(l => l.locationID === user.locationId);
       if (loc) setLocationDetails(loc);
@@ -114,9 +122,12 @@ export function useBatchForm() {
       return;
     }
 
-    if (!user?.locationId) return;
+    if (!user?.locationId) {
+      toast.error('No location assigned to your account. Contact admin to assign a duty location before creating a batch.');
+      return;
+    }
     if (!activeScanner) {
-      toast.error('No active scanner found for your location');
+      toast.error('No active scanner found for your location. Contact admin to configure a scanner.');
       return;
     }
 

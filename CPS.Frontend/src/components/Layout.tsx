@@ -7,9 +7,10 @@
 // =============================================================================
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
+import { Outlet, useNavigate, useLocation, Link, Navigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { logout } from '../services/authService';
+import { QueueTabs } from './QueueTabs';
 
 // ── Icon ─────────────────────────────────────────────────────────────────────
 
@@ -159,7 +160,7 @@ const NAV_LINKS: NavLinkDef[] = [
 ];
 
 const FOOTER_LINKS: NavLinkDef[] = [
-  { id: 'settings', label: 'Settings', icon: 'settings', path: '/admin/settings', roles: ['Developer'] },
+  { id: 'settings', label: 'Settings', icon: 'settings', path: '/admin/settings', roles: ['Admin', 'Developer'] },
   { id: 'logout',   label: 'Sign out', icon: 'logout',   path: '#logout' },
 ];
 
@@ -207,7 +208,8 @@ function Sidebar({ expanded, open, currentPath, onNav, onLogout, user, isMobile 
         borderRight: '1px solid var(--border)',
         display: 'flex', flexDirection: 'column',
         transition: 'width var(--dur) var(--ease), min-width var(--dur) var(--ease)',
-        position: 'relative', zIndex: 100, // Higher z-index to avoid being covered by page content
+        position: isMobile ? 'fixed' : 'relative', 
+        zIndex: 5000, // Highest priority for navigation drawer
         height: isMobile ? '100dvh' : '100vh', 
         maxHeight: isMobile ? '100dvh' : '100vh',
         flexShrink: 0,
@@ -307,7 +309,7 @@ function TopBar({ onToggle, title, subtitle, isDeveloper }: {
       padding: '10px 20px', height: 64, boxSizing: 'border-box',
       background: 'var(--bg-raised)',
       borderBottom: '1px solid var(--border)',
-      position: 'sticky', top: 0, zIndex: 5, flexShrink: 0,
+      position: 'sticky', top: 0, zIndex: 100, flexShrink: 0,
     }}>
       <IconButton icon="menu" tooltip="Toggle sidebar" onClick={onToggle} />
       <div className="topbar-title-wrap">
@@ -328,9 +330,11 @@ function TopBar({ onToggle, title, subtitle, isDeveloper }: {
 const AUTO_CLOSE_PATHS = ['/scan', '/batch/create', '/rr', '/all-batches'];
 
 export function Layout() {
-  const { user, clearUser } = useAuthStore();
+  const { user, clearUser, isAuthenticated } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
+
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
 
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 1024);
   const [sidebarOpen, setSidebarOpen] = useState(() => {
@@ -411,9 +415,7 @@ export function Layout() {
       />
       
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
-        {/* Always hide TopBar for no-header pages (scan detail, rr detail) even on mobile
-            to give maximum screen space for capture/edit. */}
-        {(!isNoHeaderPage || isMobile) && (
+        {!isNoHeaderPage && (
           <TopBar
             onToggle={() => setSidebarOpen(o => !o)}
             title={pageInfo.title}
@@ -422,8 +424,7 @@ export function Layout() {
           />
         )}
 
-        <main 
-          key={location.key}
+        <main
           style={{
             flex: 1,
             overflowX: 'hidden',
@@ -436,7 +437,8 @@ export function Layout() {
           }}
         >
           <div
-            className={!isNoHeaderPage ? "page-content" : ""}
+            key={location.pathname}
+            className={!isNoHeaderPage ? 'page-content' : ''}
             style={{
               padding: !isNoHeaderPage ? '20px 24px 32px' : 0,
               width: '100%',
@@ -444,12 +446,18 @@ export function Layout() {
               flex: 1,
               minHeight: 0,
               display: 'flex',
-              flexDirection: 'column'
+              flexDirection: 'column',
             }}
           >
+            {/* Desktop top nav — only on list pages (All Batches, Scan Queue, RR Queue) */}
+            {!isMobile && ['/all-batches', '/scan', '/rr'].some(p => location.pathname === p) && <QueueTabs />}
+            
             <Outlet />
           </div>
         </main>
+
+        {/* Mobile bottom nav — only on list pages (All Batches, Scan Queue, RR Queue) */}
+        {isMobile && ['/all-batches', '/scan', '/rr'].some(p => location.pathname === p) && <QueueTabs />}
       </div>
 
 

@@ -66,6 +66,10 @@ public class BatchDto
     public string BatchStatusLabel { get; set; } = string.Empty;
     public string CreatedByName { get; set; } = string.Empty;
     public string CreatedAt { get; set; } = string.Empty;
+    public int? ScanLockedBy { get; set; }
+    public string? ScanLockedByName { get; set; }
+    public int? RRLockedBy { get; set; }
+    public string? RRLockedByName { get; set; }
 }
 
 public class DashboardSummary

@@ -6,14 +6,13 @@
 // Created     : 2026-04-14
 // =============================================================================
 
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { getMe } from './services/authService';
 import { useAuthStore } from './store/authStore';
 import { syncUserSettings } from './store/settingsStore';
 import { useTheme } from './hooks/useTheme';
 import { ToastProvider } from './components/ToastProvider';
-import { ProtectedRoute } from './components/ProtectedRoute';
 import { Layout } from './components/Layout';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
@@ -59,33 +58,19 @@ function AppRoutes() {
       <Route path="/session-terminated" element={<SessionTerminatedPage />} />
       <Route path="/unauthorized" element={<UnauthorizedPage />} />
 
-      {/* Protected — require any operational role (Excludes ImageViewer) */}
-      <Route element={<ProtectedRoute roles={['Scanner', 'Mobile Scanner', 'Maker', 'Checker', 'Admin', 'Developer']} />}>
-        <Route element={<Layout />}>
-          <Route path="/" element={<DashboardPage />} />
-          <Route path="/all-batches" element={<AllBatchesPage />} />
-          <Route path="/rr" element={<RRListPage />} />
-          <Route path="/rr/:batchNo" element={<RRPage />} />
-
-          {/* Scanner / Admin / Developer */}
-          <Route element={<ProtectedRoute roles={['Scanner', 'Mobile Scanner', 'Admin', 'Developer']} />}>
-            <Route path="/batch/create" element={<BatchCreatePage />} />
-            <Route path="/batch/:batchId/details" element={<BatchCreatePage />} />
-            <Route path="/scan" element={<ScanListPage />} />
-            <Route path="/scan/:batchNo" element={<ScanRouterPage />} />
-          </Route>
-
-          {/* Admin / Developer only */}
-          <Route element={<ProtectedRoute roles={['Admin', 'Developer']} />}>
-            <Route path="/admin/users" element={<UserManagementPage />} />
-            <Route path="/admin/masters" element={<MastersPage />} />
-          </Route>
-
-          {/* Developer only */}
-          <Route element={<ProtectedRoute roles={['Developer']} />}>
-            <Route path="/admin/settings" element={<SettingsPage />} />
-          </Route>
-        </Route>
+      {/* Protected — Layout handles auth redirect internally, single Outlet depth */}
+      <Route element={<Layout />}>
+        <Route path="/" element={<DashboardPage />} />
+        <Route path="/all-batches" element={<AllBatchesPage />} />
+        <Route path="/rr" element={<RRListPage />} />
+        <Route path="/rr/:batchNo" element={<RRPage />} />
+        <Route path="/batch/create" element={<BatchCreatePage />} />
+        <Route path="/batch/:batchId/details" element={<BatchCreatePage />} />
+        <Route path="/scan" element={<ScanListPage />} />
+        <Route path="/scan/:batchNo" element={<ScanRouterPage />} />
+        <Route path="/admin/users" element={<UserManagementPage />} />
+        <Route path="/admin/masters" element={<MastersPage />} />
+        <Route path="/admin/settings" element={<SettingsPage />} />
       </Route>
 
       {/* Fallback */}

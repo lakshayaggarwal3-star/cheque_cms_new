@@ -117,21 +117,23 @@ export function RRViewport({
           transformOrigin: 'right center'
         }}>
           {/* Image Type Toggle */}
-          <div style={{ display: 'flex', background: 'var(--bg-subtle)', borderRadius: 'var(--r-sm)', padding: 2, marginRight: 4 }}>
-            <button 
+          <div style={{ display: 'flex', background: 'var(--bg-subtle)', borderRadius: 'var(--r-md)', padding: 3, marginRight: 4, gap: 2 }}>
+            <button
               onClick={() => setImageType && setImageType('bitonal')}
-              style={{ 
+              style={{
                 border: 'none', background: imageType === 'bitonal' ? 'var(--accent-500)' : 'transparent',
                 color: imageType === 'bitonal' ? '#fff' : 'var(--fg-muted)',
-                fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 'var(--r-xs)', cursor: 'pointer'
+                fontSize: 9, fontWeight: 700, padding: '3px 8px', borderRadius: 'var(--r-sm)', cursor: 'pointer',
+                transition: 'background 0.15s, color 0.15s',
               }}
             >BW</button>
-            <button 
+            <button
               onClick={() => setImageType && setImageType('gray')}
-              style={{ 
+              style={{
                 border: 'none', background: imageType === 'gray' ? 'var(--accent-500)' : 'transparent',
                 color: imageType === 'gray' ? '#fff' : 'var(--fg-muted)',
-                fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 'var(--r-xs)', cursor: 'pointer'
+                fontSize: 9, fontWeight: 700, padding: '3px 8px', borderRadius: 'var(--r-sm)', cursor: 'pointer',
+                transition: 'background 0.15s, color 0.15s',
               }}
             >GRAY</button>
           </div>

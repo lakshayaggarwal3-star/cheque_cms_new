@@ -28,3 +28,7 @@ The fix is already in Layout.tsx. Just rebuild and test — navigating from the 
 dotnet ef database drop --project CPS.API --force
 # 2. Recreate it from the current migrations
 dotnet ef database update --project CPS.API  
+
+
+
+[System.Environment]::SetEnvironmentVariable("LIB", $null, "User")

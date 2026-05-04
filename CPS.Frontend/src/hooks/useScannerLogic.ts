@@ -6,9 +6,9 @@
 // Created     : 2026-04-19
 // =============================================================================
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import {
-  captureCheque, completeScan, startFeed, stopFeed,
+  completeScan, startFeed, stopFeed,
   uploadMobileCheque, uploadMobileSlipItem,
 } from '../services/scanService';
 import { toast } from '../store/toastStore';
@@ -39,6 +39,7 @@ interface UseScannerLogicProps {
   isDeveloper?: boolean;
   onCaptureSuccess: () => Promise<void>;
   onClearCameraFiles: () => void;
+  onLockLost: () => void;
   frontFile: File | null;
   frontFileOriginal: File | null;
   backFile: File | null;
@@ -53,6 +54,8 @@ interface UseScannerLogicProps {
   rangerEndorsementBatchName?: string;
 }
 
+const isForbidden = (err: any) => err?.response?.status === 403;
+
 export function useScannerLogic({
   batchId,
   batchNo,
@@ -63,6 +66,7 @@ export function useScannerLogic({
   isDeveloper,
   onCaptureSuccess,
   onClearCameraFiles,
+  onLockLost,
   frontFile,
   frontFileOriginal,
   backFile,
@@ -82,7 +86,7 @@ export function useScannerLogic({
   const [feedRunning, setFeedRunning] = useState<{ Cheque: boolean; Slip: boolean }>({ Cheque: false, Slip: false });
   const [rangerState, setRangerState] = useState<RangerTransportState>(getRangerState());
 
-  // Preview
+  // Preview (mockPreview kept for session reset compatibility — always null in scanner mode)
   const [mockPreview, setMockPreview] = useState<{ front: string; back: string } | null>(null);
   const [currentSlipItem, setCurrentSlipItem] = useState<SlipItemDto | null>(null);
   const [currentCheque, setCurrentCheque] = useState<ChequeItemDto | null>(null);
@@ -181,20 +185,29 @@ export function useScannerLogic({
   }, [scannerChoice, batchNo, nextChqSeq, activeSlipEntryId, batchId, onCaptureSuccess, rangerEndorsementBatchName]);
 
   // Automate Ranger Lifecycle (ShutDown -> ChangeOptions -> ReadyToFeed)
+  // Guard: only attempt startup once per scannerChoice/wsUrl change. If it fails,
+  // do not retry on every state change — that creates an infinite WebSocket loop
+  // that blocks the main thread and freezes React Router navigation.
+  const rangerStartupAttempted = useRef(false);
   useEffect(() => {
-    // Only auto-init if we have chosen Ranger or are in a step that likely needs it
+    // Reset attempt flag whenever the scannerChoice or URL changes (user-driven retry)
+    rangerStartupAttempted.current = false;
+  }, [scannerChoice, rangerWsUrl]);
+
+  useEffect(() => {
     if (scannerChoice !== 'Ranger') return;
-    
+
     const runAutoRanger = async () => {
       try {
         if (rangerState === RangerTransportState.TransportShutDown || rangerState === RangerTransportState.TransportUnknownState) {
+          if (rangerStartupAttempted.current) return; // already tried — don't loop
+          rangerStartupAttempted.current = true;
           console.log('Ranger: Auto-starting...');
           await rangerStartup(rangerWsUrl);
         } else if (rangerState === RangerTransportState.TransportChangeOptions) {
           console.log('Ranger: Auto-enabling options...');
-          // Set options once we are in ChangeOptions state
           await rangerSetImagingOptions({ needImaging: true, needFrontGrayscale: true, needRearGrayscale: true });
-          
+
           if (rangerEndorsementEnabled) {
             const bName = rangerEndorsementBatchName || batchNo;
             const startSeq = String(nextChqSeq).padStart(4, '0');
@@ -205,7 +218,7 @@ export function useScannerLogic({
           } else {
             await rangerSetEndorsementOptions({ enabled: false });
           }
-          
+
           await rangerEnableOptions();
         }
       } catch (err: any) {
@@ -218,11 +231,6 @@ export function useScannerLogic({
   }, [scannerChoice, rangerState, rangerWsUrl, batchNo, nextChqSeq, rangerEndorsementEnabled, rangerEndorsementUseImageName, rangerEndorsementCustomText, rangerEndorsementBatchName]);
 
   // ─── Helpers ──────────────────────────────────────────────────────────────
-
-  const makeMockImage = (doc: string, side: string) => {
-    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='1200' height='700'><rect width='100%' height='100%' fill='${side === 'Front' ? '#e7f0ff' : '#f3f4f6'}'/><rect x='40' y='40' width='1120' height='620' rx='16' fill='white' stroke='#94a3b8' stroke-width='3'/><text x='600' y='340' text-anchor='middle' font-family='Arial' font-size='40' fill='#1f2937'>${doc} ${side}</text><text x='600' y='390' text-anchor='middle' font-family='Arial' font-size='24' fill='#6b7280'>Developer Mock</text></svg>`;
-    return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
-  };
 
   const base64ToFile = (base64: string, name: string): File | undefined => {
     if (!base64) return undefined;
@@ -247,11 +255,12 @@ export function useScannerLogic({
       }
       setFeedRunning(p => ({ ...p, [type]: true }));
     } catch (err: any) {
+      if (isForbidden(err)) { onLockLost(); return; }
       toast.error(err?.response?.data?.message ?? err?.message ?? `Failed to start ${type} feed`);
     } finally {
       setIsBusy(false);
     }
-  }, [scannerChoice, batchId, rangerState]);
+  }, [scannerChoice, batchId, rangerState, onLockLost]);
 
   const handleStopFeed = useCallback(async (type: 'Cheque' | 'Slip') => {
     setIsBusy(true);
@@ -265,11 +274,12 @@ export function useScannerLogic({
       }
       setFeedRunning(p => ({ ...p, [type]: false }));
     } catch (err: any) {
+      if (isForbidden(err)) { onLockLost(); return; }
       toast.error(err?.response?.data?.message ?? err?.message ?? `Failed to stop ${type} feed`);
     } finally {
       setIsBusy(false);
     }
-  }, [scannerChoice, batchId, rangerState]);
+  }, [scannerChoice, batchId, rangerState, onLockLost]);
 
   const handleRangerStopAndCapture = useCallback(async () => {
     if (!activeSlipEntryId) return;
@@ -301,11 +311,12 @@ export function useScannerLogic({
       await onCaptureSuccess();
       toast.success('Cheque captured from Ranger');
     } catch (err: any) {
+      if (isForbidden(err)) { onLockLost(); return; }
       toast.error(err?.response?.data?.message ?? err?.message ?? 'Failed to stop/capture Ranger feed');
     } finally {
       setIsBusy(false);
     }
-  }, [activeSlipEntryId, nextChqSeq, batchId, onCaptureSuccess, rangerState]);
+  }, [activeSlipEntryId, nextChqSeq, batchId, onCaptureSuccess, rangerState, onLockLost]);
 
   // ─── Capture ──────────────────────────────────────────────────────────────
 
@@ -329,6 +340,7 @@ export function useScannerLogic({
         await onCaptureSuccess();
         toast.success('Slip image captured');
       } catch (err: any) {
+        if (isForbidden(err)) { onLockLost(); return; }
         toast.error(err?.response?.data?.message ?? err?.message ?? 'Upload failed');
       } finally {
         setIsBusy(false);
@@ -354,6 +366,7 @@ export function useScannerLogic({
       await onCaptureSuccess();
       toast.success('Slip image captured');
     } catch (err: any) {
+      if (isForbidden(err)) { onLockLost(); return; }
       if (!isFlatbedConnected()) {
         setFlatbedStatus('error');
         setFlatbedError('Scanner disconnected during scan — reconnect and retry');
@@ -362,7 +375,7 @@ export function useScannerLogic({
     } finally {
       setIsBusy(false);
     }
-  }, [activeSlipEntryId, isDeveloper, mockScanEnabled, frontFile, frontFileOriginal, frontBBox, batchId, nextSlipItemOrder, onClearCameraFiles, onCaptureSuccess, flatbedStatus, selectedScannerId, flatbedResolution, flatbedMode, flatbedFormat]);
+  }, [activeSlipEntryId, isDeveloper, mockScanEnabled, frontFile, frontFileOriginal, frontBBox, batchId, nextSlipItemOrder, onClearCameraFiles, onCaptureSuccess, flatbedStatus, selectedScannerId, flatbedResolution, flatbedMode, flatbedFormat, onLockLost]);
 
   const handleCaptureCheque = useCallback(async () => {
     if (!activeSlipEntryId) return;
@@ -370,21 +383,18 @@ export function useScannerLogic({
     try {
       let result: ChequeItemDto;
       if (isDeveloper && mockScanEnabled && (frontFile || backFile)) {
-        result = await uploadMobileCheque(batchId, { 
-          slipEntryId: activeSlipEntryId, 
-          chqSeq: nextChqSeq, 
-          imageFront: frontFile ?? undefined, 
-          imageBack: backFile ?? undefined, 
+        result = await uploadMobileCheque(batchId, {
+          slipEntryId: activeSlipEntryId,
+          chqSeq: nextChqSeq,
+          imageFront: frontFile ?? undefined,
+          imageBack: backFile ?? undefined,
           imageFrontOriginal: frontFileOriginal ?? undefined,
           imageBackOriginal: backFileOriginal ?? undefined,
           bboxFront: frontBBox ?? undefined,
           bboxBack: backBBox ?? undefined,
-          scannerType: 'Scanner' 
+          scannerType: 'Scanner'
         });
         onClearCameraFiles();
-      } else if (isDeveloper && mockScanEnabled) {
-        result = await captureCheque(batchId, { slipEntryId: activeSlipEntryId, scannerType: 'Cheque' });
-        setMockPreview({ front: makeMockImage('Cheque', 'Front'), back: makeMockImage('Cheque', 'Back') });
       } else {
         await rangerPrepareToChangeOptions();
         const capture = rangerGetCaptureData('Both');
@@ -396,11 +406,12 @@ export function useScannerLogic({
       await onCaptureSuccess();
       toast.success('Cheque captured');
     } catch (err: any) {
+      if (isForbidden(err)) { onLockLost(); return; }
       toast.error(err?.response?.data?.message ?? 'Cheque capture failed');
     } finally {
       setIsBusy(false);
     }
-  }, [activeSlipEntryId, isDeveloper, mockScanEnabled, frontFile, backFile, frontFileOriginal, backFileOriginal, frontBBox, backBBox, batchId, nextChqSeq, onClearCameraFiles, onCaptureSuccess]);
+  }, [activeSlipEntryId, isDeveloper, mockScanEnabled, frontFile, backFile, frontFileOriginal, backFileOriginal, frontBBox, backBBox, batchId, nextChqSeq, onClearCameraFiles, onCaptureSuccess, onLockLost]);
 
   const handleCompleteScan = useCallback(async (onComplete: () => void) => {
     setIsBusy(true);
@@ -408,6 +419,7 @@ export function useScannerLogic({
       await completeScan(batchId);
       toast.success('Scanning completed');
     } catch (err: any) {
+      if (isForbidden(err)) { onLockLost(); return; }
       toast.error(err?.response?.data?.message ?? 'Failed to complete scanning');
       setIsBusy(false);
       return;
@@ -419,7 +431,7 @@ export function useScannerLogic({
 
     setIsBusy(false);
     onComplete();
-  }, [batchId, useFlatbedWs, scannerChoice]);
+  }, [batchId, useFlatbedWs, scannerChoice, onLockLost]);
 
   // ─── Scanner settings ─────────────────────────────────────────────────────
 

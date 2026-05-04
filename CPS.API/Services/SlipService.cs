@@ -156,6 +156,9 @@ public class SlipService : ISlipService
 
     public async Task<List<ClientAutoFillDto>> GetClientsByLocationAsync(int userLocationId)
     {
+        if (userLocationId <= 0)
+            return new List<ClientAutoFillDto>();
+
         var userLocation = await _locationRepo.GetByIdAsync(userLocationId)
             ?? throw new NotFoundException($"Location {userLocationId} not found.");
 

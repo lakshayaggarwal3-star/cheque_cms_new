@@ -35,6 +35,18 @@ public class BatchController : ControllerBase
         if (!string.IsNullOrEmpty(date) && DateOnly.TryParse(date, out var d))
             parsedDate = d;
 
+        // Visibility Logic:
+        // Scanner/Mobile Scanner are restricted to their locationId from claims.
+        // Other roles (RR, Maker, Checker, Admin, Developer) can see all.
+        if (User.IsInRole("Scanner") || User.IsInRole("Mobile Scanner"))
+        {
+            if (!User.IsInRole("Admin") && !User.IsInRole("Developer") && !User.IsInRole("Maker") && !User.IsInRole("Checker"))
+            {
+                var userLocationId = int.Parse(User.FindFirstValue("locationId") ?? "0");
+                locationId = userLocationId;
+            }
+        }
+
         var result = await _batchService.GetBatchListAsync(locationId, parsedDate, status, page, pageSize);
         return Ok(ApiResponse<PagedResult<BatchDto>>.Ok(result));
     }
@@ -81,12 +93,23 @@ public class BatchController : ControllerBase
     }
 
     [HttpGet("dashboard")]
-    public async Task<IActionResult> Dashboard([FromQuery] int locationId, [FromQuery] string? date)
+    public async Task<IActionResult> Dashboard([FromQuery] int? locationId, [FromQuery] string? date)
     {
         var today = string.IsNullOrEmpty(date)
             ? DateOnly.FromDateTime(DateTime.Today)
             : DateOnly.Parse(date);
-        var result = await _batchService.GetDashboardAsync(locationId, today);
+
+        // Visibility Logic:
+        if (User.IsInRole("Scanner") || User.IsInRole("Mobile Scanner"))
+        {
+            if (!User.IsInRole("Admin") && !User.IsInRole("Developer") && !User.IsInRole("Maker") && !User.IsInRole("Checker"))
+            {
+                var userLocationId = int.Parse(User.FindFirstValue("locationId") ?? "0");
+                locationId = userLocationId;
+            }
+        }
+
+        var result = await _batchService.GetDashboardAsync(locationId ?? 0, today);
         return Ok(ApiResponse<DashboardSummary>.Ok(result));
     }
 }

@@ -6,7 +6,7 @@
 // Created     : 2026-04-14
 // =============================================================================
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import {
   getUsers, createUser, updateUser, resetPassword, unlockUser, activateUser, deactivateUser, deleteUser,
@@ -22,6 +22,7 @@ type Mode = 'create' | 'edit' | 'reset-pw' | null;
 interface UserFormFields {
   employeeID: string;
   password: string;
+  confirmPassword: string;
   username: string;
   email: string;
   defaultLocationID: string;
@@ -42,6 +43,103 @@ function RoleBadge({ label, badgeClass }: { label: string; badgeClass: string })
     <span className={`inline-block text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-md ${badgeClass} shadow-sm border border-white/10`}>
       {label}
     </span>
+  );
+}
+
+// ─── Searchable location dropdown ─────────────────────────────────────────────
+
+function LocationSelect({
+  locations,
+  value,
+  onChange,
+}: {
+  locations: LocationDto[];
+  value: string;
+  onChange: (val: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const containerRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  const active = locations.find(l => l.locationID.toString() === value);
+  const filtered = locations
+    .filter(l => l.isActive)
+    .filter(l => l.locationName.toLowerCase().includes(search.toLowerCase()));
+
+  useEffect(() => {
+    if (!open) return;
+    searchRef.current?.focus();
+    const handler = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setSearch('');
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  return (
+    <div ref={containerRef} className="relative">
+      {/* Trigger */}
+      <button
+        type="button"
+        onClick={() => { setOpen(o => !o); setSearch(''); }}
+        className="w-full bg-[var(--bg-subtle)] border border-[var(--border)] rounded-xl px-4 py-2.5 text-sm focus:border-blue-500 outline-none transition-all text-left flex items-center justify-between gap-2"
+      >
+        <span className={active ? '' : 'opacity-40'}>
+          {active ? active.locationName : 'Global / Unassigned'}
+        </span>
+        <svg className={`w-4 h-4 opacity-40 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {/* Dropdown */}
+      {open && (
+        <div className="absolute z-50 mt-1 w-full bg-[var(--bg-raised)] border border-[var(--border)] rounded-xl shadow-2xl overflow-hidden">
+          {/* Search */}
+          <div className="px-3 py-2 border-b border-[var(--border)]">
+            <div className="flex items-center gap-2 bg-[var(--bg-subtle)] rounded-lg px-3 py-1.5">
+              <svg className="w-3.5 h-3.5 opacity-40 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input
+                ref={searchRef}
+                type="text"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search location…"
+                className="flex-1 bg-transparent text-xs outline-none placeholder:opacity-40"
+              />
+            </div>
+          </div>
+          {/* Options */}
+          <div className="max-h-48 overflow-y-auto py-1">
+            <button
+              type="button"
+              onClick={() => { onChange(''); setOpen(false); setSearch(''); }}
+              className={`w-full text-left px-4 py-2 text-sm hover:bg-[var(--bg-hover)] transition-colors ${!value ? 'text-blue-500 font-semibold' : 'opacity-60'}`}
+            >
+              Global / Unassigned
+            </button>
+            {filtered.length === 0 ? (
+              <p className="px-4 py-3 text-xs opacity-30 italic">No locations match</p>
+            ) : filtered.map(l => (
+              <button
+                key={l.locationID}
+                type="button"
+                onClick={() => { onChange(l.locationID.toString()); setOpen(false); setSearch(''); }}
+                className={`w-full text-left px-4 py-2 text-sm hover:bg-[var(--bg-hover)] transition-colors ${value === l.locationID.toString() ? 'text-blue-500 font-semibold' : ''}`}
+              >
+                {l.locationName}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -86,7 +184,7 @@ export function UserManagementPage() {
     setSelected(null);
     setMode('create');
     const defaults: any = {
-      employeeID: '', password: '', username: '', email: '',
+      employeeID: '', password: '', confirmPassword: '', username: '', email: '',
       defaultLocationID: '', isDeveloper: false,
     };
     ROLES.forEach(r => { defaults[r.key] = false; });
@@ -118,6 +216,10 @@ export function UserManagementPage() {
 
   // ── Submit ────────────────────────────────────────────────────────────────
   const handleUserSubmit = async (data: UserFormFields) => {
+    if (mode === 'create' && data.password !== data.confirmPassword) {
+      toast.error('Passwords do not match');
+      return;
+    }
     const selectedRoles = ROLES.filter(r => data[r.key] === true).map(r => r.key);
     
     // Auto-select Scanner role if no roles are selected and not a developer
@@ -238,7 +340,7 @@ export function UserManagementPage() {
         <button
           type="button"
           onClick={openCreate}
-          className="btn-primary flex items-center gap-2 px-6 py-2.5 rounded-xl font-semibold shadow-lg shadow-blue-500/20"
+          className="btn-primary flex items-center gap-2 px-6 py-2.5 rounded-xl font-semibold shadow-md"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
@@ -318,7 +420,7 @@ export function UserManagementPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <div className="flex items-center gap-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="flex items-center gap-4">
                         <button onClick={() => openEdit(u)} className="text-blue-500 hover:text-blue-400 font-semibold text-xs">Edit</button>
                         <button onClick={() => openResetPw(u)} className="text-amber-500 hover:text-amber-400 font-semibold text-xs">Password</button>
                         {u.isLocked && (
@@ -327,7 +429,7 @@ export function UserManagementPage() {
                         <button onClick={() => handleToggleActive(u)} className="opacity-40 hover:opacity-100 font-semibold text-xs transition-opacity">
                           {u.isActive ? 'Disable' : 'Enable'}
                         </button>
-                        <button onClick={() => handleDelete(u)} className="text-rose-500 hover:text-rose-400 font-semibold text-xs opacity-0 group-hover:opacity-100 transition-opacity">Delete</button>
+                        <button onClick={() => handleDelete(u)} className="text-rose-500 hover:text-rose-400 font-semibold text-xs">Delete</button>
                       </div>
                     </td>
                   </tr>
@@ -356,101 +458,126 @@ export function UserManagementPage() {
 
       {/* ── Modals (Using CPS Design System) ── */}
       {(mode === 'create' || mode === 'edit') && (
-        <div className="modal-overlay-container" style={{ 
-          position: 'fixed', inset: 0, background: 'black/80', backdropFilter: 'blur(4px)', 
-          display: 'flex', alignItems: 'center', justifyItems: 'center', zIndex: 1000, 
-          padding: 16, animation: 'fadeIn 0.2s ease-out', overflowY: 'auto' 
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.80)', backdropFilter: 'blur(10px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999,
+          padding: '16px', overflowY: 'auto'
         }}>
-          <div className="bg-[var(--bg-raised)] border border-[var(--border)] rounded-3xl shadow-2xl w-full max-w-xl max-h-none overflow-hidden flex flex-col shadow-blue-500/5">
-            <div className="px-8 py-6 border-b border-[var(--border)] flex items-center justify-between bg-[var(--bg-subtle)]">
+          <div className="bg-[var(--bg-raised)] border border-[var(--border)] rounded-2xl shadow-2xl w-full max-w-3xl flex flex-col"
+               style={{ maxHeight: 'calc(100vh - 32px)', animation: 'modalEnter 0.3s cubic-bezier(0.16, 1, 0.3, 1)' }}>
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-[var(--border)] flex items-center justify-between flex-shrink-0">
               <div>
-                <h2 className="text-lg font-bold uppercase tracking-tight">
+                <h2 className="text-base font-bold uppercase tracking-tight">
                   {mode === 'create' ? 'Onboard Employee' : 'Update Credentials'}
                 </h2>
-                <p className="text-xs opacity-50 mt-1">Configure profile and system access rights.</p>
+                <p className="text-xs opacity-50 mt-0.5">Configure profile and system access rights.</p>
               </div>
-              <button onClick={() => setMode(null)} className="w-10 h-10 rounded-full hover:bg-[var(--bg-hover)] flex items-center justify-center transition-colors">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              <button onClick={() => setMode(null)} className="w-8 h-8 rounded-full hover:bg-[var(--bg-hover)] flex items-center justify-center transition-colors flex-shrink-0">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
 
-            <form onSubmit={userForm.handleSubmit(handleUserSubmit)} className="flex-1 overflow-y-auto p-8 space-y-6">
-              
-              {/* Profile Section */}
-              <div className="grid grid-cols-2 gap-6">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase opacity-50 px-1">Employee ID</label>
-                  <input
-                    {...userForm.register('employeeID', { required: true })}
-                    placeholder="EMP-XXXX"
-                    className="w-full bg-[var(--bg-subtle)] border border-[var(--border)] rounded-xl px-4 py-3 text-sm focus:border-blue-500 outline-none transition-all disabled:opacity-40 uppercase font-mono"
-                  />
-                </div>
-                {mode === 'create' && (
+            {/* Scrollable body */}
+            <form onSubmit={userForm.handleSubmit(handleUserSubmit)} className="flex-1 overflow-y-auto p-6 space-y-4">
+              {/* Required fields — row 1 */}
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest opacity-30 mb-3">Required</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold uppercase opacity-50 px-1">Initial Secret</label>
+                    <label className="flex items-center gap-1.5 text-[10px] font-bold uppercase opacity-50 px-1">
+                      Employee ID <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      {...userForm.register('employeeID', { required: true })}
+                      placeholder="EMP-XXXX"
+                      className="w-full bg-[var(--bg-subtle)] border border-[var(--border)] rounded-xl px-4 py-2.5 text-sm focus:border-blue-500 outline-none transition-all uppercase font-mono"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="flex items-center gap-1.5 text-[10px] font-bold uppercase opacity-50 px-1">
+                      Display Name <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      {...userForm.register('username', { required: true })}
+                      placeholder="Full Name"
+                      className="w-full bg-[var(--bg-subtle)] border border-[var(--border)] rounded-xl px-4 py-2.5 text-sm focus:border-blue-500 outline-none transition-all"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Password fields — create mode only */}
+              {mode === 'create' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="flex items-center gap-1.5 text-[10px] font-bold uppercase opacity-50 px-1">
+                      Initial Password <span className="text-rose-500">*</span>
+                    </label>
                     <input
                       {...userForm.register('password', { required: true, minLength: 8 })}
                       type="password"
-                      placeholder="••••••••"
-                      className="w-full bg-[var(--bg-subtle)] border border-[var(--border)] rounded-xl px-4 py-3 text-sm focus:border-blue-500 outline-none transition-all"
+                      placeholder="Min 8 characters"
+                      className="w-full bg-[var(--bg-subtle)] border border-[var(--border)] rounded-xl px-4 py-2.5 text-sm focus:border-blue-500 outline-none transition-all"
                     />
                   </div>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-6">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase opacity-50 px-1">Display Name</label>
-                  <input
-                    {...userForm.register('username', { required: true })}
-                    placeholder="Full Name"
-                    className="w-full bg-[var(--bg-subtle)] border border-[var(--border)] rounded-xl px-4 py-3 text-sm focus:border-blue-500 outline-none transition-all"
-                  />
+                  <div className="space-y-1.5">
+                    <label className="flex items-center gap-1.5 text-[10px] font-bold uppercase opacity-50 px-1">
+                      Confirm Password <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      {...userForm.register('confirmPassword', { required: true })}
+                      type="password"
+                      placeholder="Re-enter password"
+                      className="w-full bg-[var(--bg-subtle)] border border-[var(--border)] rounded-xl px-4 py-2.5 text-sm focus:border-blue-500 outline-none transition-all"
+                    />
+                  </div>
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase opacity-50 px-1">Email Address</label>
-                  <input
-                    {...userForm.register('email')}
-                    type="email"
-                    placeholder="corp@bank.com"
-                    className="w-full bg-[var(--bg-subtle)] border border-[var(--border)] rounded-xl px-4 py-3 text-sm focus:border-blue-500 outline-none transition-all"
-                  />
+              )}
+
+              {/* Optional fields */}
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest opacity-30 mb-3">Optional</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase opacity-50 px-1">Email Address</label>
+                    <input
+                      {...userForm.register('email')}
+                      type="email"
+                      placeholder="corp@bank.com"
+                      className="w-full bg-[var(--bg-subtle)] border border-[var(--border)] rounded-xl px-4 py-2.5 text-sm focus:border-blue-500 outline-none transition-all"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase opacity-50 px-1">Duty Location</label>
+                    <LocationSelect
+                      locations={locations}
+                      value={userForm.watch('defaultLocationID')}
+                      onChange={val => userForm.setValue('defaultLocationID', val)}
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase opacity-50 px-1">Duty Location</label>
-                <select
-                  {...userForm.register('defaultLocationID')}
-                  className="w-full bg-[var(--bg-subtle)] border border-[var(--border)] rounded-xl px-4 py-3 text-sm focus:border-blue-500 outline-none transition-all appearance-none"
-                >
-                  <option value="">Global / Unassigned</option>
-                  {locations.filter(l => l.isActive).map(l => (
-                    <option key={l.locationID} value={l.locationID}>{l.locationName}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Roles Section */}
+              {/* Roles */}
               <div className="space-y-3 pt-4 border-t border-[var(--border-subtle)]">
                 <label className="text-[10px] font-bold uppercase tracking-widest opacity-40 px-1">Permissions & Clearance</label>
-                <div className="grid grid-cols-1 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {ROLES.map(role => (
-                    <label key={role.key} className={`flex items-center gap-4 p-4 rounded-2xl border cursor-pointer transition-all hover:scale-[1.01] active:scale-[0.99] group
+                    <label key={role.key} className={`flex items-center gap-4 p-4 rounded-xl border cursor-pointer transition-all hover:bg-[var(--bg-hover)]
                       ${role.elevated ? 'bg-amber-500/5 border-amber-500/20' : 'bg-[var(--bg-subtle)] border-[var(--border)]'}
                     `}>
                       <input
                         {...userForm.register(role.key as any)}
                         type="checkbox"
-                        className="w-5 h-5 rounded-lg border-2 border-[var(--border)] bg-transparent checked:bg-blue-500 text-blue-500 focus:ring-0 transition-colors"
+                        className="w-4 h-4 rounded border-[var(--border)] bg-transparent checked:bg-blue-500 text-blue-500 focus:ring-0 transition-colors flex-shrink-0"
                       />
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-sm font-bold">{role.label}</span>
                           <RoleBadge label={role.label} badgeClass={role.badgeClass} />
                         </div>
-                        <p className="text-[11px] opacity-40 mt-0.5 font-medium">{role.description}</p>
+                        <p className="text-xs opacity-40 mt-0.5 leading-snug">{role.description}</p>
                       </div>
                     </label>
                   ))}
@@ -458,11 +585,12 @@ export function UserManagementPage() {
               </div>
             </form>
 
-            <div className="px-8 py-6 border-t border-[var(--border)] bg-[var(--bg-subtle)] flex gap-4">
-              <button onClick={() => setMode(null)} className="flex-1 py-3 rounded-xl font-bold text-xs border border-[var(--border)] hover:bg-[var(--bg-hover)] transition-colors">
-                Dismiss
+            {/* Footer */}
+            <div className="px-6 py-4 border-t border-[var(--border)] bg-[var(--bg-subtle)] flex gap-3 flex-shrink-0">
+              <button onClick={() => setMode(null)} className="px-5 py-2.5 rounded-xl font-bold text-sm border border-[var(--border)] hover:bg-[var(--bg-hover)] transition-colors">
+                Cancel
               </button>
-              <button onClick={userForm.handleSubmit(handleUserSubmit)} disabled={submitting} className="flex-[2] btn-primary py-3 rounded-xl font-bold text-xs shadow-lg shadow-blue-500/20 disabled:opacity-50">
+              <button onClick={userForm.handleSubmit(handleUserSubmit)} disabled={submitting} className="flex-1 btn-primary py-2.5 rounded-xl font-bold text-sm disabled:opacity-50">
                 {submitting ? 'Processing…' : mode === 'create' ? 'Finalize Onboarding' : 'Commit Changes'}
               </button>
             </div>
@@ -470,14 +598,13 @@ export function UserManagementPage() {
         </div>
       )}
 
-      {/* Role Warning Modal (z-60) */}
       {showRoleWarning && (
         <div className="modal-overlay-container" style={{ 
-          position: 'fixed', inset: 0, background: 'black/90', backdropFilter: 'blur(6px)', 
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1010, 
-          padding: 16, overflowY: 'auto' 
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(10px)', 
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, 
+          padding: 20
         }}>
-          <div className="bg-[var(--bg-raised)] border border-amber-500/30 rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
+          <div className="bg-[var(--bg-raised)] border border-amber-500/30 rounded-[32px] shadow-2xl w-full max-w-md overflow-hidden">
             <div className="p-8 text-center space-y-4">
               <div className="w-16 h-16 bg-amber-500/10 text-amber-500 rounded-full flex items-center justify-center mx-auto mb-2">
                 <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
@@ -502,11 +629,11 @@ export function UserManagementPage() {
       {/* Reset Password Modal */}
       {mode === 'reset-pw' && selected && (
         <div className="modal-overlay-container" style={{ 
-          position: 'fixed', inset: 0, background: 'black/80', backdropFilter: 'blur(4px)', 
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, 
-          padding: 16, overflowY: 'auto' 
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(12px)', 
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, 
+          padding: 20 
         }}>
-          <div className="bg-[var(--bg-raised)] border border-[var(--border)] rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden">
+          <div className="bg-[var(--bg-raised)] border border-[var(--border)] rounded-[32px] shadow-2xl w-full max-w-sm overflow-hidden">
              <div className="p-8 space-y-6">
                 <div className="text-center">
                   <h3 className="text-lg font-bold">Security Reset</h3>

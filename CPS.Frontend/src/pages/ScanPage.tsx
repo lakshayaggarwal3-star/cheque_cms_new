@@ -15,7 +15,7 @@
 // Refactored  : 2026-04-22  (split into sub-module)
 // =============================================================================
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { toast } from '../store/toastStore';
@@ -27,7 +27,7 @@ import { ImageEditModal } from '../components/ImageEditModal';
 import {
   Pill, Icon, ScanItemsTable, ScannerSettingsModal,
 } from '../components/scan';
-import { uploadBulkSlipItems } from '../services/scanService';
+import { uploadBulkSlipItems, releaseScanLock, heartbeatScanLock } from '../services/scanService';
 import { BatchStatus } from '../types';
 
 import {
@@ -125,6 +125,10 @@ export function ScanPage() {
       setViewerType(null);
       await session_hooks.loadSession();
     },
+    onLockLost: () => {
+      toast.error('Scan lock lost — this batch was taken over by another session.');
+      navigate('/all-batches');
+    },
     onClearCameraFiles: state.clearCameraFiles,
     frontFile: state.frontFile,
     frontFileOriginal: state.frontFileOriginal,
@@ -153,56 +157,47 @@ export function ScanPage() {
     return session_hooks.cleanup;
   }, [batchNo]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // -- Inactivity Lock Logic --
-  const [lastActivity, setLastActivity] = useState(Date.now());
-  const INACTIVITY_LIMIT = 5 * 60 * 1000;
-  const WARNING_LIMIT = 4.5 * 60 * 1000;
-  const [hasWarned, setHasWarned] = useState(false);
+  // -- Heartbeat: keeps scan lock alive while user is active on this page.
+  //    Pings every 2 min if there was activity in the last 2 min.
+  //    If user is idle, pings stop → server sweep releases lock after 7 min. --
+  const lastActivityRef = useRef(Date.now());
 
   useEffect(() => {
-    const updateActivity = () => { setLastActivity(Date.now()); setHasWarned(false); };
-    window.addEventListener('mousedown', updateActivity);
-    window.addEventListener('scroll', updateActivity);
-    window.addEventListener('keydown', updateActivity);
+    const mark = () => { lastActivityRef.current = Date.now(); };
+    window.addEventListener('mousedown', mark);
+    window.addEventListener('keydown', mark);
+    window.addEventListener('scroll', mark);
     return () => {
-      window.removeEventListener('mousedown', updateActivity);
-      window.removeEventListener('scroll', updateActivity);
-      window.removeEventListener('keydown', updateActivity);
+      window.removeEventListener('mousedown', mark);
+      window.removeEventListener('keydown', mark);
+      window.removeEventListener('scroll', mark);
     };
   }, []);
 
-  const handleAutoRelease = useCallback(async () => {
-    if (!id) return;
-    try {
-      const { releaseScanLock } = await import('../services/scanService');
-      await releaseScanLock(id);
-      toast.warning('Session released due to inactivity');
-    } finally {
-      navigate('/all-batches');
-    }
-  }, [id, navigate]);
-
   useEffect(() => {
     if (loading || !id) return;
+    const PING_INTERVAL = 2 * 60 * 1000;
     const timer = setInterval(() => {
-      const elapsed = Date.now() - lastActivity;
-      if (elapsed > INACTIVITY_LIMIT) {
-        handleAutoRelease();
-      } else if (elapsed > WARNING_LIMIT && !hasWarned) {
-        setHasWarned(true);
-        toast.info('Session expiring soon due to inactivity...');
+      const idleSince = Date.now() - lastActivityRef.current;
+      if (idleSince < PING_INTERVAL) {
+        heartbeatScanLock(id).catch(() => {});
       }
-    }, 5000);
+    }, PING_INTERVAL);
     return () => clearInterval(timer);
-  }, [id, loading, lastActivity, hasWarned, handleAutoRelease, INACTIVITY_LIMIT, WARNING_LIMIT]);
+  }, [id, loading]);
 
-  // -- Release lock on unmount --
+  // -- Release lock on unmount (navigation) + beforeunload (tab close / crash) --
   useEffect(() => {
     return () => {
-      if (id) {
-        import('../services/scanService').then(m => m.releaseScanLock(id)).catch(() => {});
-      }
+      if (id) releaseScanLock(id).catch(() => {});
     };
+  }, [id]);
+
+  useEffect(() => {
+    if (!id) return;
+    const release = () => navigator.sendBeacon(`/api/scan/${id}/release-lock`);
+    window.addEventListener('beforeunload', release);
+    return () => window.removeEventListener('beforeunload', release);
   }, [id]);
 
   // ── Derived values ──────────────────────────────────────────────────────────

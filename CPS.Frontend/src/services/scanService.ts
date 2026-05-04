@@ -179,6 +179,10 @@ export async function releaseScanLock(batchId: number): Promise<void> {
   await apiClient.post(`/scan/${batchId}/release-lock`);
 }
 
+export async function heartbeatScanLock(batchId: number): Promise<void> {
+  await apiClient.post(`/scan/${batchId}/heartbeat`);
+}
+
 export async function reopenBatch(batchId: number): Promise<void> {
   await apiClient.post(`/scan/${batchId}/reopen`);
 }

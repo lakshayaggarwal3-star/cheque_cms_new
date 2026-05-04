@@ -12,7 +12,8 @@ import { getBatchList } from '../services/batchService';
 import { useAuthStore } from '../store/authStore';
 import { BatchDto, BatchStatus, BatchStatusLabels } from '../types';
 import { toast } from '../store/toastStore';
-import { QueueTabs } from '../components/QueueTabs';
+import { todayIST } from '../utils/dateUtils';
+import { UploadSlipModal } from '../components/UploadSlipModal';
 
 function Icon({ name, size = 20, weight = 400, style }: {
   name: string; size?: number; weight?: number; style?: React.CSSProperties;
@@ -68,15 +69,23 @@ function Dot({ tone = 'neutral' as Tone }: { tone?: Tone }) {
   );
 }
 
-const STATUS_TONE: Record<number, Tone> = { 0: 'neutral', 1: 'info', 2: 'warning', 3: 'success', 4: 'danger', 5: 'success' };
+const STATUS_TONE: Record<number, Tone> = { 0: 'neutral', 1: 'info', 2: 'warning', 3: 'success', 4: 'danger', 5: 'success', 6: 'warning' };
 
-function getAction(b: BatchDto): { label: string; path: string } | null {
+function getAction(b: BatchDto, currentUserId?: number): { label: string; path: string; disabled?: boolean; lockedBy?: string } | null {
+  const isScanLockedByOther = !!b.scanLockedBy && b.scanLockedBy !== currentUserId;
+  const isRRLockedByOther   = !!b.rrLockedBy   && b.rrLockedBy   !== currentUserId;
+
   switch (b.batchStatus) {
-    case BatchStatus.Created:            return { label: 'Start',    path: `/scan/${b.batchNo}` };
+    case BatchStatus.Created:
+      return { label: 'Start',    path: `/scan/${b.batchNo}`, disabled: isScanLockedByOther, lockedBy: b.scanLockedByName };
     case BatchStatus.ScanningInProgress:
-    case BatchStatus.ScanningPending:    return { label: 'Continue', path: `/scan/${b.batchNo}` };
-    case BatchStatus.RRPending:          return { label: 'Repair',   path: `/rr/${b.batchNo}` };
-    default:                             return null;
+    case BatchStatus.ScanningPending:
+      return { label: 'Continue', path: `/scan/${b.batchNo}`, disabled: isScanLockedByOther, lockedBy: b.scanLockedByName };
+    case BatchStatus.RRPending:
+    case BatchStatus.RRInProgress:
+      return { label: 'Repair',   path: `/rr/${b.batchNo}`,  disabled: isRRLockedByOther,   lockedBy: b.rrLockedByName };
+    default:
+      return null;
   }
 }
 
@@ -89,16 +98,25 @@ export function AllBatchesPage() {
   const navigate = useNavigate();
   const [batches, setBatches] = useState<BatchDto[]>([]);
   const [loading, setLoading] = useState(true);
+  const [date, setDate] = useState(todayIST);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [search, setSearch] = useState('');
   const [searchFocus, setSearchFocus] = useState(false);
+  const [uploadTarget, setUploadTarget] = useState<{ batchId: number; batchNo: string } | null>(null);
+
+  const isAdminOrDev = user?.roles?.some(r => ['Admin', 'Developer'].includes(r));
 
   const load = useCallback(async () => {
     if (!user) return;
     setLoading(true);
     try {
-      const res = await getBatchList({ locationId: user.locationId, page, pageSize: 100 });
+      const res = await getBatchList({
+        locationId: isAdminOrDev ? undefined : user.locationId,
+        date,
+        page,
+        pageSize: 100
+      });
       setBatches(res.items);
       setTotalPages(res.totalPages);
     } catch {
@@ -106,7 +124,7 @@ export function AllBatchesPage() {
     } finally {
       setLoading(false);
     }
-  }, [user, page]);
+  }, [user, page, date]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -127,7 +145,6 @@ export function AllBatchesPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0, height: '100%' }}>
-      <QueueTabs />
       {/* Table card */}
       <div style={{
         background: 'var(--bg-raised)', border: '1px solid var(--border)',
@@ -169,6 +186,25 @@ export function AllBatchesPage() {
                 }}
               />
             </div>
+
+            {/* Date Picker */}
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <Icon name="calendar_today" size={16} style={{
+                position: 'absolute', left: 10, color: 'var(--fg-subtle)', pointerEvents: 'none',
+              }} />
+              <input
+                type="date"
+                value={date}
+                onChange={e => { setDate(e.target.value); setPage(1); }}
+                style={{
+                  padding: '8px 12px 8px 32px',
+                  background: 'var(--bg-input)', color: 'var(--fg)',
+                  border: '1px solid var(--border-strong)', borderRadius: 'var(--r-md)',
+                  fontSize: 'var(--text-sm)', fontFamily: 'var(--font-sans)',
+                  outline: 'none', height: 36, boxSizing: 'border-box',
+                }}
+              />
+            </div>
             {/* Filter icon button */}
             <button
               title="Filters"
@@ -199,7 +235,7 @@ export function AllBatchesPage() {
               <table className="table-desktop" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-sm)' }}>
                 <thead>
                   <tr style={{ textAlign: 'left', background: 'var(--bg)' }}>
-                    {['Batch no', 'Scanner', 'Slips', 'Amount', 'Status', ''].map((h, i) => (
+                    {['Batch no', 'Scanner', 'Slips', 'Amount', 'Status', 'In Use', ''].map((h, i) => (
                       <th key={i} style={{
                         padding: '10px 20px',
                         fontSize: 'var(--text-xs)', color: 'var(--fg-subtle)',
@@ -212,8 +248,10 @@ export function AllBatchesPage() {
                 </thead>
                 <tbody>
                   {filtered.map(b => {
-                    const action = getAction(b);
+                    const action = getAction(b, user?.userId);
                     const tone = STATUS_TONE[b.batchStatus] ?? 'neutral';
+                    const lockedByName = b.scanLockedByName || b.rrLockedByName;
+
                     return (
                       <tr key={b.batchID} style={{ borderBottom: '1px solid var(--border-subtle)' }}
                         onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-subtle)')}
@@ -239,29 +277,71 @@ export function AllBatchesPage() {
                         <td style={{ padding: '14px 20px' }}>
                           <Chip tone={tone}>{BatchStatusLabels[b.batchStatus]}</Chip>
                         </td>
-                        <td style={{ padding: '14px 20px', textAlign: 'right' }}>
-                          {action ? (
-                            <button
-                              onClick={() => navigate(action.path)}
-                              style={{
-                                display: 'inline-flex', alignItems: 'center', gap: 6,
-                                padding: '6px 12px', height: 30,
-                                background: 'transparent', color: 'var(--fg)',
-                                border: '1px solid transparent',
-                                borderRadius: 'var(--r-md)',
-                                fontSize: 'var(--text-sm)', fontWeight: 500, fontFamily: 'var(--font-sans)',
-                                cursor: 'pointer',
-                                transition: 'background-color var(--dur-fast) var(--ease)',
-                              }}
-                              onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
-                              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                            >
-                              {action.label}
-                              <Icon name="arrow_forward" size={16} weight={500} />
-                            </button>
+                        <td style={{ padding: '14px 20px', color: 'var(--fg-subtle)', fontSize: '12px' }}>
+                          {lockedByName ? (
+                            <div className="flex items-center gap-1.5">
+                              <Icon name="person" size={14} style={{ opacity: 0.6 }} />
+                              <span>{lockedByName}</span>
+                            </div>
                           ) : (
-                            <Icon name="check_circle" size={16} style={{ color: 'var(--success)' }} />
+                            <span className="opacity-30">—</span>
                           )}
+                        </td>
+                        <td style={{ padding: '10px 20px', textAlign: 'right' }}>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            <button
+                              onClick={() => setUploadTarget({ batchId: b.batchID, batchNo: b.batchNo })}
+                              title="Upload slip images"
+                              style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 4,
+                                padding: '5px 10px', height: 28,
+                                background: 'var(--warning, #f97316)', color: '#fff',
+                                border: 'none',
+                                borderRadius: 'var(--r-md)',
+                                fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-sans)',
+                                cursor: 'pointer', whiteSpace: 'nowrap',
+                              }}
+                              onMouseEnter={e => { e.currentTarget.style.opacity = '0.88'; }}
+                              onMouseLeave={e => { e.currentTarget.style.opacity = '1'; }}
+                            >
+                              <Icon name="upload_file" size={13} />
+                              Upload Slips
+                            </button>
+                            {action ? (
+                              <button
+                                onClick={() => !action.disabled && navigate(action.path)}
+                                disabled={action.disabled}
+                                title={action.disabled && action.lockedBy ? `Locked by ${action.lockedBy} — auto-releases after 7 min of inactivity` : undefined}
+                                style={{
+                                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                                  padding: '5px 10px', height: 28,
+                                  background: 'transparent', color: action.disabled ? 'var(--fg-faint)' : 'var(--fg)',
+                                  border: '1px solid transparent',
+                                  borderRadius: 'var(--r-md)',
+                                  fontSize: 'var(--text-sm)', fontWeight: 500, fontFamily: 'var(--font-sans)',
+                                  cursor: action.disabled ? 'not-allowed' : 'pointer',
+                                  transition: 'all var(--dur-fast) var(--ease)',
+                                  opacity: action.disabled ? 0.5 : 1,
+                                }}
+                                onMouseEnter={e => { if (!action.disabled) e.currentTarget.style.background = 'var(--bg-hover)'; }}
+                                onMouseLeave={e => { if (!action.disabled) e.currentTarget.style.background = 'transparent'; }}
+                              >
+                                {action.disabled ? (
+                                  <>
+                                    <Icon name="lock" size={14} />
+                                    <span>Locked</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    {action.label}
+                                    <Icon name="arrow_forward" size={16} weight={500} />
+                                  </>
+                                )}
+                              </button>
+                            ) : (
+                              <Icon name="check_circle" size={16} style={{ color: 'var(--success)' }} />
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -272,7 +352,7 @@ export function AllBatchesPage() {
               {/* Mobile Cards */}
               <div className="mobile-batch-cards">
                 {filtered.map(b => {
-                  const action = getAction(b);
+                  const action = getAction(b, user?.userId);
                   const tone = STATUS_TONE[b.batchStatus] ?? 'neutral';
                   return (
                     <div key={b.batchID} className="batch-card">
@@ -297,12 +377,22 @@ export function AllBatchesPage() {
                           <span className="batch-card-value" style={{ fontFamily: 'var(--font-mono)' }}>{fmtAmount(b.totalAmount)}</span>
                         </div>
                       </div>
-                      {action && (
-                        <button className="batch-card-action" onClick={() => navigate(action.path)}>
-                          {action.label}
-                          <Icon name="arrow_forward" size={16} />
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <button
+                          className="batch-card-action"
+                          style={{ flex: '1 1 0', minWidth: 0, background: 'var(--warning, #f97316)', color: '#fff', border: 'none' }}
+                          onClick={() => setUploadTarget({ batchId: b.batchID, batchNo: b.batchNo })}
+                        >
+                          <Icon name="upload_file" size={16} />
+                          Upload Slips
                         </button>
-                      )}
+                        {action && (
+                          <button className="batch-card-action" style={{ flex: '1 1 0', minWidth: 0 }} onClick={() => navigate(action.path)}>
+                            {action.label}
+                            <Icon name="arrow_forward" size={16} />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
@@ -345,6 +435,15 @@ export function AllBatchesPage() {
           </div>
         )}
       </div>
+
+      {uploadTarget && (
+        <UploadSlipModal
+          batchId={uploadTarget.batchId}
+          batchNo={uploadTarget.batchNo}
+          onClose={() => setUploadTarget(null)}
+          onSuccess={load}
+        />
+      )}
     </div>
   );
 }

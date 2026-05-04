@@ -32,6 +32,7 @@ public interface ISlipEntryRepository
     Task UpdateChequeItemAsync(ChequeItem item);
     Task<(int SeqNo, int ChqSeq)> GetNextAtomicSequencesAsync(long batchId, long slipEntryId);
     Task<bool> AllRRResolvedAsync(long batchId);
+    Task<bool> HasAnyChequeItemsAsync(long batchId);
 
     // SlipNo generation — locked transaction
     Task<string> GenerateNextSlipNoAsync(long batchId, int locationId, int? scannerMappingId);

@@ -5,6 +5,10 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <NoWarn>$(NoWarn);1668</NoWarn>
+    <!-- Speed Optimizations -->
+    <AccelerateBuildsInVisualStudio>true</AccelerateBuildsInVisualStudio>
+    <RunAnalyzersDuringBuild>false</RunAnalyzersDuringBuild>
+    <TieredCompilation>true</TieredCompilation>
   </PropertyGroup>
 
   <!-- Build React SPA and copy to wwwroot before dotnet publish -->

@@ -13,7 +13,8 @@ import { getBatchList } from '../services/batchService';
 import { useAuthStore } from '../store/authStore';
 import { BatchDto, BatchStatus, BatchStatusLabels } from '../types';
 import { toast } from '../store/toastStore';
-import { QueueTabs } from '../components/QueueTabs';
+import { todayIST } from '../utils/dateUtils';
+import { UploadSlipModal } from '../components/UploadSlipModal';
 
 // ── primitives ────────────────────────────────────────────────────────────────
 
@@ -73,7 +74,7 @@ function Dot({ tone = 'neutral' as Tone }: { tone?: Tone }) {
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-const STATUS_TONE: Record<number, Tone> = { 0: 'neutral', 1: 'info', 2: 'warning', 3: 'success', 4: 'danger', 5: 'success' };
+const STATUS_TONE: Record<number, Tone> = { 0: 'neutral', 1: 'info', 2: 'warning', 3: 'success', 4: 'danger', 5: 'success', 6: 'warning' };
 
 function fmtAmount(n: number) {
   return n === 0 ? '—' : '₹' + n.toLocaleString('en-IN');
@@ -86,16 +87,25 @@ export function ScanListPage() {
   const navigate = useNavigate();
   const [batches, setBatches] = useState<BatchDto[]>([]);
   const [loading, setLoading] = useState(true);
+  const [date, setDate] = useState(todayIST);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [search, setSearch] = useState('');
   const [searchFocus, setSearchFocus] = useState(false);
+  const [uploadTarget, setUploadTarget] = useState<{ batchId: number; batchNo: string } | null>(null);
+
+  const isAdminOrDev = user?.roles?.some(r => ['Admin', 'Developer'].includes(r));
 
   const load = useCallback(async () => {
     if (!user) return;
     setLoading(true);
     try {
-      const res = await getBatchList({ locationId: user.locationId, page, pageSize: 100 });
+      const res = await getBatchList({
+        locationId: isAdminOrDev ? undefined : user.locationId,
+        date,
+        page,
+        pageSize: 100
+      });
       // Filter for scanning-related statuses
       const pending = res.items.filter(b =>
         b.batchStatus === BatchStatus.Created ||
@@ -109,7 +119,7 @@ export function ScanListPage() {
     } finally {
       setLoading(false);
     }
-  }, [user, page]);
+  }, [user, page, date]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -130,7 +140,6 @@ export function ScanListPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0, height: '100%' }}>
-      <QueueTabs />
       {/* Table card */}
       <div style={{
         background: 'var(--bg-raised)', border: '1px solid var(--border)',
@@ -172,6 +181,25 @@ export function ScanListPage() {
                 }}
               />
             </div>
+
+            {/* Date Picker */}
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <Icon name="calendar_today" size={16} style={{
+                position: 'absolute', left: 10, color: 'var(--fg-subtle)', pointerEvents: 'none',
+              }} />
+              <input
+                type="date"
+                value={date}
+                onChange={e => { setDate(e.target.value); setPage(1); }}
+                style={{
+                  padding: '8px 12px 8px 32px',
+                  background: 'var(--bg-input)', color: 'var(--fg)',
+                  border: '1px solid var(--border-strong)', borderRadius: 'var(--r-md)',
+                  fontSize: 'var(--text-sm)', fontFamily: 'var(--font-sans)',
+                  outline: 'none', height: 36, boxSizing: 'border-box',
+                }}
+              />
+            </div>
             {/* Filter icon button */}
             <button
               title="Filters"
@@ -202,7 +230,7 @@ export function ScanListPage() {
               <table className="table-desktop" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-sm)' }}>
                 <thead>
                   <tr style={{ textAlign: 'left', background: 'var(--bg)' }}>
-                    {['Batch no', 'Scanner', 'Slips', 'Amount', 'Status', ''].map((h, i) => (
+                    {['Batch no', 'Scanner', 'Slips', 'Amount', 'Status', 'In Use', ''].map((h, i) => (
                       <th key={i} style={{
                         padding: '10px 20px',
                         fontSize: 'var(--text-xs)', color: 'var(--fg-subtle)',
@@ -216,6 +244,9 @@ export function ScanListPage() {
                 <tbody>
                   {filtered.map(b => {
                     const tone = STATUS_TONE[b.batchStatus] ?? 'neutral';
+                    const isLockedByOther = !!(b.scanLockedBy && b.scanLockedBy !== user?.userId);
+                    const lockedByName = b.scanLockedByName;
+
                     return (
                       <tr key={b.batchID} style={{ borderBottom: '1px solid var(--border-subtle)' }}
                         onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-subtle)')}
@@ -241,25 +272,66 @@ export function ScanListPage() {
                         <td style={{ padding: '14px 20px' }}>
                           <Chip tone={tone}>{BatchStatusLabels[b.batchStatus]}</Chip>
                         </td>
-                        <td style={{ padding: '14px 20px', textAlign: 'right' }}>
+                        <td style={{ padding: '14px 20px', color: 'var(--fg-subtle)', fontSize: '12px' }}>
+                          {lockedByName ? (
+                            <div className="flex items-center gap-1.5">
+                              <Icon name="person" size={14} style={{ opacity: 0.6 }} />
+                              <span>{lockedByName}</span>
+                            </div>
+                          ) : (
+                            <span className="opacity-30">—</span>
+                          )}
+                        </td>
+                        <td style={{ padding: '10px 20px', textAlign: 'right' }}>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            <button
+                              onClick={() => setUploadTarget({ batchId: b.batchID, batchNo: b.batchNo })}
+                              title="Upload slip images"
+                              style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 4,
+                                padding: '5px 10px', height: 28,
+                                background: 'var(--warning, #f97316)', color: '#fff',
+                                border: 'none',
+                                borderRadius: 'var(--r-md)',
+                                fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-sans)',
+                                cursor: 'pointer', whiteSpace: 'nowrap',
+                              }}
+                              onMouseEnter={e => { e.currentTarget.style.opacity = '0.88'; }}
+                              onMouseLeave={e => { e.currentTarget.style.opacity = '1'; }}
+                            >
+                              <Icon name="upload_file" size={13} />
+                              Upload Slips
+                            </button>
                           <button
-                            onClick={() => navigate(`/scan/${b.batchNo}`)}
+                            onClick={() => !isLockedByOther && navigate(`/scan/${b.batchNo}`)}
+                            disabled={!!isLockedByOther}
                             style={{
                               display: 'inline-flex', alignItems: 'center', gap: 6,
                               padding: '6px 12px', height: 30,
-                              background: 'transparent', color: 'var(--fg)',
+                              background: 'transparent', color: isLockedByOther ? 'var(--fg-faint)' : 'var(--fg)',
                               border: '1px solid transparent',
                               borderRadius: 'var(--r-md)',
                               fontSize: 'var(--text-sm)', fontWeight: 500, fontFamily: 'var(--font-sans)',
-                              cursor: 'pointer',
-                              transition: 'background-color var(--dur-fast) var(--ease)',
+                              cursor: isLockedByOther ? 'not-allowed' : 'pointer',
+                              transition: 'all var(--dur-fast) var(--ease)',
+                              opacity: isLockedByOther ? 0.5 : 1,
                             }}
-                            onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
-                            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                            onMouseEnter={e => { if(!isLockedByOther) e.currentTarget.style.background = 'var(--bg-hover)'; }}
+                            onMouseLeave={e => { if(!isLockedByOther) e.currentTarget.style.background = 'transparent'; }}
                           >
-                            {b.batchStatus === BatchStatus.Created ? 'Start' : 'Continue'}
-                            <Icon name="arrow_forward" size={16} weight={500} />
+                            {isLockedByOther ? (
+                              <>
+                                <Icon name="lock" size={14} />
+                                <span>Locked</span>
+                              </>
+                            ) : (
+                              <>
+                                {b.batchStatus === BatchStatus.Created ? 'Start' : 'Continue'}
+                                <Icon name="arrow_forward" size={16} weight={500} />
+                              </>
+                            )}
                           </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -294,10 +366,20 @@ export function ScanListPage() {
                           <span className="batch-card-value" style={{ fontFamily: 'var(--font-mono)' }}>{fmtAmount(b.totalAmount)}</span>
                         </div>
                       </div>
-                      <button className="batch-card-action" onClick={() => navigate(`/scan/${b.batchNo}`)}>
-                        {b.batchStatus === BatchStatus.Created ? 'Start' : 'Continue'}
-                        <Icon name="arrow_forward" size={16} />
-                      </button>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <button
+                          className="batch-card-action"
+                          style={{ flex: '1 1 0', minWidth: 0, background: 'var(--warning, #f97316)', color: '#fff', border: 'none' }}
+                          onClick={() => setUploadTarget({ batchId: b.batchID, batchNo: b.batchNo })}
+                        >
+                          <Icon name="upload_file" size={16} />
+                          Upload Slips
+                        </button>
+                        <button className="batch-card-action" style={{ flex: '1 1 0', minWidth: 0 }} onClick={() => navigate(`/scan/${b.batchNo}`)}>
+                          {b.batchStatus === BatchStatus.Created ? 'Start' : 'Continue'}
+                          <Icon name="arrow_forward" size={16} />
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
@@ -340,6 +422,15 @@ export function ScanListPage() {
           </div>
         )}
       </div>
+
+      {uploadTarget && (
+        <UploadSlipModal
+          batchId={uploadTarget.batchId}
+          batchNo={uploadTarget.batchNo}
+          onClose={() => setUploadTarget(null)}
+          onSuccess={load}
+        />
+      )}
     </div>
   );
 }

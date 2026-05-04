@@ -39,6 +39,7 @@ public class UserMaster
     public Guid? SessionToken { get; set; }
     public int LoginAttempts { get; set; } = 0;
     public bool IsLocked { get; set; } = false;
+    public DateTime? LastActiveAt { get; set; }
 
     public ICollection<UserRole> UserRoles { get; set; } = new List<UserRole>();
 

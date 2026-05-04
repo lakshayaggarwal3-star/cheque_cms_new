@@ -20,6 +20,7 @@ public class RRService : IRRService
     private readonly IBatchRepository _batchRepo;
     private readonly IAuditService _audit;
     private readonly ILogger<RRService> _logger;
+    private static readonly TimeSpan STALE_RR_LOCK_TIMEOUT = TimeSpan.FromMinutes(7);
 
     public RRService(ISlipEntryRepository slipRepo, IBatchRepository batchRepo,
         IAuditService audit, ILogger<RRService> logger)
@@ -32,21 +33,41 @@ public class RRService : IRRService
 
     public async Task<List<RRItemDto>> GetRRItemsAsync(long batchId, int userId)
     {
-        var batch = await _batchRepo.GetByIdAsync(batchId);
-        if (batch != null)
+        var batch = await _batchRepo.GetByIdAsync(batchId)
+            ?? throw new NotFoundException($"Batch {batchId} not found.");
+
+        // Block if another user holds a fresh RR lock
+        if (batch.RRLockedBy.HasValue && batch.RRLockedBy != userId)
         {
-            if (!batch.RRStartedAt.HasValue)
-            {
-                batch.RRStartedAt = DateTime.UtcNow;
-                batch.RRStartedBy = userId;
-            }
+            var isStale = batch.RRLockedAt.HasValue &&
+                          DateTime.UtcNow - batch.RRLockedAt.Value > STALE_RR_LOCK_TIMEOUT;
+            if (!isStale)
+                throw new ConflictException("This batch is currently being worked on by another user in RR.");
 
-            // Always set/refresh the lock when the operator opens the RR view
-            batch.RRLockedBy = userId;
-            batch.RRLockedAt = DateTime.UtcNow;
-
-            await _batchRepo.UpdateAsync(batch);
+            // Stale lock: record previous user's release before taking over
+            var previousUserId = batch.RRLockedBy.Value;
+            batch.StatusHistory = BatchHistory.Append(batch.StatusHistory, "RRReleased", previousUserId, "Stale lock auto-released");
         }
+
+        var isFirstRR = !batch.RRStartedAt.HasValue;
+        if (isFirstRR)
+        {
+            batch.RRStartedAt = DateTime.UtcNow;
+            batch.RRStartedBy = userId;
+            batch.StatusHistory = BatchHistory.Append(batch.StatusHistory, "RRStarted", userId);
+        }
+        else if (batch.RRLockedBy != userId)
+        {
+            // A different user is taking over (after stale release above) or locking for first time
+            batch.StatusHistory = BatchHistory.Append(batch.StatusHistory, "RRLocked", userId);
+        }
+
+        batch.RRLockedBy = userId;
+        batch.RRLockedAt = DateTime.UtcNow;
+        batch.BatchStatus = (int)BatchStatus.RRInProgress;
+        batch.UpdatedBy = userId;
+        batch.UpdatedAt = DateTime.UtcNow;
+        await _batchRepo.UpdateAsync(batch);
 
         var cheques = await _slipRepo.GetChequeItemsByBatchAsync(batchId);
         var result = new List<RRItemDto>();
@@ -56,6 +77,38 @@ public class RRService : IRRService
             result.Add(MapToDto(c, slip));
         }
         return result;
+    }
+
+    public async Task ReleaseRRLockAsync(long batchId, int userId)
+    {
+        var batch = await _batchRepo.GetByIdAsync(batchId)
+            ?? throw new NotFoundException($"Batch {batchId} not found.");
+
+        // Only the lock holder (or Admin/Dev) should release — service layer trusts controller to enforce role
+        if (batch.BatchStatus == (int)BatchStatus.RRInProgress)
+            batch.BatchStatus = (int)BatchStatus.RRPending;
+
+        batch.RRLockedBy = null;
+        batch.RRLockedAt = null;
+        batch.StatusHistory = BatchHistory.Append(batch.StatusHistory, "RRReleased", userId);
+        batch.UpdatedBy = userId;
+        batch.UpdatedAt = DateTime.UtcNow;
+        await _batchRepo.UpdateAsync(batch);
+
+        _logger.LogInformation("RR lock released: BatchNo={BatchNo} by UserID={UserId}", batch.BatchNo, userId);
+    }
+
+    public async Task HeartbeatAsync(long batchId, int userId)
+    {
+        var batch = await _batchRepo.GetByIdAsync(batchId)
+            ?? throw new NotFoundException($"Batch {batchId} not found.");
+
+        if (batch.RRLockedBy != userId)
+            throw new ForbiddenException("You do not hold the RR lock for this batch.");
+
+        batch.RRLockedAt = DateTime.UtcNow;
+        batch.UpdatedAt  = DateTime.UtcNow;
+        await _batchRepo.UpdateAsync(batch);
     }
 
     public async Task<RRItemDto> GetRRItemAsync(long chequeItemId)
@@ -138,8 +191,11 @@ public class RRService : IRRService
             throw new ValidationException("Not all items have been reviewed. Complete all RR items first.");
 
         batch.BatchStatus = (int)BatchStatus.RRCompleted;
+        batch.RRCompletedBy = userId;
+        batch.RRCompletedAt = DateTime.UtcNow;
         batch.RRLockedBy = null;
         batch.RRLockedAt = null;
+        batch.StatusHistory = BatchHistory.Append(batch.StatusHistory, "RRCompleted", userId);
         batch.UpdatedBy = userId;
         batch.UpdatedAt = DateTime.UtcNow;
 
@@ -147,7 +203,7 @@ public class RRService : IRRService
 
         _logger.LogInformation("RR completed: BatchNo={BatchNo} by UserID={UserId}", batch.BatchNo, userId);
         await _audit.LogAsync("Batch", batchId.ToString(), "UPDATE",
-            new { BatchStatus = (int)BatchStatus.RRPending },
+            new { BatchStatus = (int)BatchStatus.RRInProgress },
             new { BatchStatus = (int)BatchStatus.RRCompleted }, userId);
     }
 

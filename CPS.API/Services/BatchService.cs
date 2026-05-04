@@ -6,12 +6,55 @@
 // Created     : 2026-04-14
 // =============================================================================
 
+using System.Text.Json;
 using CPS.API.DTOs;
 using CPS.API.Exceptions;
 using CPS.API.Models;
 using CPS.API.Repositories;
 
 namespace CPS.API.Services;
+
+/// <summary>Appends a structured entry to the batch StatusHistory JSON array.</summary>
+internal static class BatchHistory
+{
+    private static readonly Dictionary<string, string> ActionLabels = new()
+    {
+        { "Created",          "Batch Created" },
+        { "ScanStarted",      "Scanning Started" },
+        { "ScanResumed",      "Scanning Resumed" },
+        { "ScanReleased",     "Scanning Released (Pending)" },
+        { "ScanCompleted",    "Scanning Completed" },
+        { "RRStarted",        "RR Started" },
+        { "RRLocked",         "RR Locked by Another User" },
+        { "RRReleased",       "RR Released (Pending)" },
+        { "RRCompleted",      "RR Completed" },
+        { "Reopened",         "Batch Reopened" },
+        { "StatusOverride",   "Status Override" },
+    };
+
+    public static string Append(string? existing, string action, int userId, string? note = null)
+    {
+        var list = new List<Dictionary<string, object?>>();
+
+        if (!string.IsNullOrWhiteSpace(existing))
+        {
+            try { list = JsonSerializer.Deserialize<List<Dictionary<string, object?>>>(existing) ?? list; }
+            catch { /* corrupt JSON — start fresh */ }
+        }
+
+        var entry = new Dictionary<string, object?>
+        {
+            ["action"] = action,
+            ["label"]  = ActionLabels.TryGetValue(action, out var lbl) ? lbl : action,
+            ["at"]     = DateTime.UtcNow.ToString("O"),
+            ["by"]     = userId,
+        };
+        if (note != null) entry["note"] = note;
+
+        list.Add(entry);
+        return JsonSerializer.Serialize(list);
+    }
+}
 
 public class BatchService : IBatchService
 {
@@ -99,7 +142,7 @@ public class BatchService : IBatchService
             TotalAmount = request.TotalAmount,
             EntryMode = entryMode,
             BatchStatus = (int)BatchStatus.Created,
-            StatusHistory = $"[{{\"status\":0,\"label\":\"Created\",\"at\":\"{DateTime.UtcNow:O}\",\"by\":{userId}}}]",
+            StatusHistory = BatchHistory.Append(null, "Created", userId),
             CreatedBy = userId,
             CreatedAt = DateTime.UtcNow
         };
@@ -234,19 +277,31 @@ public class BatchService : IBatchService
         batch.UpdatedBy = userId;
         batch.UpdatedAt = DateTime.UtcNow;
 
-        if (request.NewStatus == 3) // Scanning Completed
+        if (request.NewStatus == (int)BatchStatus.ScanningCompleted)
         {
             batch.ScanCompletedBy = userId;
             batch.ScanCompletedAt = DateTime.UtcNow;
             batch.ScanLockedBy = null;
             batch.ScanLockedAt = null;
+            batch.StatusHistory = BatchHistory.Append(batch.StatusHistory, "ScanCompleted", userId, request.Reason);
         }
-        else if (request.NewStatus == 5) // RR Completed
+        else if (request.NewStatus == (int)BatchStatus.RRCompleted)
         {
             batch.RRCompletedBy = userId;
             batch.RRCompletedAt = DateTime.UtcNow;
             batch.RRLockedBy = null;
             batch.RRLockedAt = null;
+            batch.StatusHistory = BatchHistory.Append(batch.StatusHistory, "RRCompleted", userId, request.Reason);
+        }
+        else if (request.NewStatus == (int)BatchStatus.RRPending)
+        {
+            batch.RRLockedBy = null;
+            batch.RRLockedAt = null;
+            batch.StatusHistory = BatchHistory.Append(batch.StatusHistory, "RRReleased", userId, request.Reason);
+        }
+        else
+        {
+            batch.StatusHistory = BatchHistory.Append(batch.StatusHistory, "StatusOverride", userId, request.Reason);
         }
 
         await _batchRepo.UpdateAsync(batch);
@@ -285,7 +340,7 @@ public class BatchService : IBatchService
         throw new ForbiddenException("User does not have a scanner or mobile scanner role.");
     }
 
-    private Task<BatchDto> MapToBatchDto(Batch b)
+    private async Task<BatchDto> MapToBatchDto(Batch b)
     {
         var statusLabels = new Dictionary<int, string>
         {
@@ -294,10 +349,20 @@ public class BatchService : IBatchService
             { 2, "Scanning Pending" },
             { 3, "Scanning Completed" },
             { 4, "RR Pending" },
-            { 5, "RR Completed" }
+            { 5, "RR Completed" },
+            { 6, "RR In Progress" }
         };
 
-        return Task.FromResult(new BatchDto
+        var userIds = new[] { b.CreatedBy, b.ScanLockedBy, b.RRLockedBy }
+            .Where(id => id.HasValue).Select(id => id!.Value).Distinct().ToList();
+
+        var userNames = userIds.Count > 0
+            ? await _userRepo.GetUsernamesByIdsAsync(userIds)
+            : new Dictionary<int, string>();
+
+        string? getName(int? id) => id.HasValue && userNames.TryGetValue(id.Value, out var n) ? n : null;
+
+        return new BatchDto
         {
             BatchID   = b.BatchID,
             BatchNo   = b.BatchNo,
@@ -321,7 +386,12 @@ public class BatchService : IBatchService
             WithSlip = b.WithSlip,
             BatchStatus = b.BatchStatus,
             BatchStatusLabel = statusLabels.TryGetValue(b.BatchStatus, out var lbl) ? lbl : "Unknown",
-            CreatedAt = b.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss")
-        });
+            CreatedByName = getName(b.CreatedBy) ?? string.Empty,
+            CreatedAt = b.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss"),
+            ScanLockedBy = b.ScanLockedBy,
+            ScanLockedByName = getName(b.ScanLockedBy),
+            RRLockedBy = b.RRLockedBy,
+            RRLockedByName = getName(b.RRLockedBy),
+        };
     }
 }

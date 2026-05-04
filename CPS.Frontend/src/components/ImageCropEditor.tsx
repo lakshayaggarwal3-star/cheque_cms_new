@@ -2,7 +2,7 @@
 // File        : ImageCropEditor.tsx
 // Project     : CPS — Cheque Processing System
 // Module      : Shared Components
-// Description : Full image perspective editor with jscanify auto-detection
+// Description : Full image perspective editor with YOLO segmentation model auto-detection
 // Created     : 2026-04-20
 // Updated     : 2026-04-28
 // =============================================================================
@@ -11,6 +11,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from '../store/toastStore';
 
 declare const cv: any;
+declare const process: any;
 
 const tf = (window as any).tf;
 const tflite = (window as any).tflite;
@@ -723,19 +724,38 @@ export function ImageCropEditor({ file, title, onClose, onSave, mode = 'desktop'
       overscrollBehaviorX: 'none',
       userSelect: 'none', // Prevent text selection while dragging
     }}>
-      {/* -- Header -- */}
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '14px 16px', flexShrink: 0,
-        background: 'var(--bg-raised)',
-        borderBottom: '1px solid var(--border)',
-      }}>
-        <button onClick={onClose} style={hdrBtn}>
-          <span className="material-symbols-outlined" style={{ fontSize: 20, userSelect: 'none' }}>close</span>
+      {/* -- Header (Desktop only) -- */}
+      {!isTouch && (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '14px 16px', flexShrink: 0,
+          background: 'var(--bg-raised)',
+          borderBottom: '1px solid var(--border)',
+        }}>
+          <button onClick={onClose} style={hdrBtn}>
+            <span className="material-symbols-outlined" style={{ fontSize: 20, userSelect: 'none' }}>close</span>
+          </button>
+          <span style={{ color: 'var(--fg)', fontWeight: 600, fontSize: 15 }}>{title}</span>
+          <div style={{ width: 36 }} />
+        </div>
+      )}
+
+      {/* -- Floating Close (Mobile only) -- */}
+      {isTouch && (
+        <button 
+          onClick={onClose} 
+          style={{
+            position: 'absolute', top: 12, left: 12, zIndex: 100,
+            width: 40, height: 40, borderRadius: '50%',
+            background: 'rgba(0,0,0,0.5)', color: '#fff',
+            border: '1px solid rgba(255,255,255,0.2)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            backdropFilter: 'blur(8px)',
+          }}
+        >
+          <span className="material-symbols-outlined" style={{ fontSize: 24 }}>close</span>
         </button>
-        <span style={{ color: 'var(--fg)', fontWeight: 600, fontSize: 15 }}>{title}</span>
-        <div style={{ width: 36 }} />
-      </div>
+      )}
 
       {/* -- Editor Area -- */}
       <div 
@@ -858,11 +878,18 @@ export function ImageCropEditor({ file, title, onClose, onSave, mode = 'desktop'
 
       {/* -- Controls -- */}
       <div style={{
-        background: 'var(--bg-raised)', padding: '16px 16px 12px',
+        background: 'var(--bg-raised)', 
+        padding: isTouch ? '12px 12px env(safe-area-inset-bottom, 12px)' : '16px 16px 12px',
         borderTop: '1px solid var(--border)',
-        display: 'flex', flexDirection: 'column', gap: 14, flexShrink: 0,
+        display: 'flex', flexDirection: 'column', 
+        gap: isTouch ? 10 : 14, 
+        flexShrink: 0,
       }}>
-        <div style={{ display: 'grid', gridTemplateColumns: isSlip ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)', gap: 8 }}>
+        <div style={{ 
+          display: 'grid', 
+          gridTemplateColumns: isTouch ? '1fr' : (isSlip ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)'), 
+          gap: isTouch ? 8 : 8 
+        }}>
           <Slider label="Brightness" value={brightness} min={50} max={160} step={5} unit="%" onChange={setBrightness} />
           {!isSlip && <Slider label="Grayscale"  value={grayscale}  min={0}  max={100} step={5} unit="%" onChange={setGrayscale}  />}
           <Slider label="Rotate"     value={rotation}   min={-180} max={180} step={1} unit="°" onChange={setRotation} />

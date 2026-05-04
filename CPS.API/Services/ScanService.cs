@@ -10,6 +10,7 @@ using CPS.API.DTOs;
 using CPS.API.Exceptions;
 using CPS.API.Models;
 using CPS.API.Repositories;
+using CPS.API.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using SixLabors.ImageSharp;
@@ -29,7 +30,7 @@ public class ScanService : IScanService
     private readonly IAuditService _audit;
     private readonly CpsDbContext _db;
     private readonly ILogger<ScanService> _logger;
-    private static readonly TimeSpan STALE_LOCK_TIMEOUT = TimeSpan.FromMinutes(30);
+    private static readonly TimeSpan STALE_LOCK_TIMEOUT = TimeSpan.FromMinutes(7);
 
     public ScanService(IBatchRepository batchRepo, ISlipEntryRepository slipRepo,
         IUserRepository userRepo, IScannerOrchestrator scanner,
@@ -100,27 +101,38 @@ public class ScanService : IScanService
                           DateTime.UtcNow - batch.ScanLockedAt.Value > STALE_LOCK_TIMEOUT;
             if (!isStale)
                 throw new ConflictException("Batch is currently being scanned by another user.");
+
+            // Stale lock: record the previous user's forced release before taking over
+            var previousUserId = batch.ScanLockedBy.Value;
+            batch.StatusHistory = BatchHistory.Append(batch.StatusHistory, "ScanReleased", previousUserId, "Stale lock auto-released");
         }
 
         batch.ScanLockedBy = userId;
         batch.ScanLockedAt = DateTime.UtcNow;
         batch.BatchStatus = (int)BatchStatus.ScanningInProgress;
+        batch.ScanType = request.ScanType;
         if (!batch.WithSlip.HasValue)
             batch.WithSlip = request.WithSlip;
 
-        await _batchRepo.UpdateAsync(batch);
-        batch.ScanType = request.ScanType;
-        if (!batch.ScanStartedAt.HasValue)
+        var isFirstStart = !batch.ScanStartedAt.HasValue;
+        if (isFirstStart)
         {
             batch.ScanStartedAt = DateTime.UtcNow;
             batch.ScanStartedBy = userId;
+            batch.StatusHistory = BatchHistory.Append(batch.StatusHistory, "ScanStarted", userId);
+        }
+        else
+        {
+            // A different (or same) user resuming a pending batch
+            batch.StatusHistory = BatchHistory.Append(batch.StatusHistory, "ScanResumed", userId);
         }
 
         batch.UpdatedBy = userId;
         batch.UpdatedAt = DateTime.UtcNow;
 
         await _batchRepo.UpdateAsync(batch);
-        _logger.LogInformation("Scan started: BatchNo={BatchNo} by UserID={UserId}", batch.BatchNo, userId);
+        _logger.LogInformation("Scan {Action}: BatchNo={BatchNo} by UserID={UserId}",
+            isFirstStart ? "started" : "resumed", batch.BatchNo, userId);
     }
 
     public async Task StartFeedAsync(long batchId, ScannerFeedRequest request, int userId)
@@ -194,27 +206,54 @@ public class ScanService : IScanService
 
     public async Task<List<SlipItemDto>> UploadBulkSlipItemsAsync(long batchId, BulkSlipItemUploadRequest request, int userId)
     {
-        var (batch, _) = await GetLockedBatchContextAsync(batchId, userId);
+        // No lock check — global slip uploads are allowed regardless of who holds the scan/RR lock.
+        var batch = await _batchRepo.GetByIdAsync(batchId)
+            ?? throw new NotFoundException($"Batch {batchId} not found.");
 
         if (request.Images == null || request.Images.Count == 0)
             throw new ValidationException("At least one slip image is required.");
 
-        var slipGroups = await _slipRepo.GetByBatchAsync(batchId);
         var results = new List<SlipItemDto>();
         var rootFolder = GetRootFolder(batch.EntryMode);
 
-        var slip = await _slipRepo.GetByIdAsync(request.SlipEntryId)
-            ?? throw new NotFoundException($"Slip {request.SlipEntryId} not found.");
+        // When slipEntryId is 0 (global upload), find or create a dedicated GLOBAL slip entry.
+        SlipEntry slip;
+        if (request.SlipEntryId == 0)
+        {
+            var existing = await _db.SlipEntries
+                .FirstOrDefaultAsync(s => s.BatchId == batchId && s.SlipNo == "GLOBAL" && !s.IsDeleted);
+
+            if (existing != null)
+            {
+                slip = existing;
+            }
+            else
+            {
+                slip = new SlipEntry
+                {
+                    BatchId = batchId,
+                    SlipNo = "GLOBAL",
+                    DepositSlipNo = "GLOBAL",
+                    CreatedBy = userId,
+                    CreatedAt = DateTime.UtcNow,
+                };
+                await _slipRepo.CreateAsync(slip);
+            }
+        }
+        else
+        {
+            slip = await _slipRepo.GetByIdAsync(request.SlipEntryId)
+                ?? throw new NotFoundException($"Slip {request.SlipEntryId} not found.");
+        }
 
         for (int i = 0; i < request.Images.Count; i++)
         {
             var image = request.Images[i];
-            
-            var tempFileName = $"{batch.BatchNo}_GLB_{i+1:D2}";
-            var imagePath = await SaveMobileImageAsync(batch.BatchNo, image, tempFileName, rootFolder, "GlobalSlip");
 
             var existingScans = await _db.SlipItems.CountAsync(s => s.SlipEntryId == slip.SlipEntryId && !s.IsDeleted);
             var scanOrder = existingScans + 1;
+            var tempFileName = $"{batch.BatchNo}_GLB_{scanOrder:D2}";
+            var imagePath = await SaveMobileImageAsync(batch.BatchNo, image, tempFileName, rootFolder, "GlobalSlip");
 
             var saved = await SaveSlipItemAsync(new SaveSlipItemRequest
             {
@@ -573,8 +612,11 @@ public class ScanService : IScanService
             ? (int)BatchStatus.RRPending
             : (int)BatchStatus.ScanningCompleted;
 
+        batch.ScanCompletedBy = userId;
+        batch.ScanCompletedAt = DateTime.UtcNow;
         batch.ScanLockedBy = null;
         batch.ScanLockedAt = null;
+        batch.StatusHistory = BatchHistory.Append(batch.StatusHistory, "ScanCompleted", userId);
         batch.UpdatedBy = userId;
         batch.UpdatedAt = DateTime.UtcNow;
 
@@ -594,12 +636,33 @@ public class ScanService : IScanService
             ?? throw new NotFoundException($"Batch {batchId} not found.");
 
         if (batch.BatchStatus == (int)BatchStatus.ScanningInProgress)
-            batch.BatchStatus = (int)BatchStatus.ScanningPending;
+        {
+            // If nothing was actually scanned yet, revert fully to Created
+            var hasAnyCheques = await _slipRepo.HasAnyChequeItemsAsync(batchId);
+            batch.BatchStatus = hasAnyCheques
+                ? (int)BatchStatus.ScanningPending
+                : (int)BatchStatus.Created;
+        }
 
         batch.ScanLockedBy = null;
         batch.ScanLockedAt = null;
+        batch.StatusHistory = BatchHistory.Append(batch.StatusHistory, "ScanReleased", userId);
         batch.UpdatedBy = userId;
         batch.UpdatedAt = DateTime.UtcNow;
+        await _batchRepo.UpdateAsync(batch);
+    }
+
+    public async Task HeartbeatAsync(long batchId, int userId)
+    {
+        var batch = await _batchRepo.GetByIdAsync(batchId)
+            ?? throw new NotFoundException($"Batch {batchId} not found.");
+
+        // Only refresh if this user actually holds the scan lock
+        if (batch.ScanLockedBy != userId)
+            throw new ForbiddenException("You do not hold the scan lock for this batch.");
+
+        batch.ScanLockedAt = DateTime.UtcNow;
+        batch.UpdatedAt    = DateTime.UtcNow;
         await _batchRepo.UpdateAsync(batch);
     }
 
@@ -619,6 +682,7 @@ public class ScanService : IScanService
         batch.BatchStatus = (int)BatchStatus.ScanningPending;
         batch.ScanLockedBy = null;
         batch.ScanLockedAt = null;
+        batch.StatusHistory = BatchHistory.Append(batch.StatusHistory, "Reopened", userId);
         batch.UpdatedBy = userId;
         batch.UpdatedAt = DateTime.UtcNow;
 

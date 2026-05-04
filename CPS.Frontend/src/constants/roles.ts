@@ -66,7 +66,7 @@ export const ROLES: RoleDefinition[] = [
     key: 'Developer',
     label: 'Developer',
     description: 'Super-user with full system access and developer tools.',
-    badgeClass: 'bg-slate-800 text-white',
+    badgeClass: 'bg-indigo-600 text-white',
     elevated: true,
   },
 ];
