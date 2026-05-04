@@ -32,3 +32,12 @@ dotnet ef database update --project CPS.API
 
 
 [System.Environment]::SetEnvironmentVariable("LIB", $null, "User")
+
+
+
+Upload context	ScannerType stored	EntryMode stored
+Desktop browser (file picker / drag-drop)	Desktop-Upload	mobile or scanner (from batch)
+Mobile browser (file picker)	Mobile-Upload	same
+Mobile scan page (camera capture)	Mobile-Camera	mobile
+Hardware scanner	Cheque-Scanner / Slip-Scanner	scanner
+The EntryMode column still reflects how the batch was created (mobile vs scanner station), which is correct. ScannerType now correctly reflects how this specific image got into the system.

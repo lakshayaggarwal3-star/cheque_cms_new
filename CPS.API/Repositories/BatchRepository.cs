@@ -121,7 +121,10 @@ public class BatchRepository : IBatchRepository
             Total = batches.Count,
             ScanningPending = batches.Count(s => s == (int)BatchStatus.ScanningPending || s == (int)BatchStatus.ScanningInProgress),
             RRPending = batches.Count(s => s == (int)BatchStatus.RRPending || s == (int)BatchStatus.RRInProgress),
-            Completed = batches.Count(s => s == (int)BatchStatus.RRCompleted)
+            MakerPending = batches.Count(s => s == (int)BatchStatus.MakerPending || s == (int)BatchStatus.MakerInProgress),
+            CheckerPending = batches.Count(s => s == (int)BatchStatus.CheckerPending || s == (int)BatchStatus.CheckerInProgress),
+            QCPending = batches.Count(s => s == (int)BatchStatus.QCPending || s == (int)BatchStatus.QCInProgress),
+            Completed = batches.Count(s => s == (int)BatchStatus.QCCompleted) // Completed when final stage is done
         };
     }
 }

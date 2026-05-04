@@ -36,6 +36,13 @@ public class SlipItem
     [MaxLength(64)]
     public string? ImageHash { get; set; }
 
+    // Original path before mapping from the global bucket — preserved for audit/traceability
+    [MaxLength(500)]
+    public string? GlobalImageBaseName { get; set; }
+
+    [MaxLength(200)]
+    public string? GlobalImageName { get; set; }
+
     // Pending / Captured / Failed / RetryPending
     [MaxLength(20)]
     public string ScanStatus { get; set; } = "Pending";

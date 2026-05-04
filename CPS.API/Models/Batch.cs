@@ -84,6 +84,30 @@ public class Batch
     public int? RRCompletedBy { get; set; }
     public DateTime? RRCompletedAt { get; set; }
 
+    // Maker lock + phase
+    public int? MakerLockedBy { get; set; }
+    public DateTime? MakerLockedAt { get; set; }
+    public int? MakerStartedBy { get; set; }
+    public DateTime? MakerStartedAt { get; set; }
+    public int? MakerCompletedBy { get; set; }
+    public DateTime? MakerCompletedAt { get; set; }
+
+    // Checker lock + phase
+    public int? CheckerLockedBy { get; set; }
+    public DateTime? CheckerLockedAt { get; set; }
+    public int? CheckerStartedBy { get; set; }
+    public DateTime? CheckerStartedAt { get; set; }
+    public int? CheckerCompletedBy { get; set; }
+    public DateTime? CheckerCompletedAt { get; set; }
+
+    // QC lock + phase
+    public int? QCLockedBy { get; set; }
+    public DateTime? QCLockedAt { get; set; }
+    public int? QCStartedBy { get; set; }
+    public DateTime? QCStartedAt { get; set; }
+    public int? QCCompletedBy { get; set; }
+    public DateTime? QCCompletedAt { get; set; }
+
     public int CreatedBy { get; set; }
     public DateTime CreatedAt { get; set; }
     public int? UpdatedBy { get; set; }

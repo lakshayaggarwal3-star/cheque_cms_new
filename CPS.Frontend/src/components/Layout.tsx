@@ -154,7 +154,10 @@ const NAV_LINKS: NavLinkDef[] = [
   { id: 'all-batches',  label: 'All Batches',   icon: 'list_alt',         path: '/all-batches' },
   { id: 'batch-create', label: 'New Batch',     icon: 'add_circle',       path: '/batch/create', roles: ['Scanner', 'Mobile Scanner', 'Admin', 'Developer'] },
   { id: 'scan',         label: 'Scanning',      icon: 'document_scanner', path: '/scan',         roles: ['Scanner', 'Mobile Scanner', 'Admin', 'Developer'] },
-  { id: 'rr',           label: 'Reject Repair', icon: 'build',            path: '/rr' },
+  { id: 'rr',           label: 'Reject Repair', icon: 'build',            path: '/rr',           roles: ['RR', 'Admin', 'Developer'] },
+  { id: 'maker',        label: 'Maker',         icon: 'edit_note',        path: '/maker',        roles: ['Maker', 'Admin', 'Developer'] },
+  { id: 'checker',      label: 'Checker',       icon: 'fact_check',       path: '/checker',      roles: ['Checker', 'Admin', 'Developer'] },
+  { id: 'qc',           label: 'QC',            icon: 'verified_user',    path: '/qc',           roles: ['QC', 'Admin', 'Developer'] },
   { id: 'users',        label: 'Users',         icon: 'group',            path: '/admin/users',  roles: ['Admin', 'Developer'] },
   { id: 'masters',      label: 'Masters',       icon: 'account_balance',  path: '/admin/masters', roles: ['Admin', 'Developer'] },
 ];
@@ -170,6 +173,9 @@ const PAGE_TITLES: Record<string, { title: string; subtitle: string }> = {
   '/batch/create':   { title: 'New Batch',     subtitle: 'Create & dispatch to scanner' },
   '/scan':           { title: 'Scanning Queue', subtitle: 'Batches pending scan' },
   '/rr':             { title: 'Reject Repair', subtitle: 'Batches pending repair' },
+  '/maker':          { title: 'Maker Queue',   subtitle: 'Batches pending data entry' },
+  '/checker':        { title: 'Checker Queue', subtitle: 'Batches pending verification' },
+  '/qc':             { title: 'QC Queue',      subtitle: 'Batches pending quality review' },
   '/admin/users':    { title: 'Users',         subtitle: 'Manage operators & roles' },
   '/admin/masters':  { title: 'Masters',       subtitle: 'Clients, locations, and clearing house data' },
   '/admin/settings': { title: 'Settings',      subtitle: 'Application preferences' },
@@ -327,7 +333,7 @@ function TopBar({ onToggle, title, subtitle, isDeveloper }: {
 
 // ── Layout ────────────────────────────────────────────────────────────────────
 
-const AUTO_CLOSE_PATHS = ['/scan', '/batch/create', '/rr', '/all-batches'];
+const AUTO_CLOSE_PATHS = ['/scan', '/batch/create', '/rr', '/all-batches', '/maker', '/checker', '/qc'];
 
 export function Layout() {
   const { user, clearUser, isAuthenticated } = useAuthStore();
@@ -385,7 +391,11 @@ export function Layout() {
       pattern === '/' ? location.pathname === '/' : location.pathname.startsWith(pattern)
     )?.[1] ?? { title: 'CPS', subtitle: '' };
 
-    const noHeader = (location.pathname.startsWith('/scan/') && location.pathname !== '/scan') || location.pathname.startsWith('/rr/');
+    const noHeader = (location.pathname.startsWith('/scan/') && location.pathname !== '/scan') || 
+                     location.pathname.startsWith('/rr/') ||
+                     (location.pathname.startsWith('/maker/') && location.pathname !== '/maker') ||
+                     (location.pathname.startsWith('/checker/') && location.pathname !== '/checker') ||
+                     (location.pathname.startsWith('/qc/') && location.pathname !== '/qc');
     return { pageInfo: info, isNoHeaderPage: noHeader };
   }, [location.pathname]);
 
@@ -449,15 +459,15 @@ export function Layout() {
               flexDirection: 'column',
             }}
           >
-            {/* Desktop top nav — only on list pages (All Batches, Scan Queue, RR Queue) */}
-            {!isMobile && ['/all-batches', '/scan', '/rr'].some(p => location.pathname === p) && <QueueTabs />}
+            {/* Desktop top nav — only on list pages */}
+            {!isMobile && ['/all-batches', '/scan', '/rr', '/maker', '/checker', '/qc'].some(p => location.pathname === p) && <QueueTabs />}
             
             <Outlet />
           </div>
         </main>
 
-        {/* Mobile bottom nav — only on list pages (All Batches, Scan Queue, RR Queue) */}
-        {isMobile && ['/all-batches', '/scan', '/rr'].some(p => location.pathname === p) && <QueueTabs />}
+        {/* Mobile bottom nav — only on list pages */}
+        {isMobile && ['/all-batches', '/scan', '/rr', '/maker', '/checker', '/qc'].some(p => location.pathname === p) && <QueueTabs />}
       </div>
 
 

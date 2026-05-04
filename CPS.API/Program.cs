@@ -116,21 +116,30 @@ try
         db.Database.Migrate();
         Log.Information("Database migration applied.");
 
-        // Seed roles if table is empty
-        if (!db.Roles.Any())
+        // Seed roles if missing
+        var existingRoles = db.Roles.Select(r => r.RoleName).ToList();
+        var rolesToSeed = new List<Role>
         {
-            db.Roles.AddRange(
-                new Role { RoleName = "Scanner", Description = "Create batches and operate desktop scanner." },
-                new Role { RoleName = "Mobile Scanner", Description = "Create batches and scan using mobile devices." },
-                new Role { RoleName = "Maker", Description = "Enter cheque and slip data (Phase 2)." },
-                new Role { RoleName = "Checker", Description = "Verify Maker entries (Phase 2)." },
-                new Role { RoleName = "Admin", Description = "Full system access — users, masters, settings." },
-                new Role { RoleName = "Image Viewer", Description = "Restricted role for viewing cheque images." },
-                new Role { RoleName = "Developer", Description = "Super-user with full system access and tools." }
-            );
-            db.SaveChanges();
-            Log.Information("Seeded default roles catalog.");
+            new Role { RoleName = "Scanner", Description = "Create batches and operate desktop scanner." },
+            new Role { RoleName = "Mobile Scanner", Description = "Create batches and scan using mobile devices." },
+            new Role { RoleName = "RR", Description = "Reject & Repair — fix MICR and image issues." },
+            new Role { RoleName = "Maker", Description = "Enter cheque and slip data (Phase 2)." },
+            new Role { RoleName = "Checker", Description = "Verify Maker entries (Phase 2)." },
+            new Role { RoleName = "QC", Description = "Quality Control review." },
+            new Role { RoleName = "Admin", Description = "Full system access — users, masters, settings." },
+            new Role { RoleName = "Image Viewer", Description = "Restricted role for viewing cheque images." },
+            new Role { RoleName = "Developer", Description = "Super-user with full system access and tools." }
+        };
+
+        foreach (var role in rolesToSeed)
+        {
+            if (!existingRoles.Contains(role.RoleName))
+            {
+                db.Roles.Add(role);
+                Log.Information("Seeding missing role: {RoleName}", role.RoleName);
+            }
         }
+        db.SaveChanges();
 
         // Seed default developer account if no users exist
         if (!db.Users.Any())

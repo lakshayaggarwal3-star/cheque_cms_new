@@ -75,7 +75,12 @@ function Dot({ tone = 'neutral' as Tone }: { tone?: Tone }) {
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-const STATUS_TONE: Record<number, Tone> = { 0: 'neutral', 1: 'info', 2: 'warning', 3: 'success', 4: 'danger', 5: 'success', 6: 'warning' };
+const STATUS_TONE: Record<number, Tone> = { 
+  0: 'neutral', 1: 'info', 2: 'warning', 3: 'success', 4: 'danger', 5: 'success', 6: 'warning',
+  7: 'neutral', 8: 'info', 9: 'success',
+  10: 'neutral', 11: 'info', 12: 'success',
+  13: 'neutral', 14: 'info', 15: 'success',
+};
 
 function getAction(b: BatchDto, currentUserId?: number): { label: string; path: string; disabled?: boolean; lockedBy?: string } | null {
   const isScanLockedByOther = !!b.scanLockedBy && b.scanLockedBy !== currentUserId;
@@ -90,6 +95,15 @@ function getAction(b: BatchDto, currentUserId?: number): { label: string; path: 
     case BatchStatus.RRPending:
     case BatchStatus.RRInProgress:
       return { label: 'Repair',   path: `/rr/${b.batchNo}`,  disabled: isRRLockedByOther,   lockedBy: b.rrLockedByName };
+    case BatchStatus.MakerPending:
+    case BatchStatus.MakerInProgress:
+      return { label: 'Entry',    path: `/maker/${b.batchNo}`, disabled: !!b.makerLockedBy && b.makerLockedBy !== currentUserId, lockedBy: b.makerLockedByName };
+    case BatchStatus.CheckerPending:
+    case BatchStatus.CheckerInProgress:
+      return { label: 'Verify',   path: `/checker/${b.batchNo}`, disabled: !!b.checkerLockedBy && b.checkerLockedBy !== currentUserId, lockedBy: b.checkerLockedByName };
+    case BatchStatus.QCPending:
+    case BatchStatus.QCInProgress:
+      return { label: 'Review',   path: `/qc/${b.batchNo}`, disabled: !!b.qcLockedBy && b.qcLockedBy !== currentUserId, lockedBy: b.qcLockedByName };
     default:
       return null;
   }
@@ -174,10 +188,13 @@ export function DashboardPage() {
   const canCreateBatch = user?.roles.some(r => ['Scanner', 'Mobile Scanner', 'Admin', 'Developer'].includes(r));
 
   const kpis = [
-    { label: 'Batches today',    value: summary?.totalBatchesToday ?? 0, delta: 'Total for today',    tone: 'neutral' as Tone, icon: 'receipt_long' },
-    { label: 'Pending Batches', value: summary?.scanningPending ?? 0,   delta: 'Awaiting scan',      tone: 'warning' as Tone, icon: 'hourglass_top' },
-    { label: 'RR queue',         value: summary?.rrPending ?? 0,         delta: 'Needs review',       tone: 'danger'  as Tone, icon: 'build' },
-    { label: 'Completed',        value: summary?.completed ?? 0,         delta: 'Cleared today',      tone: 'success' as Tone, icon: 'task_alt' },
+    { label: 'Batches today',   value: summary?.totalBatchesToday ?? 0, delta: 'Total for today', tone: 'neutral' as Tone, icon: 'receipt_long' },
+    { label: 'Scan Pending',    value: summary?.scanningPending ?? 0,  delta: 'Awaiting scan',   tone: 'warning' as Tone, icon: 'hourglass_top' },
+    { label: 'RR queue',        value: summary?.rrPending ?? 0,        delta: 'Needs review',    tone: 'danger'  as Tone, icon: 'build' },
+    { label: 'Maker queue',     value: summary?.makerPending ?? 0,     delta: 'Data entry',      tone: 'info'    as Tone, icon: 'edit_document' },
+    { label: 'Checker queue',   value: summary?.checkerPending ?? 0,   delta: 'Verification',    tone: 'accent'  as Tone, icon: 'fact_check' },
+    { label: 'QC queue',        value: summary?.qcPending ?? 0,        delta: 'Final review',    tone: 'warning' as Tone, icon: 'verified' },
+    { label: 'Completed',       value: summary?.completed ?? 0,        delta: 'Cleared today',   tone: 'success' as Tone, icon: 'task_alt' },
   ];
 
   const filtered = search.trim()
@@ -240,42 +257,45 @@ export function DashboardPage() {
       iconColor: 'rgba(255,255,255,0.95)',
       show: true,
     },
-    // {
-    //   label: 'Maker',
-    //   sub: 'Cheque data entry',
-    //   icon: 'edit_document',
-    //   active: false,
-    //   gradient: '',
-    //   iconColor: '',
-    //   show: true,
-    // },
-    // {
-    //   label: 'Checker',
-    //   sub: 'Verification & approval',
-    //   icon: 'fact_check',
-    //   active: false,
-    //   gradient: '',
-    //   iconColor: '',
-    //   show: true,
-    // },
-    // {
-    //   label: 'QC',
-    //   sub: 'Quality control',
-    //   icon: 'verified',
-    //   active: false,
-    //   gradient: '',
-    //   iconColor: '',
-    //   show: true,
-    // },
-    // {
-    //   label: 'File Export',
-    //   sub: 'XML & IMG generation',
-    //   icon: 'download',
-    //   active: false,
-    //   gradient: '',
-    //   iconColor: '',
-    //   show: true,
-    // },
+    {
+      label: 'Maker',
+      sub: 'Cheque data entry',
+      icon: 'edit_document',
+      active: true,
+      path: '/maker',
+      gradient: 'linear-gradient(135deg, #d97757 0%, #a35238 100%)',
+      iconColor: 'rgba(255,255,255,0.95)',
+      show: true,
+    },
+    {
+      label: 'Checker',
+      sub: 'Verification & approval',
+      icon: 'fact_check',
+      active: true,
+      path: '/checker',
+      gradient: 'linear-gradient(135deg, #d97757 0%, #a35238 100%)',
+      iconColor: 'rgba(255,255,255,0.95)',
+      show: true,
+    },
+    {
+      label: 'QC',
+      sub: 'Quality control',
+      icon: 'verified',
+      active: true,
+      path: '/qc',
+      gradient: 'linear-gradient(135deg, #d97757 0%, #a35238 100%)',
+      iconColor: 'rgba(255,255,255,0.95)',
+      show: true,
+    },
+    {
+      label: 'File Export',
+      sub: 'XML & IMG generation',
+      icon: 'download',
+      active: false,
+      gradient: '',
+      iconColor: '',
+      show: true,
+    },
   ];
 
   return (

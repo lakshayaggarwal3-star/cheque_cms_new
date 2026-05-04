@@ -70,6 +70,12 @@ public class BatchDto
     public string? ScanLockedByName { get; set; }
     public int? RRLockedBy { get; set; }
     public string? RRLockedByName { get; set; }
+    public int? MakerLockedBy { get; set; }
+    public string? MakerLockedByName { get; set; }
+    public int? CheckerLockedBy { get; set; }
+    public string? CheckerLockedByName { get; set; }
+    public int? QCLockedBy { get; set; }
+    public string? QCLockedByName { get; set; }
 }
 
 public class DashboardSummary
@@ -77,6 +83,9 @@ public class DashboardSummary
     public int TotalBatchesToday { get; set; }
     public int ScanningPending { get; set; }
     public int RRPending { get; set; }
+    public int MakerPending { get; set; }
+    public int CheckerPending { get; set; }
+    public int QCPending { get; set; }
     public int Completed { get; set; }
 }
 

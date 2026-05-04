@@ -14,6 +14,11 @@ export async function getSlipsByBatch(batchId: number): Promise<SlipEntryDto[]> 
   return extractData<SlipEntryDto[]>(res);
 }
 
+export async function getSlip(slipId: number): Promise<SlipEntryDto> {
+  const res = await apiClient.get(`/slip/detail/${slipId}`);
+  return extractData<SlipEntryDto>(res);
+}
+
 export async function getClientsByLocation(): Promise<ClientAutoFillDto[]> {
   const res = await apiClient.get('/slip/clients-by-location');
   return extractData<ClientAutoFillDto[]>(res);

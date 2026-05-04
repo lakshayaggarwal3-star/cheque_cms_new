@@ -30,6 +30,13 @@ public class SlipController : ControllerBase
         return Ok(ApiResponse<List<SlipEntryDto>>.Ok(result));
     }
 
+    [HttpGet("detail/{slipId:long}")]
+    public async Task<IActionResult> GetDetail(long slipId)
+    {
+        var result = await _slipService.GetSlipAsync(slipId);
+        return Ok(ApiResponse<SlipEntryDto>.Ok(result));
+    }
+
     [HttpPost]
     [Authorize(Roles = "Scanner,Mobile Scanner,Admin,Developer")]
     public async Task<IActionResult> Create([FromBody] CreateSlipEntryRequest request)

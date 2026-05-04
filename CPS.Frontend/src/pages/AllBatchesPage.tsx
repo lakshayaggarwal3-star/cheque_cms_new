@@ -69,7 +69,12 @@ function Dot({ tone = 'neutral' as Tone }: { tone?: Tone }) {
   );
 }
 
-const STATUS_TONE: Record<number, Tone> = { 0: 'neutral', 1: 'info', 2: 'warning', 3: 'success', 4: 'danger', 5: 'success', 6: 'warning' };
+const STATUS_TONE: Record<number, Tone> = { 
+  0: 'neutral', 1: 'info', 2: 'warning', 3: 'success', 4: 'danger', 5: 'success', 6: 'warning',
+  7: 'neutral', 8: 'info', 9: 'success',
+  10: 'neutral', 11: 'info', 12: 'success',
+  13: 'neutral', 14: 'info', 15: 'success',
+};
 
 function getAction(b: BatchDto, currentUserId?: number): { label: string; path: string; disabled?: boolean; lockedBy?: string } | null {
   const isScanLockedByOther = !!b.scanLockedBy && b.scanLockedBy !== currentUserId;
@@ -84,6 +89,15 @@ function getAction(b: BatchDto, currentUserId?: number): { label: string; path: 
     case BatchStatus.RRPending:
     case BatchStatus.RRInProgress:
       return { label: 'Repair',   path: `/rr/${b.batchNo}`,  disabled: isRRLockedByOther,   lockedBy: b.rrLockedByName };
+    case BatchStatus.MakerPending:
+    case BatchStatus.MakerInProgress:
+      return { label: 'Entry',    path: `/maker/${b.batchNo}`, disabled: !!b.makerLockedBy && b.makerLockedBy !== currentUserId, lockedBy: b.makerLockedByName };
+    case BatchStatus.CheckerPending:
+    case BatchStatus.CheckerInProgress:
+      return { label: 'Verify',   path: `/checker/${b.batchNo}`, disabled: !!b.checkerLockedBy && b.checkerLockedBy !== currentUserId, lockedBy: b.checkerLockedByName };
+    case BatchStatus.QCPending:
+    case BatchStatus.QCInProgress:
+      return { label: 'Review',   path: `/qc/${b.batchNo}`, disabled: !!b.qcLockedBy && b.qcLockedBy !== currentUserId, lockedBy: b.qcLockedByName };
     default:
       return null;
   }
@@ -250,7 +264,7 @@ export function AllBatchesPage() {
                   {filtered.map(b => {
                     const action = getAction(b, user?.userId);
                     const tone = STATUS_TONE[b.batchStatus] ?? 'neutral';
-                    const lockedByName = b.scanLockedByName || b.rrLockedByName;
+                    const lockedByName = b.scanLockedByName || b.rrLockedByName || b.makerLockedByName || b.checkerLockedByName || b.qcLockedByName;
 
                     return (
                       <tr key={b.batchID} style={{ borderBottom: '1px solid var(--border-subtle)' }}

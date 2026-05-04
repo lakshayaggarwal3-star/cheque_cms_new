@@ -43,6 +43,30 @@ const TABS: Tab[] = [
     glowColor: 'rgba(217, 119, 87, 0.4)',
     bgGradient: 'linear-gradient(135deg, #d97757 0%, #a35238 100%)'
   },
+  { 
+    label: 'Maker Queue', 
+    path: '/maker', 
+    icon: 'edit_note', 
+    activeColor: '#d97757',
+    glowColor: 'rgba(217, 119, 87, 0.4)',
+    bgGradient: 'linear-gradient(135deg, #d97757 0%, #a35238 100%)'
+  },
+  { 
+    label: 'Checker Queue', 
+    path: '/checker', 
+    icon: 'fact_check', 
+    activeColor: '#d97757',
+    glowColor: 'rgba(217, 119, 87, 0.4)',
+    bgGradient: 'linear-gradient(135deg, #d97757 0%, #a35238 100%)'
+  },
+  { 
+    label: 'QC Queue', 
+    path: '/qc', 
+    icon: 'manage_search', 
+    activeColor: '#d97757',
+    glowColor: 'rgba(217, 119, 87, 0.4)',
+    bgGradient: 'linear-gradient(135deg, #d97757 0%, #a35238 100%)'
+  },
 ];
 
 export function QueueTabs() {

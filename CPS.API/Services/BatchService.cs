@@ -28,6 +28,18 @@ internal static class BatchHistory
         { "RRLocked",         "RR Locked by Another User" },
         { "RRReleased",       "RR Released (Pending)" },
         { "RRCompleted",      "RR Completed" },
+        { "MakerStarted",     "Maker Entry Started" },
+        { "MakerLocked",      "Maker Locked by Another User" },
+        { "MakerReleased",    "Maker Released (Pending)" },
+        { "MakerCompleted",   "Maker Entry Completed" },
+        { "CheckerStarted",   "Checker Verification Started" },
+        { "CheckerLocked",    "Checker Locked by Another User" },
+        { "CheckerReleased",  "Checker Released (Pending)" },
+        { "CheckerCompleted", "Checker Verification Completed" },
+        { "QCStarted",        "QC Review Started" },
+        { "QCLocked",         "QC Locked by Another User" },
+        { "QCReleased",       "QC Released (Pending)" },
+        { "QCCompleted",      "QC Review Completed" },
         { "Reopened",         "Batch Reopened" },
         { "StatusOverride",   "Status Override" },
     };
@@ -263,6 +275,9 @@ public class BatchService : IBatchService
             TotalBatchesToday = counts.Total,
             ScanningPending = counts.ScanningPending,
             RRPending = counts.RRPending,
+            MakerPending = counts.MakerPending,
+            CheckerPending = counts.CheckerPending,
+            QCPending = counts.QCPending,
             Completed = counts.Completed
         };
     }
@@ -298,6 +313,32 @@ public class BatchService : IBatchService
             batch.RRLockedBy = null;
             batch.RRLockedAt = null;
             batch.StatusHistory = BatchHistory.Append(batch.StatusHistory, "RRReleased", userId, request.Reason);
+        }
+        else if (request.NewStatus == (int)BatchStatus.MakerCompleted)
+        {
+            batch.MakerCompletedBy = userId;
+            batch.MakerCompletedAt = DateTime.UtcNow;
+            batch.MakerLockedBy = null;
+            batch.MakerLockedAt = null;
+            batch.BatchStatus = (int)BatchStatus.CheckerPending;
+            batch.StatusHistory = BatchHistory.Append(batch.StatusHistory, "MakerCompleted", userId, request.Reason);
+        }
+        else if (request.NewStatus == (int)BatchStatus.CheckerCompleted)
+        {
+            batch.CheckerCompletedBy = userId;
+            batch.CheckerCompletedAt = DateTime.UtcNow;
+            batch.CheckerLockedBy = null;
+            batch.CheckerLockedAt = null;
+            batch.BatchStatus = (int)BatchStatus.QCPending;
+            batch.StatusHistory = BatchHistory.Append(batch.StatusHistory, "CheckerCompleted", userId, request.Reason);
+        }
+        else if (request.NewStatus == (int)BatchStatus.QCCompleted)
+        {
+            batch.QCCompletedBy = userId;
+            batch.QCCompletedAt = DateTime.UtcNow;
+            batch.QCLockedBy = null;
+            batch.QCLockedAt = null;
+            batch.StatusHistory = BatchHistory.Append(batch.StatusHistory, "QCCompleted", userId, request.Reason);
         }
         else
         {
@@ -350,10 +391,22 @@ public class BatchService : IBatchService
             { 3, "Scanning Completed" },
             { 4, "RR Pending" },
             { 5, "RR Completed" },
-            { 6, "RR In Progress" }
+            { 6, "RR In Progress" },
+            { 7, "Maker Pending" },
+            { 8, "Maker In Progress" },
+            { 9, "Maker Completed" },
+            { 10, "Checker Pending" },
+            { 11, "Checker In Progress" },
+            { 12, "Checker Completed" },
+            { 13, "QC Pending" },
+            { 14, "QC In Progress" },
+            { 15, "QC Completed" }
         };
 
-        var userIds = new[] { b.CreatedBy, b.ScanLockedBy, b.RRLockedBy }
+        var userIds = new[] { 
+            b.CreatedBy, b.ScanLockedBy, b.RRLockedBy, 
+            b.MakerLockedBy, b.CheckerLockedBy, b.QCLockedBy 
+        }
             .Where(id => id.HasValue).Select(id => id!.Value).Distinct().ToList();
 
         var userNames = userIds.Count > 0
@@ -392,6 +445,12 @@ public class BatchService : IBatchService
             ScanLockedByName = getName(b.ScanLockedBy),
             RRLockedBy = b.RRLockedBy,
             RRLockedByName = getName(b.RRLockedBy),
+            MakerLockedBy = b.MakerLockedBy,
+            MakerLockedByName = getName(b.MakerLockedBy),
+            CheckerLockedBy = b.CheckerLockedBy,
+            CheckerLockedByName = getName(b.CheckerLockedBy),
+            QCLockedBy = b.QCLockedBy,
+            QCLockedByName = getName(b.QCLockedBy),
         };
     }
 }

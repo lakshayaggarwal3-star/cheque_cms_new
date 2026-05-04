@@ -32,6 +32,15 @@ export enum BatchStatus {
   RRPending = 4,
   RRCompleted = 5,
   RRInProgress = 6,
+  MakerPending = 7,
+  MakerInProgress = 8,
+  MakerCompleted = 9,
+  CheckerPending = 10,
+  CheckerInProgress = 11,
+  CheckerCompleted = 12,
+  QCPending = 13,
+  QCInProgress = 14,
+  QCCompleted = 15,
 }
 
 export const BatchStatusLabels: Record<number, string> = {
@@ -42,6 +51,15 @@ export const BatchStatusLabels: Record<number, string> = {
   4: 'RR Pending',
   5: 'RR Completed',
   6: 'RR In Progress',
+  7: 'Maker Pending',
+  8: 'Maker In Progress',
+  9: 'Maker Completed',
+  10: 'Checker Pending',
+  11: 'Checker In Progress',
+  12: 'Checker Completed',
+  13: 'QC Pending',
+  14: 'QC In Progress',
+  15: 'QC Completed',
 };
 
 export enum RRState {
@@ -95,12 +113,21 @@ export interface BatchDto {
   scanLockedByName?: string;
   rrLockedBy?: number;
   rrLockedByName?: string;
+  makerLockedBy?: number;
+  makerLockedByName?: string;
+  checkerLockedBy?: number;
+  checkerLockedByName?: string;
+  qcLockedBy?: number;
+  qcLockedByName?: string;
 }
 
 export interface DashboardSummary {
   totalBatchesToday: number;
   scanningPending: number;
   rrPending: number;
+  makerPending: number;
+  checkerPending: number;
+  qcPending: number;
   completed: number;
 }
 
@@ -177,6 +204,19 @@ export interface ChequeItemDto {
   fileExtension?: string;
   imageHash?: string;
   scanStatus: string;
+
+  // --- Maker/Checker Business Data ---
+  makerAmount?: number;
+  makerBeneficiary?: string;
+  makerDate?: string;
+  checkerAmount?: number;
+  checkerBeneficiary?: string;
+  checkerDate?: string;
+  amount?: number;
+  micr1?: string;
+  micr2?: string;
+  micr3?: string;
+  rowVersion?: string;
 }
 
 export interface SlipEntryDto {

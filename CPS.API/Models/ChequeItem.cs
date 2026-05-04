@@ -94,6 +94,26 @@ public class ChequeItem
     public int? RRCompletedBy { get; set; }
     public DateTime? RRCompletedAt { get; set; }
 
+    // --- Maker data entry ---
+    // 0=Pending, 1=InProgress, 2=Completed
+    public int MakerState { get; set; } = 0;
+    public int? MakerCompletedBy { get; set; }
+    public DateTime? MakerCompletedAt { get; set; }
+
+    // --- Checker blind re-entry ---
+    // 0=Pending, 1=InProgress, 2=Completed, 3=Mismatch
+    public int CheckerState { get; set; } = 0;
+    public int? CheckerCompletedBy { get; set; }
+    public DateTime? CheckerCompletedAt { get; set; }
+
+    // --- QC ---
+    // 0=Pending, 1=Approved, 2=Rejected
+    public int QCState { get; set; } = 0;
+    public int? QCCompletedBy { get; set; }
+    public DateTime? QCCompletedAt { get; set; }
+    [MaxLength(500)]
+    public string? QCNotes { get; set; }
+
 
     // Optimization: Store base path and derive suffixes (SF, CF, CR)
 
@@ -118,6 +138,27 @@ public class ChequeItem
     public string? ScanError { get; set; }
 
     public int RetryCount { get; set; } = 0;
+
+    // --- Maker/Checker Business Data ---
+    [Column(TypeName = "decimal(15,3)")]
+    public decimal? MakerAmount { get; set; }
+    
+    [MaxLength(200)]
+    public string? MakerBeneficiary { get; set; }
+    
+    public DateOnly? MakerDate { get; set; }
+
+    [Column(TypeName = "decimal(15,3)")]
+    public decimal? CheckerAmount { get; set; }
+
+    [MaxLength(200)]
+    public string? CheckerBeneficiary { get; set; }
+
+    public DateOnly? CheckerDate { get; set; }
+
+    // Final consolidated amount (after QC or Checker match)
+    [Column(TypeName = "decimal(15,3)")]
+    public decimal? Amount { get; set; }
 
     [MaxLength(50)]
     public string? ScannerType { get; set; }

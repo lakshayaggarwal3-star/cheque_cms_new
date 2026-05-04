@@ -62,10 +62,13 @@ export async function uploadMobileSlipItem(batchId: number, data: {
   return extractData<SlipItemDto>(res);
 }
 
+const isMobileDevice = () => /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+
 export async function uploadBulkSlipItems(batchId: number, slipEntryId: number, files: File[]): Promise<SlipItemDto[]> {
+  const scannerType = isMobileDevice() ? 'Mobile-Upload' : 'Desktop-Upload';
   const formData = new FormData();
   formData.append('slipEntryId', String(slipEntryId));
-  formData.append('scannerType', 'Direct-Upload');
+  formData.append('scannerType', scannerType);
   files.forEach(f => formData.append('images', f));
   const res = await apiClient.post(`/scan/${batchId}/slip-item/upload-bulk`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },

@@ -34,4 +34,5 @@ public interface IScanService
     Task ReleaseLockAsync(long batchId, int userId);
     Task HeartbeatAsync(long batchId, int userId);
     Task ReopenBatchAsync(long batchId, int userId);
+    Task MapImagesToSlipAsync(long batchId, List<long> chequeItemIds, List<long> slipItemIds, long slipEntryId, int userId);
 }

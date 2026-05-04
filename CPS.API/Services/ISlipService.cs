@@ -13,6 +13,7 @@ namespace CPS.API.Services;
 public interface ISlipService
 {
     Task<List<SlipEntryDto>> GetByBatchAsync(long batchId);
+    Task<SlipEntryDto> GetSlipAsync(long slipId);
     Task<SlipEntryDto> CreateSlipEntryAsync(CreateSlipEntryRequest request, int userId);
     Task<SlipEntryDto> UpdateSlipEntryAsync(long slipEntryId, UpdateSlipEntryRequest request, int userId);
     Task<ClientAutoFillDto?> GetClientAutoFillAsync(string clientCode, int userLocationId);

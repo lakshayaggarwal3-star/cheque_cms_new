@@ -50,6 +50,18 @@ export const ROLES: RoleDefinition[] = [
     badgeClass: 'bg-teal-100 text-teal-700',
   },
   {
+    key: 'RR',
+    label: 'RR',
+    description: 'Reject & Repair — fix MICR data and image issues on failed cheques.',
+    badgeClass: 'bg-orange-100 text-orange-700',
+  },
+  {
+    key: 'QC',
+    label: 'QC',
+    description: 'Quality Control — resolve Maker/Checker mismatches (Phase 2).',
+    badgeClass: 'bg-pink-100 text-pink-700',
+  },
+  {
     key: 'Admin',
     label: 'Admin',
     description: 'Full access — user management, master upload, app settings.',

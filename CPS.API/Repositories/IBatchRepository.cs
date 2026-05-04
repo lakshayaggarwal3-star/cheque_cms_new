@@ -27,5 +27,8 @@ public class DashboardCounts
     public int Total { get; set; }
     public int ScanningPending { get; set; }
     public int RRPending { get; set; }
+    public int MakerPending { get; set; }
+    public int CheckerPending { get; set; }
+    public int QCPending { get; set; }
     public int Completed { get; set; }
 }

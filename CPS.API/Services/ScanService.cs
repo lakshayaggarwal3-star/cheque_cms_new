@@ -261,7 +261,7 @@ public class ScanService : IScanService
                 SlipEntryId = slip.SlipEntryId,
                 ScanOrder = scanOrder,
                 ImagePath = imagePath,
-                ScannerType = GetScannerType(batch.EntryMode, "Direct-Upload")
+                ScannerType = request.ScannerType
             }, userId);
 
             results.Add(saved);
@@ -577,7 +577,7 @@ public class ScanService : IScanService
 
         batch.BatchStatus = hasRRItems
             ? (int)BatchStatus.RRPending
-            : (int)BatchStatus.ScanningCompleted;
+            : (int)BatchStatus.MakerPending;
 
         batch.ScanCompletedBy = userId;
         batch.ScanCompletedAt = DateTime.UtcNow;
@@ -589,7 +589,7 @@ public class ScanService : IScanService
 
         await _batchRepo.UpdateAsync(batch);
 
-        var statusLabel = hasRRItems ? "RR Pending" : "Scanning Completed";
+        var statusLabel = hasRRItems ? "RR Pending" : "Maker Pending";
         _logger.LogInformation("Scan completed: BatchNo={BatchNo} → {Status}", batch.BatchNo, statusLabel);
 
         await _audit.LogAsync("Batch", batchId.ToString(), "UPDATE",
@@ -774,7 +774,9 @@ public class ScanService : IScanService
         ImageName = s.ImageName,
         FileExtension = s.FileExtension,
         ImageHash = s.ImageHash,
-        EntryMode = s.EntryMode
+        EntryMode = s.EntryMode,
+        GlobalImageBaseName = s.GlobalImageBaseName,
+        GlobalImageName = s.GlobalImageName
     };
 
     private async Task<string?> CalculateFileHashAsync(string? relativePath)
@@ -834,6 +836,137 @@ public class ScanService : IScanService
         RRStartedAt = c.RRStartedAt,
         RRCompletedBy = c.RRCompletedBy,
         RRCompletedAt = c.RRCompletedAt,
-        EntryMode = c.EntryMode
+        EntryMode = c.EntryMode,
+        MakerAmount = c.MakerAmount,
+        MakerBeneficiary = c.MakerBeneficiary,
+        MakerDate = c.MakerDate?.ToString("yyyy-MM-dd"),
+        CheckerAmount = c.CheckerAmount,
+        CheckerBeneficiary = c.CheckerBeneficiary,
+        CheckerDate = c.CheckerDate?.ToString("yyyy-MM-dd"),
+        Amount = c.Amount
     };
+
+    public async Task MapImagesToSlipAsync(long batchId, List<long> chequeItemIds, List<long> slipItemIds, long slipEntryId, int userId)
+    {
+        using var transaction = await _db.Database.BeginTransactionAsync();
+        try
+        {
+            var batch = await _db.Batches.FindAsync(batchId) ?? throw new NotFoundException("Batch not found");
+            var targetSlip = await _db.SlipEntries.FindAsync(slipEntryId) ?? throw new NotFoundException("Slip not found");
+
+            // 1. Map slip images — move into the same Slip/ folder under the batch, renaming to {BatchNo}_{order:D3}SF
+            if (slipItemIds != null && slipItemIds.Any())
+            {
+                var slipsToMap = await _db.SlipItems
+                    .Where(s => slipItemIds.Contains(s.SlipItemId))
+                    .OrderBy(s => s.ScanOrder)
+                    .ToListAsync();
+
+                var currentMaxOrder = await _db.SlipItems
+                    .Where(s => s.SlipEntryId == slipEntryId && !s.IsDeleted)
+                    .Select(s => (int?)s.ScanOrder)
+                    .MaxAsync() ?? 0;
+
+                foreach (var item in slipsToMap)
+                {
+                    currentMaxOrder++;
+                    var oldBase = item.ImageBaseName;
+                    if (string.IsNullOrEmpty(oldBase)) continue;
+
+                    // Follow same naming as regular slip scan: {BatchNo}_{order:D3}SF
+                    var newFileName = $"{batch.BatchNo}_{currentMaxOrder:D3}SF";
+
+                    var pathParts = oldBase.Split('/');
+                    var dateStr = pathParts.Length > 1 ? pathParts[1] : DateTime.UtcNow.ToString("yyyyMMdd");
+                    var root = GetRootFolder(item.EntryMode);
+                    // Same folder structure as regular slip scans — no new subfolder
+                    var newRelativeBase = $"{root}/{dateStr}/{batch.BatchNo}/Slip/{newFileName}";
+
+                    var oldFile = GetAbsolutePath($"{oldBase}{item.FileExtension}");
+                    var newFile = GetAbsolutePath($"{newRelativeBase}{item.FileExtension}");
+
+                    if (File.Exists(oldFile))
+                    {
+                        Directory.CreateDirectory(Path.GetDirectoryName(newFile)!);
+                        File.Move(oldFile, newFile, true);
+                    }
+
+                    // Preserve original global path for audit/traceability
+                    item.GlobalImageBaseName ??= item.ImageBaseName;
+                    item.GlobalImageName ??= item.ImageName;
+
+                    item.SlipEntryId = slipEntryId;
+                    item.ScanOrder = currentMaxOrder;
+                    item.ImageBaseName = newRelativeBase;
+                    item.ImageName = newFileName;
+                    item.UpdatedBy = userId;
+                    item.UpdatedAt = DateTime.UtcNow;
+                }
+            }
+
+            // 2. Map cheque images — move into the Cheque/ folder under the batch, renaming to {BatchNo}_{seqNo:D3}CF/CR
+            if (chequeItemIds != null && chequeItemIds.Any())
+            {
+                var cheques = await _db.ChequeItems
+                    .Where(c => chequeItemIds.Contains(c.ChequeItemId))
+                    .OrderBy(c => c.SeqNo)
+                    .ToListAsync();
+
+                var currentMaxChqSeq = await _db.ChequeItems
+                    .Where(c => c.SlipEntryId == slipEntryId && !c.IsDeleted)
+                    .Select(c => (int?)c.ChqSeq)
+                    .MaxAsync() ?? 0;
+
+                foreach (var cheque in cheques)
+                {
+                    currentMaxChqSeq++;
+                    var oldBase = cheque.ImageBaseName;
+                    if (string.IsNullOrEmpty(oldBase)) continue;
+
+                    // Follow same naming as regular cheque scan: {BatchNo}_{seqNo:D3} (CF/CR appended per side)
+                    var newBaseName = $"{batch.BatchNo}_{cheque.SeqNo:D3}";
+
+                    var pathParts = oldBase.Split('/');
+                    var dateStr = pathParts.Length > 1 ? pathParts[1] : DateTime.UtcNow.ToString("yyyyMMdd");
+                    var root = GetRootFolder(cheque.EntryMode);
+                    var newRelativeBase = $"{root}/{dateStr}/{batch.BatchNo}/Cheque/{newBaseName}";
+
+                    // Move all physical files (CF.jpg, CR.jpg, CF.tif, CR.tif)
+                    var extensions = (cheque.FileExtension ?? ".jpg").Split(',');
+                    foreach (var ext in extensions)
+                    {
+                        foreach (var side in new[] { "CF", "CR" })
+                        {
+                            var oldFile = GetAbsolutePath($"{oldBase}{side}{ext}");
+                            var newFile = GetAbsolutePath($"{newRelativeBase}{side}{ext}");
+                            if (File.Exists(oldFile))
+                            {
+                                Directory.CreateDirectory(Path.GetDirectoryName(newFile)!);
+                                File.Move(oldFile, newFile, true);
+                            }
+                        }
+                    }
+
+                    cheque.SlipEntryId = slipEntryId;
+                    cheque.ChqSeq = currentMaxChqSeq;
+                    cheque.ImageBaseName = newRelativeBase;
+                    cheque.ImageName = newBaseName;
+                    cheque.UpdatedBy = userId;
+                    cheque.UpdatedAt = DateTime.UtcNow;
+                }
+            }
+
+            await _db.SaveChangesAsync();
+            await _audit.LogAsync("Batch", batchId.ToString(), "IMAGE_MAPPING", null,
+                new { ChequeCount = chequeItemIds?.Count ?? 0, SlipCount = slipItemIds?.Count ?? 0, TargetSlip = targetSlip.SlipNo }, userId, batchNo: batch.BatchNo);
+
+            await transaction.CommitAsync();
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync();
+            _logger.LogError(ex, "Failed to map images for BatchId={BatchId}", batchId);
+            throw;
+        }
+    }
 }

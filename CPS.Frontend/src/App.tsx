@@ -22,6 +22,13 @@ import { ScanRouterPage } from './pages/ScanRouterPage';
 import { RRPage } from './pages/RRPage';
 import { ScanListPage } from './pages/ScanListPage';
 import { RRListPage } from './pages/RRListPage';
+import { MakerListPage } from './pages/maker/MakerListPage';
+import { MakerPage } from './pages/maker/MakerPage';
+import { MakerEntryPage } from './pages/maker/MakerEntryPage';
+import { CheckerListPage } from './pages/checker/CheckerListPage';
+import { CheckerPage } from './pages/checker/CheckerPage';
+import { QCListPage } from './pages/qc/QCListPage';
+import { QCPage } from './pages/qc/QCPage';
 import { UserManagementPage } from './pages/UserManagementPage';
 import { MastersPage } from './pages/MasterUploadPage';
 import { SettingsPage } from './pages/SettingsPage';
@@ -64,6 +71,13 @@ function AppRoutes() {
         <Route path="/all-batches" element={<AllBatchesPage />} />
         <Route path="/rr" element={<RRListPage />} />
         <Route path="/rr/:batchNo" element={<RRPage />} />
+        <Route path="/maker" element={<MakerListPage />} />
+        <Route path="/maker/:batchNo" element={<MakerPage />} />
+        <Route path="/maker/:batchNo/slip/:slipId" element={<MakerEntryPage />} />
+        <Route path="/checker" element={<CheckerListPage />} />
+        <Route path="/checker/:batchNo" element={<CheckerPage />} />
+        <Route path="/qc" element={<QCListPage />} />
+        <Route path="/qc/:batchNo" element={<QCPage />} />
         <Route path="/batch/create" element={<BatchCreatePage />} />
         <Route path="/batch/:batchId/details" element={<BatchCreatePage />} />
         <Route path="/scan" element={<ScanListPage />} />

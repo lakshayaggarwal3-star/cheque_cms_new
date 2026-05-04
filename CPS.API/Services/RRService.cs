@@ -280,7 +280,7 @@ public class RRService : IRRService
         if (!await _slipRepo.AllRRResolvedAsync(batchId))
             throw new ValidationException("Not all items have been reviewed. Complete all RR items first.");
 
-        batch.BatchStatus = (int)BatchStatus.RRCompleted;
+        batch.BatchStatus = (int)BatchStatus.MakerPending;
         batch.RRCompletedBy = userId;
         batch.RRCompletedAt = DateTime.UtcNow;
         batch.RRLockedBy = null;

@@ -21,7 +21,7 @@ public class AuditLog
     [Required, MaxLength(50)]
     public string RecordID { get; set; } = string.Empty;
 
-    [Required, MaxLength(10)]
+    [Required, MaxLength(30)]
     public string Action { get; set; } = string.Empty;
 
     public string? OldValues { get; set; }

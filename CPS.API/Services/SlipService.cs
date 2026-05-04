@@ -38,6 +38,13 @@ public class SlipService : ISlipService
         return entries.Select(MapToDto).ToList();
     }
 
+    public async Task<SlipEntryDto> GetSlipAsync(long slipId)
+    {
+        var entry = await _slipRepo.GetByIdAsync(slipId)
+            ?? throw new NotFoundException($"Slip entry {slipId} not found.");
+        return MapToDto(entry);
+    }
+
     public async Task<SlipEntryDto> CreateSlipEntryAsync(CreateSlipEntryRequest request, int userId)
     {
         var batch = await _batchRepo.GetByIdAsync(request.BatchId)
@@ -223,10 +230,14 @@ public class SlipService : ISlipService
             SlipItemId = ss.SlipItemId,
             SlipEntryId = ss.SlipEntryId,
             ScanOrder = ss.ScanOrder,
+            ScanStatus = ss.ScanStatus,
             RetryCount = ss.RetryCount,
             ImageBaseName = ss.ImageBaseName,
+            ImageName = ss.ImageName,
             FileExtension = ss.FileExtension,
-            ImageHash = ss.ImageHash
+            ImageHash = ss.ImageHash,
+            GlobalImageBaseName = ss.GlobalImageBaseName,
+            GlobalImageName = ss.GlobalImageName
         }).ToList(),
         Cheques = s.ChequeItems.Select(c => new ChequeItemDto
         {
@@ -248,7 +259,21 @@ public class SlipService : ISlipService
             RetryCount = c.RetryCount,
             ImageBaseName = c.ImageBaseName,
             FileExtension = c.FileExtension,
-            ImageHash = c.ImageHash
+            ImageHash = c.ImageHash,
+            ScanChqNo = c.ScanChqNo,
+            RRChqNo = c.RRChqNo,
+            ScanMICRRaw = c.ScanMICRRaw,
+            MICR1 = c.MICR1,
+            MICR2 = c.MICR2,
+            MICR3 = c.MICR3,
+            ScanStatus = c.ScanStatus,
+            MakerAmount = c.MakerAmount,
+            MakerBeneficiary = c.MakerBeneficiary,
+            MakerDate = c.MakerDate?.ToString("yyyy-MM-dd"),
+            CheckerAmount = c.CheckerAmount,
+            CheckerBeneficiary = c.CheckerBeneficiary,
+            CheckerDate = c.CheckerDate?.ToString("yyyy-MM-dd"),
+            Amount = c.Amount
         }).ToList()
     };
 }

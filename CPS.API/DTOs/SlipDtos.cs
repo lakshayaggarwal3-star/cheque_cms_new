@@ -67,6 +67,8 @@ public class SlipItemDto
     public string? FileExtension { get; set; }
     public string? ImageHash { get; set; }
     public string? EntryMode { get; set; }
+    public string? GlobalImageBaseName { get; set; }
+    public string? GlobalImageName { get; set; }
 }
 
 public class ChequeItemDto
@@ -114,6 +116,17 @@ public class ChequeItemDto
     public int? RRCompletedBy { get; set; }
     public DateTime? RRCompletedAt { get; set; }
     public string? EntryMode { get; set; }
+
+    // --- Maker/Checker Business Data ---
+    public decimal? MakerAmount { get; set; }
+    public string? MakerBeneficiary { get; set; }
+    public string? MakerDate { get; set; }
+
+    public decimal? CheckerAmount { get; set; }
+    public string? CheckerBeneficiary { get; set; }
+    public string? CheckerDate { get; set; }
+
+    public decimal? Amount { get; set; }
 }
 
 // Resume state — tells frontend exactly where the user left off

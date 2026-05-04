@@ -4,6 +4,7 @@ using CPS.API.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace CPS.API.Migrations
 {
     [DbContext(typeof(CpsDbContext))]
-    partial class CpsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260503180604_AddMakerCheckerQCPhases")]
+    partial class AddMakerCheckerQCPhases
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -68,8 +71,8 @@ namespace CPS.API.Migrations
 
                     b.Property<string>("Action")
                         .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)");
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
 
                     b.Property<string>("BatchNo")
                         .HasMaxLength(50)
@@ -460,27 +463,14 @@ namespace CPS.API.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("ChequeItemId"));
 
-                    b.Property<decimal?>("Amount")
-                        .HasColumnType("decimal(15,3)");
-
                     b.Property<long>("BatchId")
                         .HasColumnType("bigint");
-
-                    b.Property<decimal?>("CheckerAmount")
-                        .HasColumnType("decimal(15,3)");
-
-                    b.Property<string>("CheckerBeneficiary")
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
 
                     b.Property<DateTime?>("CheckerCompletedAt")
                         .HasColumnType("datetime2");
 
                     b.Property<int?>("CheckerCompletedBy")
                         .HasColumnType("int");
-
-                    b.Property<DateOnly?>("CheckerDate")
-                        .HasColumnType("date");
 
                     b.Property<int>("CheckerState")
                         .HasColumnType("int");
@@ -537,21 +527,11 @@ namespace CPS.API.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
-                    b.Property<decimal?>("MakerAmount")
-                        .HasColumnType("decimal(15,3)");
-
-                    b.Property<string>("MakerBeneficiary")
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
                     b.Property<DateTime?>("MakerCompletedAt")
                         .HasColumnType("datetime2");
 
                     b.Property<int?>("MakerCompletedBy")
                         .HasColumnType("int");
-
-                    b.Property<DateOnly?>("MakerDate")
-                        .HasColumnType("date");
 
                     b.Property<int>("MakerState")
                         .HasColumnType("int");
@@ -1516,14 +1496,6 @@ namespace CPS.API.Migrations
                     b.Property<string>("FileExtension")
                         .HasMaxLength(10)
                         .HasColumnType("nvarchar(10)");
-
-                    b.Property<string>("GlobalImageBaseName")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<string>("GlobalImageName")
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
 
                     b.Property<string>("ImageBaseName")
                         .HasMaxLength(500)
